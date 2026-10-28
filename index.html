@@ -250,6 +250,107 @@
     // v2: louder defaults + music; carry over only the on/off choice from v1
     soundPref = saved.v === 2 ? { ...soundPref, ...saved } : { ...soundPref, on: saved.on !== false };
   } catch {}
+
+  // ── Progress save, synced between devices through a private GitHub repo ──
+  // The save is a flat map key -> { t: ms, v: value } (v null = deleted); merging keeps the newer t per key,
+  // so two devices playing at the same time never lose each other's items. Counters that both devices bump
+  // live under per-device keys (e.g. fishing/<device>) and are summed when read.
+  // Each device pastes its own fine-grained token (Contents read/write on that repo only); it stays in localStorage.
+  const SAVE_KEY = 'claude-forest-save', SYNC_KEY = 'claude-forest-sync';
+  const SYNC_REPO = 'TGC-hub/Sleep-Forest-save', SYNC_FILE = 'save.json', SYNC_BRANCH = 'main';
+  const save = (() => {
+    let data = { v: 1, items: {} }, cfg = {};
+    try { const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (d && d.items) data = d; } catch {}
+    try { cfg = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}'); } catch {}
+    if (!cfg.device) cfg.device = (/iPhone|iPad|Android/i.test(navigator.userAgent) ? 'phone-' : 'pc-') + Math.random().toString(36).slice(2, 8);
+    const status = { state: cfg.token ? 'idle' : 'off', msg: '', at: cfg.lastSync || 0 };
+    const listeners = [];
+    const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch {} };
+    const persistCfg = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(cfg)); } catch {} };
+    persistCfg();
+    const notify = (what) => listeners.forEach((f) => { try { f(what); } catch (e) {} });
+    let pushTimer = null;
+    const schedule = (ms) => { if (!cfg.token) return; clearTimeout(pushTimer); pushTimer = setTimeout(() => sync(), ms); };
+
+    const newer = (a, b) => !b || a.t > b.t || (a.t === b.t && JSON.stringify(a.v) > JSON.stringify(b.v));
+    // pull remote items into the local save; returns the keys that changed locally
+    function mergeIn(items) {
+      const changed = [];
+      for (const [k, e] of Object.entries(items || {})) if (e && typeof e.t === 'number' && newer(e, data.items[k])) { data.items[k] = e; changed.push(k); }
+      if (changed.length) { persist(); notify(changed); }
+      return changed;
+    }
+    // UTF-8 safe base64 for the GitHub contents API
+    const toB64 = (s) => { const b = new TextEncoder().encode(s); let o = ''; for (let i = 0; i < b.length; i += 0x8000) o += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(o); };
+    const fromB64 = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
+    const api = (method, body, keepalive) => fetch(`https://api.github.com/repos/${SYNC_REPO}/contents/${SYNC_FILE}` + (method === 'GET' ? `?ref=${SYNC_BRANCH}&_=${Date.now()}` : ''), {
+      method, cache: 'no-store', keepalive: !!keepalive,
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const fail = (res) => {
+      const why = res.status === 401 ? 'Token sai hoặc đã hết hạn' : res.status === 403 ? 'Token chưa có quyền Contents: Read and write' : res.status === 404 ? `Không thấy kho ${SYNC_REPO} (token chưa chọn kho này?)` : `GitHub trả lỗi ${res.status}`;
+      const e = new Error(why); e.status = res.status; return e;
+    };
+
+    let running = null, again = false;
+    // pull, merge, push back whatever the remote is missing; retries when the other device wrote in between
+    function sync(opts = {}) {
+      if (!cfg.token) return Promise.resolve(false);
+      if (running) { again = true; return running; }
+      clearTimeout(pushTimer);
+      status.state = 'busy'; notify(null);
+      running = (async () => {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const res = await api('GET');
+          let sha, remote = { v: 1, items: {} };
+          if (res.ok) {
+            const j = await res.json(); sha = j.sha;
+            try { const d = JSON.parse(fromB64(j.content || '') || '{}'); if (d.items) remote = d; } catch {}
+          } else if (res.status !== 404) throw fail(res);
+          mergeIn(remote.items);
+          const missing = Object.keys(data.items).filter((k) => newer(data.items[k], remote.items[k]));
+          if (!missing.length) return true;
+          const out = { v: 1, updated: Date.now(), items: { ...remote.items } };
+          for (const k of missing) out.items[k] = data.items[k];
+          const put = await api('PUT', { message: `save from ${cfg.device} (${missing.length})`, content: toB64(JSON.stringify(out, null, 1) + '\n'), branch: SYNC_BRANCH, ...(sha ? { sha } : {}) }, opts.keepalive);
+          if (put.ok) return true;
+          if (put.status !== 409 && put.status !== 422) throw fail(put); // 409/422 = the file changed meanwhile: go round again
+        }
+        throw new Error('GitHub đang bận, thử lại sau');
+      })().then((ok) => {
+        status.state = 'idle'; status.msg = ''; status.at = cfg.lastSync = Date.now(); persistCfg();
+        return ok;
+      }, (e) => {
+        status.state = 'error'; status.msg = e.message || String(e);
+        if (e.status !== 401 && e.status !== 403 && e.status !== 404) schedule(60000); // offline etc.: try again later
+        return false;
+      }).finally(() => {
+        running = null; notify(null);
+        if (again) { again = false; schedule(500); }
+      });
+      return running;
+    }
+
+    // pull on open, every minute while visible, and when the page comes back; push soon after changes and on hide
+    setTimeout(() => sync(), 1200);
+    setInterval(() => { if (!document.hidden) sync(); }, 60000);
+    document.addEventListener('visibilitychange', () => sync(document.hidden ? { keepalive: true } : {}));
+
+    return {
+      device: cfg.device,
+      get(k, def) { const e = data.items[k]; return e && e.v != null ? e.v : def; },
+      set(k, v) { data.items[k] = { t: Math.max(Date.now(), ((data.items[k] || {}).t || 0) + 1), v }; persist(); notify([k]); schedule(15000); },
+      del(k) { this.set(k, null); },
+      keys(prefix) { return Object.keys(data.items).filter((k) => k.startsWith(prefix) && data.items[k].v != null); },
+      onChange(f) { listeners.push(f); },
+      sync: () => sync(),
+      status: () => ({ ...status, connected: !!cfg.token, repo: SYNC_REPO }),
+      connect(token) { cfg.token = String(token || '').trim(); status.state = cfg.token ? 'idle' : 'off'; persistCfg(); notify(null); return sync(); },
+      disconnect() { delete cfg.token; status.state = 'off'; status.msg = ''; persistCfg(); notify(null); },
+    };
+  })();
+  window.__forestSave = save;
   const sfx = (() => {
     let gainScale = 1, meter = null, ctx = null, master = null, musicBus = null, noiseBuf = null, bed = null;
     // outMul: an overall fade used by the phone sleep timer (1 = normal, 0 = silent)
@@ -1148,7 +1249,7 @@
     duckLand() { for (const c of critters) if (c.kind === 'duck') c.landNext = 0; },
     state: () => ({
       scene: scene && scene.actors.map((p) => `${p.petType}:${p.state}@${p.tileCol},${p.tileRow}`).join(' '), emotes: emotes.map((e) => e.kind).join(','), puffs: puffs.length, feathers: feathers.length,
-      fishing: fishing && `${fishing.phase}${fishing.res ? ':' + fishing.res : ''}${fishing.catchKind ? ':' + fishing.catchKind : ''}`, catches, leaves: leaves.length, foods: foods.length,
+      fishing: fishing && `${fishing.phase}${fishing.res ? ':' + fishing.res : ''}${fishing.catchKind ? ':' + fishing.catchKind : ''}`, catches: Object.fromEntries(Object.keys(FISH0).map((k) => [k, catches[k]])), sync: save.status(), leaves: leaves.length, foods: foods.length,
       sound: sfx.state(),
       voices: voicesPlayed, hidden: document.hidden,
       weather: `${weather.kind} ${weather.level.toFixed(2)} drops=${drops.length}`,
@@ -1280,9 +1381,15 @@
   }
 
   // ── Fishing mini-game ──
-  const FISH_KEY = 'claude-forest-fishing';
-  let catches = { fish: 0, crab: 0, gold: 0, boot: 0, miss: 0 };
-  try { catches = { ...catches, ...JSON.parse(localStorage.getItem(FISH_KEY) || '{}') }; } catch {}
+  // tally lives in the synced save, one entry per device (summed), so two devices fishing at once both count
+  const FISH_KEY = 'claude-forest-fishing', FISH0 = { fish: 0, crab: 0, gold: 0, boot: 0, miss: 0 }, MY_FISH = `fishing/${save.device}`;
+  if (save.get(MY_FISH) == null) { // carry over the old local-only tally once
+    let old = {};
+    try { old = JSON.parse(localStorage.getItem(FISH_KEY) || '{}'); } catch {}
+    if (Object.keys(old).length) save.set(MY_FISH, { ...FISH0, ...old });
+  }
+  const catches = new Proxy({}, { get: (_, k) => save.keys('fishing/').reduce((s, d) => s + (save.get(d)[k] || 0), 0) });
+  const bumpCatch = (k) => { const m = { ...FISH0, ...save.get(MY_FISH, {}) }; m[k]++; save.set(MY_FISH, m); };
   const CATCH = {
     fish: { name: 'Cá chép!', col: '#ff9a3a', light: '#ffd38a' },
     perch: { name: 'Cá rô!', col: '#7aa86a', light: '#c8e0a0', stat: 'fish' },
@@ -1310,16 +1417,15 @@
   }
   function strike(now) {
     const f = fishing;
-    if (f.phase === 'wait' || f.phase === 'cast') { f.phase = 'result'; f.res = 'early'; f.t0 = now; catches.miss++; puffs.push({ x: f.bx, y: f.by, born: now, ripple: true }); sfx.splash(f.bx); sfx.sad(f.bx); }
+    if (f.phase === 'wait' || f.phase === 'cast') { f.phase = 'result'; f.res = 'early'; f.t0 = now; bumpCatch('miss'); puffs.push({ x: f.bx, y: f.by, born: now, ripple: true }); sfx.splash(f.bx); sfx.sad(f.bx); }
     else if (f.phase === 'bite') {
       const r = Math.random();
       f.catchKind = r < 0.08 ? 'gold' : r < 0.36 ? 'crab' : r < 0.43 ? 'boot' : r < 0.7 ? 'perch' : 'fish';
       f.phase = 'reel'; f.t0 = now;
       sfx.splash(f.bx); sfx.reel(f.bx);
       if (f.catchKind === 'boot') setTimeout(() => sfx.bonk(f.ax), 900); else sfx.jingle(f.ax, f.catchKind === 'gold');
-      catches[CATCH[f.catchKind].stat || f.catchKind]++;
+      bumpCatch(CATCH[f.catchKind].stat || f.catchKind);
     }
-    try { localStorage.setItem(FISH_KEY, JSON.stringify(catches)); } catch {}
   }
   function fishingTick(now) {
     const f = fishing;
@@ -1328,7 +1434,7 @@
     if (f.phase === 'cast' && t > 600) { f.phase = 'wait'; f.t0 = now; f.biteAt = 1800 + Math.random() * 4500; f.nibbles = [0.3, 0.6].map((k) => k * f.biteAt + Math.random() * 300); }
     if (f.phase === 'wait') f.nibbles.forEach((n, i) => { if (t > n && !(f.heard & (1 << i))) { f.heard = (f.heard || 0) | (1 << i); sfx.plip(f.bx); } });
     if (f.phase === 'wait' && t > f.biteAt) { f.phase = 'bite'; f.t0 = now; f.window = 650; sfx.splash(f.bx); sfx.ding(f.bx); }
-    else if (f.phase === 'bite' && t > f.window) { f.phase = 'result'; f.res = 'escaped'; f.t0 = now; catches.miss++; sfx.sad(f.bx); try { localStorage.setItem(FISH_KEY, JSON.stringify(catches)); } catch {} }
+    else if (f.phase === 'bite' && t > f.window) { f.phase = 'result'; f.res = 'escaped'; f.t0 = now; bumpCatch('miss'); sfx.sad(f.bx); }
     else if (f.phase === 'reel' && t > 900) { f.phase = 'result'; f.res = 'caught'; f.t0 = now; }
     else if (f.phase === 'result' && t > 2600) fishing = null;
   }
@@ -2041,6 +2147,52 @@
     document.body.append(soundBtn, soundPanel);
   }
 
+  // Sync controls under the sound button: tap opens a panel (tap, not hover, so it works on phones)
+  // to paste this device's GitHub token, sync now, or disconnect.
+  let syncBtn = null;
+  function ensureSyncButton() {
+    if (syncBtn && syncBtn.isConnected) return;
+    syncBtn = document.createElement('button');
+    syncBtn.style.cssText = 'position:fixed;left:8px;top:146px;width:40px;height:40px;z-index:40;cursor:pointer;padding:0;font-size:18px;' + PIX;
+    const panel = document.createElement('div');
+    panel.style.cssText = 'position:fixed;left:54px;top:146px;z-index:41;padding:8px 10px;display:none;width:250px;max-width:calc(100vw - 70px);box-sizing:border-box;line-height:1.4;' + PIX;
+    const el = (tag, css, text) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (text) e.textContent = text; return e; };
+    const btnCss = 'height:28px;cursor:pointer;padding:0 8px;margin:6px 6px 0 0;' + PIX;
+    const title = el('div', 'font-weight:bold;margin-bottom:4px;', '☁ Lưu tiến trình lên GitHub');
+    const info = el('div', 'font-size:12px;');
+    const status = el('div', 'font-size:12px;margin-top:4px;');
+    const form = el('div');
+    const input = el('input', 'width:100%;box-sizing:border-box;margin-top:6px;padding:4px 6px;user-select:text;-webkit-user-select:text;' + PIX);
+    input.type = 'password'; input.placeholder = 'Dán token (github_pat_…)'; input.autocomplete = 'off'; input.spellcheck = false;
+    const connectBtn = el('button', btnCss, 'Kết nối');
+    form.append(input, connectBtn);
+    const actions = el('div');
+    const syncNow = el('button', btnCss, 'Đồng bộ ngay'), off = el('button', btnCss, 'Ngắt kết nối');
+    actions.append(syncNow, off);
+    panel.append(title, info, form, actions, status);
+    const hhmm = (t) => new Date(t).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    function paint() {
+      const s = save.status();
+      syncBtn.textContent = s.state === 'busy' ? '⏳' : s.state === 'error' ? '⚠️' : '☁️';
+      syncBtn.style.opacity = s.connected ? '1' : '0.55';
+      syncBtn.title = s.connected ? 'Đồng bộ GitHub' : 'Lưu tiến trình lên GitHub (chưa kết nối)';
+      info.textContent = s.connected ? `Kho: ${s.repo} · máy này: ${save.device}` : `Chưa kết nối. Dán token chỉ có quyền vào kho ${s.repo}; token chỉ lưu trên máy này.`;
+      form.style.display = s.connected ? 'none' : 'block';
+      actions.style.display = s.connected ? 'block' : 'none';
+      status.style.color = s.state === 'error' ? '#ff9a8a' : '#b8c8b8';
+      status.textContent = s.state === 'busy' ? 'Đang đồng bộ…' : s.state === 'error' ? s.msg : s.connected ? (s.at ? `Đã đồng bộ lúc ${hhmm(s.at)}` : 'Chưa đồng bộ lần nào') : '';
+    }
+    save.onChange(paint);
+    syncBtn.addEventListener('click', (e) => { e.stopPropagation(); panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; paint(); });
+    connectBtn.addEventListener('click', (e) => { e.stopPropagation(); if (input.value.trim()) { save.connect(input.value); input.value = ''; } });
+    input.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') connectBtn.click(); });
+    syncNow.addEventListener('click', (e) => { e.stopPropagation(); save.sync(); });
+    off.addEventListener('click', (e) => { e.stopPropagation(); if (confirm('Ngắt kết nối GitHub trên máy này? Tiến trình vẫn còn trên máy và trên GitHub.')) save.disconnect(); });
+    ['pointerdown', 'touchstart', 'wheel'].forEach((t) => [syncBtn, panel].forEach((n) => n.addEventListener(t, (e) => e.stopPropagation(), { passive: true })));
+    paint();
+    document.body.append(syncBtn, panel);
+  }
+
   let overlay = null;
   function ensureOverlay(canvas) {
     if (overlay && overlay.parentNode === canvas.parentNode && overlay.previousSibling === canvas) return overlay;
@@ -2071,6 +2223,7 @@
     g.imageSmoothingEnabled = false;
     bindClicks(cv);
     ensureSoundButton();
+    ensureSyncButton();
     const fdt = Math.min(0.1, (now - (frame.last || now)) / 1000); frame.last = now;
     try {
       weatherTick(now, fdt, ph);
