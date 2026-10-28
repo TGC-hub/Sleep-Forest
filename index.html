@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -150,7 +150,8 @@
   }
 
   // camera: "fit" shows the whole forest; "close" fills the screen height and drifts slowly sideways (drag to look around)
-  const cam = { mode: 'fit', drag: null, manualUntil: 0, pan: 0.5 };
+  // held upright, a phone opens close up (the forest fills the screen); sideways it shows the whole map
+  const cam = { mode: innerHeight > innerWidth ? 'close' : 'fit', drag: null, manualUntil: 0, pan: 0.5 };
   window.__forestCam = cam;
   cv.addEventListener('pointerdown', (e) => { if (cam.mode === 'close') cam.drag = { x: e.clientX, pan: cam.pan, moved: false }; });
   window.addEventListener('pointermove', (e) => {
@@ -181,6 +182,18 @@
     }
     cam.z = z;
     window.__forestView = { x: ox, y: oy, z, canvas: cv };
+    // whole-map view on a tall screen: continue the sky above and the forest floor below instead of bare bands
+    if (oy > 1) {
+      const forced = /hour=([\d.]+)/.exec(location.hash); // same clock as the sky overlay (#hour=21 for testing)
+      const h = forced ? +forced[1] : new Date().getHours() + new Date().getMinutes() / 60, night = h < 5.5 || h >= 19.5, dusk = !night && (h < 7 || h >= 17.5);
+      const top = ctx.createLinearGradient(0, 0, 0, oy);
+      top.addColorStop(0, night ? '#05081a' : dusk ? '#3b3a78' : '#3f8fd8');
+      top.addColorStop(1, night ? '#101a3a' : dusk ? '#f0a070' : '#8cc8f0');
+      ctx.fillStyle = top; ctx.fillRect(0, 0, cw, Math.ceil(oy) + 1);
+      const bot = ctx.createLinearGradient(0, oy + S.h * z, 0, ch);
+      bot.addColorStop(0, night ? '#0d1d12' : '#2c6a2a'); bot.addColorStop(1, night ? '#050a07' : '#163d18');
+      ctx.fillStyle = bot; ctx.fillRect(0, Math.floor(oy + S.h * z) - 1, cw, ch);
+    }
     ctx.drawImage(floorImg, Math.round(ox), Math.round(oy), Math.round(S.w * z), Math.round(S.h * z));
     const tick = Math.floor(now / 200);
     const list = S.order.slice();
@@ -207,7 +220,7 @@
   let last = performance.now();
   function loop(now) {
     requestAnimationFrame(loop);
-    if (!ready) return;
+    if (!ready || window.__forestAsleep) { last = now; return; } // after the sleep timer: nothing to draw, save battery
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     updatePets(dt);
     draw(now);
@@ -459,6 +472,7 @@
       peak() { if (!meter) return 0; const d = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); let p = 0; for (const v of d) p = Math.max(p, Math.abs(v)); return p; },
       state: () => (ctx ? `${ctx.state} muted=${soundPref.muted} forest=${soundPref.on}@${soundPref.vol} music=${soundPref.music}@${soundPref.musicVol} gains=${master.gain.value.toFixed(2)}/${musicBus.gain.value.toFixed(2)} bed=${!!bed} step=${mStep} samples=${Object.entries(samples).map(([k, v]) => k + ':' + v.length).join(',')}` : 'no-context'),
       setFade(m) { outMul = Math.max(0, Math.min(1, m)); this.setPref(); },
+      suspend() { try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) {} },
       setPref() {
         try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundPref)); } catch {}
         if (master) master.gain.setTargetAtTime(forestGain(), ctx.currentTime, 0.05);
@@ -2081,7 +2095,7 @@
     drawFishingText(g, v, now); // on top of the night shade so it stays readable
   }
   requestAnimationFrame(frame);
-  window.__forestSound = { fade: (m) => sfx.setFade(m), resume: () => sfx.resume() };
+  window.__forestSound = { fade: (m) => sfx.setFade(m), resume: () => sfx.resume(), suspend: () => sfx.suspend() };
 
   // Sound runs on its own timer so it keeps going while the window is hidden or minimised
   // (requestAnimationFrame stops then; the drawing doesn't matter, the forest should still be heard).
@@ -2123,8 +2137,27 @@
     hint.classList.remove('hide');
     setTimeout(() => hint.classList.add('hide'), 6000);
   });
-  // a tap anywhere brings the controls back
-  window.addEventListener('pointerdown', (e) => { if ($('start').hidden && !bar.contains(e.target)) showBar(); }, true);
+  // a tap anywhere brings the controls back (and wakes the forest after the sleep timer)
+  window.addEventListener('pointerdown', (e) => {
+    if (!$('start').hidden) return;
+    if (window.__forestAsleep) { wakeUp(); e.stopPropagation(); return; }
+    if (!bar.contains(e.target)) showBar();
+  }, true);
+  function wakeUp() {
+    window.__forestAsleep = false;
+    try { window.__forestSound.resume(); window.__forestSound.fade(1); } catch (e) {}
+    dim.style.opacity = String(dimLevels[dimIdx]);
+    keepAwake(true);
+    paintTimer(); showBar();
+  }
+  // the timer ran out: silence the forest, stop drawing, let the phone lock itself
+  function fallAsleep() {
+    window.__forestAsleep = true;
+    try { window.__forestSound.fade(0); window.__forestSound.suspend(); } catch (e) {}
+    dim.style.opacity = '1';
+    keepAwake(false);
+    $('timer').textContent = 'Ngủ ngon · chạm để thức';
+  }
 
   // sleep timer: off / 15 / 30 / 60 / 90 minutes; sound fades over the last minute, then the screen goes dark
   const STEPS = [0, 15, 30, 60, 90];
@@ -2149,7 +2182,7 @@
       const m = Math.max(0, left / 60000);
       try { window.__forestSound.fade(m); } catch (e) {}
       dim.style.opacity = String(Math.max(dimLevels[dimIdx], 1 - m));
-      if (left <= 0) { endAt = 0; step = 0; keepAwake(false); }
+      if (left <= 0) { endAt = 0; step = 0; fallAsleep(); return; }
     }
     paintTimer();
   }, 1000);
@@ -2164,6 +2197,12 @@
     showBar();
   });
 
+  const paintView = () => {
+    const cam = window.__forestCam;
+    $('view').textContent = cam.mode === 'fit' ? 'Toàn cảnh' : 'Cận cảnh';
+    $('view').setAttribute('aria-pressed', String(cam.mode === 'close'));
+  };
+  paintView();
   $('view').addEventListener('click', () => {
     const cam = window.__forestCam;
     cam.mode = cam.mode === 'fit' ? 'close' : 'fit';
