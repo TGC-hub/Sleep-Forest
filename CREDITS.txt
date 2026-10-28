@@ -1,0 +1,30 @@
+Claude Forest - animal recordings (personal use only, do not redistribute)
+
+Mixkit (https://mixkit.co, Mixkit Sound Effects Free License):
+  dog1  #1    Dog barking twice
+  dog2  #54   Medium size angry dog bark
+  cat1  #93   Sweet kitty meow
+  cat2  #45   Domestic cat hungry meow
+  cat3  #86   Little cat attention meow
+  pig1  #315  Farm pig short grunt
+  pig2  #320  Big pig grunt
+  pig3  #3    Pig grunting
+  hen1  #1772 Chickens clucking short
+  hen2  #1768 Chicken hens clucking
+  rooster #2462 Rooster crowing in the morning
+  goat  #319  Little goat bleat          (used, pitched, for the deer)
+  monkey1 #99  Excited monkey grunt
+  monkey2 #104 Little monkey screech
+  owl   #2466 Owl in a forest
+  frogs #1241 Forest ambience with croaking frogs
+  bee   #329  Bumblebee short buzz
+  bird1 #21   Double little bird chirp
+  bird2 #23   Little bird calling chirp
+  bird3 #66   Little bird chirp in the wild
+  bird4 #67   Melodic songbird chirp
+
+Wikimedia Commons (xeno-canto recordings by Jonathon Jongsma, CC BY-SA 3.0):
+  duck1.mp3  Anas platyrhynchos - Mallard XC62258   https://commons.wikimedia.org/wiki/File:Anas_platyrhynchos_-_Mallard_XC62258.mp3
+  duck2.mp3  Anas platyrhynchos - Mallard XC112828  https://commons.wikimedia.org/wiki/File:Anas_platyrhynchos_-_Mallard_XC112828.mp3
+
+Removed 2026-10-28: Pekin duck & mallard.ogg (had children talking), monkey3 cartoon laugh (human-sounding).
