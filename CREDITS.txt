@@ -28,3 +28,5 @@ Wikimedia Commons (xeno-canto recordings by Jonathon Jongsma, CC BY-SA 3.0):
   duck2.mp3  Anas platyrhynchos - Mallard XC112828  https://commons.wikimedia.org/wiki/File:Anas_platyrhynchos_-_Mallard_XC112828.mp3
 
 Removed 2026-10-28: Pekin duck & mallard.ogg (had children talking), monkey3 cartoon laugh (human-sounding).
+
+Art (map scenery, crops, farm animals): Kenney "Tiny Farm" + "Tiny Town" (https://kenney.nl) and "Tiny Creatures" by Clint Bellanger + Kenney - CC0 1.0 public domain. Source PNGs in forest/kenney/.
