@@ -93,7 +93,7 @@
 (function () {
   const cv = document.getElementById('scene'), ctx = cv.getContext('2d');
   const DIR = { DOWN: 0, LEFT: 1, RIGHT: 2, UP: 3 };
-  let S = null, atlas = null, floorImg = null, petsImg = null, crewImg = null, ready = false;
+  let S = null, atlas = null, floorImg = null, petsImg = null, petsHiImg = null, crewImg = null, ready = false;
   const office = { characters: new Map(), pets: [], walkableTiles: [] };
   const rnd = (a, b) => a + Math.random() * (b - a);
   const loadImg = (src) => new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = src; });
@@ -116,7 +116,7 @@
 
   async function load() {
     S = await (await fetch('scene.json')).json();
-    [atlas, floorImg, petsImg, crewImg] = await Promise.all([loadImg('atlas.png'), loadImg('floor.png'), loadImg('pets.png'), S.crew ? loadImg('crew.png') : null]);
+    [atlas, floorImg, petsImg, crewImg, petsHiImg] = await Promise.all([loadImg('atlas.png'), loadImg('floor.png'), loadImg('pets.png'), S.crew ? loadImg('crew.png') : null, S.petHi && Object.keys(S.petHi).length ? loadImg('pets-hi.png') : null]);
     for (let r = 0; r < S.walk.length; r++) for (let c = 0; c < S.walk[r].length; c++) if (S.walk[r][c] === '1') office.walkableTiles.push({ col: c, row: r });
     for (const p of S.pets) {
       const t = office.walkableTiles[Math.floor(Math.random() * office.walkableTiles.length)];
@@ -177,20 +177,20 @@
           ch.x = (ch.tileCol + dc * t) * 16 + 8; ch.y = (ch.tileRow + dr * t) * 16 + 8;
           if (ch.moveProgress >= 1) { ch.tileCol = n.col; ch.tileRow = n.row; ch.x = n.col * 16 + 8; ch.y = n.row * 16 + 8; ch.path.shift(); ch.moveProgress = 0; }
         }
-        if (!ch.path.length && ch.moveProgress === 0) { ch.state = 'idle'; ch.wanderTimer = rnd(2, 12); ch.frame = 0; }
+        if (!ch.path.length && ch.moveProgress === 0) { ch.state = 'idle'; ch.wanderTimer = rnd(1, 4); ch.frame = 0; }
       } else {
         ch.wanderTimer -= dt;
         if (ch.wanderTimer <= 0) {
-          const near = office.walkableTiles.filter((t) => Math.abs(t.col - ch.tileCol) + Math.abs(t.row - ch.tileRow) <= 8);
+          const near = office.walkableTiles.filter((t) => Math.abs(t.col - ch.tileCol) + Math.abs(t.row - ch.tileRow) <= 12);
           const t = near[Math.floor(Math.random() * near.length)], path = t && bfs(ch.tileCol, ch.tileRow, t.col, t.row);
           if (path && path.length) { ch.path = path; ch.moveProgress = 0; ch.state = 'walk'; ch.frame = 0; ch.wanderCount++; }
-          ch.wanderTimer = rnd(2, 12);
+          ch.wanderTimer = rnd(1, 4);
         }
       }
     }
   }
   function drawChar(ch, ox, oy, z) {
-    const row = ch.dir === DIR.UP ? 1 : ch.dir === DIR.DOWN ? 0 : 2, f = ch.state === 'walk' ? [1, 0, 2, 0][ch.frame % 4] : 0;
+    const row = ch.dir === DIR.UP ? 1 : ch.dir === DIR.DOWN ? 0 : 2, f = ch.state === 'walk' ? [0, 1, 2, 1][ch.frame % 4] : 1; // same cycle as the engine: frame 1 = standing
     // hi-res frames (S.crew.k px per map pixel), drawn smoothed so the detailed sprites stay clean when scaled down
     const C = S.crew, sx = (ch.sheet % C.cols) * C.w * 7 + f * C.w, sy = (Math.floor(ch.sheet / C.cols) * 3 + row) * C.h, dw = (C.w / C.k) * z, dh = (C.h / C.k) * z, dx = ox + ch.x * z - dw / 2, dy = oy + (ch.y + 8) * z - dh;
     ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
@@ -265,6 +265,20 @@
   }
   function drawPet(p, ox, oy, z) {
     const seqWalk = [0, 1, 0, 2], seqIdle = [0, 1, 2, 1], base = p.petType * 96;
+    const hi = S.petHi && S.petHi[p.petType];
+    if (hi !== undefined) {
+      // hi-res sheet (3 px per map pixel, every frame 96x96): down = facing right, up = facing left, row 2 = walking right
+      const f = p.state === 'walk' ? seqWalk[p.frame % 4] : seqIdle[p.frame % 4];
+      let sx, sy = hi * 288, flip = false;
+      if (p.dir === DIR.DOWN || p.dir === DIR.UP) { sy += p.dir === DIR.UP ? 96 : 0; sx = (p.state === 'walk' ? f : 3 + f) * 96; }
+      else { sy += 192; sx = (p.state === 'walk' ? f : 0) * 96; flip = p.dir === DIR.LEFT; }
+      const dw = 32 * z, dh = 32 * z, dx = ox + p.x * z - dw / 2, dy = oy + (p.y + 8) * z - dh;
+      ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      if (flip) { ctx.translate(Math.round(dx + dw), Math.round(dy)); ctx.scale(-1, 1); ctx.drawImage(petsHiImg, sx + 1, sy + 1, 95, 95, z / 3, z / 3, dw - z / 3, dh - z / 3); }
+      else ctx.drawImage(petsHiImg, sx + 1, sy + 1, 95, 95, Math.round(dx) + z / 3, Math.round(dy) + z / 3, dw - z / 3, dh - z / 3);
+      ctx.restore();
+      return;
+    }
     let sx, sy, w = 16, flip = false;
     const f = p.state === 'walk' ? seqWalk[p.frame % 4] : seqIdle[p.frame % 4];
     if (p.dir === DIR.DOWN || p.dir === DIR.UP) { sy = base + (p.dir === DIR.UP ? 32 : 0); sx = (p.state === 'walk' ? f : 3 + f) * 16; }
@@ -906,7 +920,7 @@
   // Characters / pets are the engine's live objects (window.__forestOffice, set by the patched update()).
   const WALK = DATA.walk || [], SPOTS = DATA.spots || [], PET = DATA.petTypes || {};
   const DIR = { DOWN: 0, LEFT: 1, RIGHT: 2, UP: 3 };
-  const DURATION = { feedPigs: 14000, feedChickens: 12000, water: 14000, plant: 16000, fish: 26000 };
+  const DURATION = { feedPigs: 9000, feedChickens: 8000, water: 9000, plant: 10000, fish: 16000 }; // short: the user wants them walking more than standing
   const walkable = (c, r) => r >= 0 && r < WALK.length && c >= 0 && c < WALK[r].length && WALK[r][c] === '1';
   function bfs(sc, sr, tc, tr) {
     if (sc === tc && sr === tr) return [];
@@ -977,7 +991,7 @@
         continue;
       }
       // just before the engine would pick a random stroll, send the character to a free spot instead
-      if (ch.state === 'idle' && ch.wanderTimer < 0.3 && ch.wanderCount < ch.wanderLimit && Math.random() < (weather.level > 0.5 ? 0.3 : 0.75)) {
+      if (ch.state === 'idle' && ch.wanderTimer < 0.3 && ch.wanderCount < ch.wanderLimit && Math.random() < (weather.level > 0.5 ? 0.2 : 0.45)) {
         if (Math.random() < 0.35 && startVisit(office, ch)) continue; // go and pet an animal
         const free = SPOTS.map((s, i) => i).filter((i) => !taken.has(i)).sort(() => Math.random() - 0.5);
         for (const idx of free.slice(0, 4)) {
