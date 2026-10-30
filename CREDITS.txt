@@ -30,3 +30,8 @@ Wikimedia Commons (xeno-canto recordings by Jonathon Jongsma, CC BY-SA 3.0):
 Removed 2026-10-28: Pekin duck & mallard.ogg (had children talking), monkey3 cartoon laugh (human-sounding).
 
 Art (map scenery, crops, farm animals): Kenney "Tiny Farm" + "Tiny Town" (https://kenney.nl) and "Tiny Creatures" by Clint Bellanger + Kenney - CC0 1.0 public domain. Source PNGs in forest/kenney/.
+
+Art references supplied by the user for personal, non-commercial use (redrawn on their own pixel grid):
+- Characters: One Piece / Naruto (MapleStory-style) / Dragon Ball fan sprites — fan art, rights belong to their owners.
+- Pets (rabbit, fox, grouse, boar, deer): pixel-animal screenshot supplied by the user.
+- Ranch animals + beagle: "cute pixel farm animals set" (Freepik), supplied by the user.
