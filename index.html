@@ -93,7 +93,7 @@
 (function () {
   const cv = document.getElementById('scene'), ctx = cv.getContext('2d');
   const DIR = { DOWN: 0, LEFT: 1, RIGHT: 2, UP: 3 };
-  let S = null, atlas = null, floorImg = null, petsImg = null, ready = false;
+  let S = null, atlas = null, floorImg = null, petsImg = null, crewImg = null, ready = false;
   const office = { characters: new Map(), pets: [], walkableTiles: [] };
   const rnd = (a, b) => a + Math.random() * (b - a);
   const loadImg = (src) => new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = src; });
@@ -116,11 +116,18 @@
 
   async function load() {
     S = await (await fetch('scene.json')).json();
-    [atlas, floorImg, petsImg] = await Promise.all([loadImg('atlas.png'), loadImg('floor.png'), loadImg('pets.png')]);
+    [atlas, floorImg, petsImg, crewImg] = await Promise.all([loadImg('atlas.png'), loadImg('floor.png'), loadImg('pets.png'), S.crew ? loadImg('crew.png') : null]);
     for (let r = 0; r < S.walk.length; r++) for (let c = 0; c < S.walk[r].length; c++) if (S.walk[r][c] === '1') office.walkableTiles.push({ col: c, row: r });
     for (const p of S.pets) {
       const t = office.walkableTiles[Math.floor(Math.random() * office.walkableTiles.length)];
       office.pets.push({ id: p.id, petType: p.type, state: 'idle', dir: DIR.DOWN, tileCol: t.col, tileRow: t.row, x: t.col * 16 + 8, y: t.row * 16 + 8, path: [], moveProgress: 0, frame: 0, frameTimer: 0, wanderTimer: rnd(1, 8), followTargetId: null });
+    }
+    // the crew: engine-like characters, so the overlay's farm chores, animal visits and umbrellas work on them too
+    // a different dozen each time the page opens (the whole cast would crowd the forest)
+    const cast = [...Array(S.crew ? S.crew.n : 0).keys()].sort(() => Math.random() - 0.5).slice(0, 12);
+    for (let i = 0; i < cast.length; i++) {
+      const t = office.walkableTiles[Math.floor(Math.random() * office.walkableTiles.length)];
+      office.characters.set(i, { id: i, sheet: cast[i], isActive: false, state: 'idle', dir: DIR.DOWN, tileCol: t.col, tileRow: t.row, x: t.col * 16 + 8, y: t.row * 16 + 8, path: [], moveProgress: 0, frame: 0, frameTimer: 0, wanderTimer: rnd(1, 10), wanderCount: 0, wanderLimit: 1e9 });
     }
     // static draw order (the engine sorts by sprite bottom; chairs by their first row; desk riders just above)
     S.order = S.items.map(([t, c, r], i) => { const ty = S.types[t]; let z = r * 16 + ty.h; if (ty.chair) z = (r + 1) * 16; if (ty.surface) z += 0.5; if (ty.layer) z = ty.layer; return { t, c, r, z, i }; });
@@ -153,6 +160,43 @@
         }
       }
     }
+  }
+
+  // crew: walk at 3 tiles/s along their path; idle ones pick a stroll when wanderTimer runs out
+  // (the overlay's farmTick may grab them first, just before it does, and send them to a chore)
+  function updateCrew(dt) {
+    for (const ch of office.characters.values()) {
+      ch.frameTimer += dt;
+      if (ch.state === 'walk') {
+        if (ch.frameTimer >= 0.13) { ch.frameTimer = 0; ch.frame = (ch.frame + 1) % 4; }
+        if (ch.path.length) {
+          const n = ch.path[0], dc = n.col - ch.tileCol, dr = n.row - ch.tileRow;
+          ch.dir = dc > 0 ? DIR.RIGHT : dc < 0 ? DIR.LEFT : dr > 0 ? DIR.DOWN : DIR.UP;
+          ch.moveProgress += 3 * dt;
+          const t = Math.min(1, ch.moveProgress);
+          ch.x = (ch.tileCol + dc * t) * 16 + 8; ch.y = (ch.tileRow + dr * t) * 16 + 8;
+          if (ch.moveProgress >= 1) { ch.tileCol = n.col; ch.tileRow = n.row; ch.x = n.col * 16 + 8; ch.y = n.row * 16 + 8; ch.path.shift(); ch.moveProgress = 0; }
+        }
+        if (!ch.path.length && ch.moveProgress === 0) { ch.state = 'idle'; ch.wanderTimer = rnd(2, 12); ch.frame = 0; }
+      } else {
+        ch.wanderTimer -= dt;
+        if (ch.wanderTimer <= 0) {
+          const near = office.walkableTiles.filter((t) => Math.abs(t.col - ch.tileCol) + Math.abs(t.row - ch.tileRow) <= 8);
+          const t = near[Math.floor(Math.random() * near.length)], path = t && bfs(ch.tileCol, ch.tileRow, t.col, t.row);
+          if (path && path.length) { ch.path = path; ch.moveProgress = 0; ch.state = 'walk'; ch.frame = 0; ch.wanderCount++; }
+          ch.wanderTimer = rnd(2, 12);
+        }
+      }
+    }
+  }
+  function drawChar(ch, ox, oy, z) {
+    const row = ch.dir === DIR.UP ? 1 : ch.dir === DIR.DOWN ? 0 : 2, f = ch.state === 'walk' ? [1, 0, 2, 0][ch.frame % 4] : 0;
+    // hi-res frames (S.crew.k px per map pixel), drawn smoothed so the detailed sprites stay clean when scaled down
+    const C = S.crew, sx = (ch.sheet % C.cols) * C.w * 7 + f * C.w, sy = (Math.floor(ch.sheet / C.cols) * 3 + row) * C.h, dw = (C.w / C.k) * z, dh = (C.h / C.k) * z, dx = ox + ch.x * z - dw / 2, dy = oy + (ch.y + 8) * z - dh;
+    ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    if (ch.dir === DIR.LEFT) { ctx.translate(Math.round(dx + dw), Math.round(dy)); ctx.scale(-1, 1); ctx.drawImage(crewImg, sx, sy, C.w, C.h, 0, 0, Math.ceil(dw), Math.ceil(dh)); }
+    else ctx.drawImage(crewImg, sx, sy, C.w, C.h, Math.round(dx), Math.round(dy), Math.ceil(dw), Math.ceil(dh));
+    ctx.restore();
   }
 
   // camera: "fit" shows the whole map; "close" shows about the old forest height (28 rows) and drifts slowly sideways;
@@ -206,12 +250,14 @@
     const tick = Math.floor(now / 200);
     const list = S.order.slice();
     for (const p of office.pets) list.push({ pet: p, z: p.y + 8.5 });
+    for (const ch of office.characters.values()) list.push({ ch, z: ch.y + 8.5 });
     // the overlay's standing things (crops, ranch animals, critters) join the y-sort; flat ones come first
     if (window.__forestDepth) window.__forestDepth((y, fn) => list.push({ z: y, fn }), ox, oy, z);
     list.sort((a, b) => a.z - b.z || (a.i || 0) - (b.i || 0));
     for (const d of list) {
       if (d.fn) { d.fn(ctx); continue; }
       if (d.pet) { drawPet(d.pet, ox, oy, z); continue; }
+      if (d.ch) { drawChar(d.ch, ox, oy, z); continue; }
       const ty = S.types[d.t], fi = ty.frames[ty.frames.length > 1 ? tick % ty.frames.length : 0], [sx, sy, w, h] = S.frames[fi];
       const dx = Math.floor(ox + d.c * 16 * z), dy = Math.floor(oy + d.r * 16 * z);
       ctx.drawImage(atlas, sx, sy, w, h, dx, dy, Math.ceil(w * z) + 1, Math.ceil(h * z) + 1);
@@ -234,6 +280,7 @@
     if (!ready || window.__forestAsleep) { last = now; return; } // after the sleep timer: nothing to draw, save battery
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     updatePets(dt);
+    updateCrew(dt);
     draw(now);
   }
   load().then(() => {
