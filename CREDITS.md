@@ -21,3 +21,5 @@
 | Well | LPC style well | CC-BY 3.0 | https://opengameart.org/content/lpc-style-well |
 | Mushrooms | 16x16 mushrooms in red, green, blue, yellow | CC-BY-SA | https://opengameart.org/content/16x16-mushrooms-in-red-green-blue-yellow |
 | Monkey, sack, flower bush, people | Ninja Adventure — Pixel-boy & AAA | CC0 | https://pixel-boy.itch.io/ninja-adventure-asset-pack |
+| Mountains (sky backdrop) | Background clouds and mountains parallax | CC0 | https://opengameart.org/content/background-clouds-and-mountains-parallax |
+| Clouds | Clouds | CC0 | https://opengameart.org/content/clouds |
