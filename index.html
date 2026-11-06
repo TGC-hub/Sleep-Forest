@@ -76,7 +76,7 @@
   </div>
 </div>
 
-<div id="hint" class="hide">Chạm vào thú, suối, ruộng để chơi · ⚙️ cài đặt</div>
+<div id="hint" class="hide">👔 Nhân viên & sổ sách · chạm vào nhân viên để xem · ⚙️ cài đặt</div>
 
 <button id="gear" type="button" aria-expanded="false" aria-controls="bar" hidden>⚙️</button>
 <div id="sleepMsg" hidden>Ngủ ngon · chạm để thức</div>
@@ -124,7 +124,7 @@
     }
     // the crew: engine-like characters, so the overlay's farm chores, animal visits and umbrellas work on them too
     // a different eight each time the page opens
-    const cast = [...Array(S.crew ? S.crew.n : 0).keys()].sort(() => Math.random() - 0.5).slice(0, 8); // plus the overlay's villagers coming and going
+    const cast = [...Array(S.crew ? S.crew.n : 0).keys()].slice(0, 0); // none (user 2026-11-06: no wandering villagers; only the farm staff, later the visitors)
     for (let i = 0; i < cast.length; i++) {
       const t = office.walkableTiles[Math.floor(Math.random() * office.walkableTiles.length)];
       office.characters.set(i, { id: i, sheet: cast[i], isActive: false, state: 'idle', dir: DIR.DOWN, tileCol: t.col, tileRow: t.row, x: t.col * 16 + 8, y: t.row * 16 + 8, path: [], moveProgress: 0, frame: 0, frameTimer: 0, wanderTimer: rnd(1, 10), wanderCount: 0, wanderLimit: 1e9 });
@@ -2312,6 +2312,46 @@
     const pk = mPickCrop(i, t); if (!pk) return null;
     return buySome('seed:' + pk.k, 1) && farm.plant(i, pk.k) ? pk : null;
   }
+  // the manager's hiring plan (also shown to the user): one hire a day, when a trade has work and nobody (or work is
+  // being missed), with 3x (fee + 2 days' wage) in the purse and an average daily profit above the wage
+  function mHireWant(t) {
+    const d = mDayRec(t), st = mStaff(), count = (r) => st.filter((x) => x.role === r).length;
+    const empty = [...Array(land()).keys()].filter((i) => ['empty', 'dead'].includes(simPlot(i).status)).length;
+    const late = (d.late || 0) + (mDayRec(t - 864e5).late || 0);
+    const goodsHeld = Object.keys(GOODS).reduce((s, k) => s + Math.max(0, have(k)), 0);
+    const small = animalIds('small').length, big = animalIds('big').length, pondUsed = level() >= 2 && [0, 1, 2].some((i) => simPond(i).status !== 'empty');
+    const want = !count('farmer') && (land() >= 8 || empty >= 2 || late >= 2) ? ['farmer', empty >= 2 ? 'ruộng bỏ trống, cần người trồng trọt' : 'ruộng rộng, cần người trồng trọt']
+      : !count('angler') && st.length >= 2 ? ['angler', 'câu cá ngoài suối kiếm thêm tiền']
+      : !count('poultry') && !count('rancher') && small >= 3 ? ['poultry', 'chuồng gia cầm đông']
+      : !count('cattle') && !count('rancher') && big >= 2 ? ['cattle', 'có gia súc cần chăm']
+      : !count('pondkeeper') && !count('fisher') && pondUsed ? ['pondkeeper', 'ao cá cần người trông']
+      : !count('cook') && level() >= 3 && kitchenSlots() > 0 && st.length >= 3 ? ['cook', 'mở bếp nấu món bán giá cao']
+      : !count('woodcutter') && count('cook') ? ['woodcutter', 'bếp cần củi đều']
+      : !count('seller') && goodsHeld > 30 ? ['seller', 'kho đầy hàng chưa bán']
+      : late >= 4 && count('farmer') < Math.ceil(land() / 6) ? ['farmer', 'ruộng làm không xuể (cây chín quá/chết)']
+      : count('poultry') === 1 && small >= 12 ? ['poultry', 'chuồng gia cầm quá đông']
+      : null;
+    if (!want) return null;
+    const R = ROLES[want[0]];
+    let prof = 0, days = 0; for (let k = 1; k <= 3; k++) { const x = mDayRec(t - k * 864e5); if (x.acts) { prof += x.in - x.out; days++; } }
+    prof = days ? prof / days : d.in - d.out;
+    const cash = mCanInvest(R.hire + R.wage * 2), paid = !(st.length > 1 && prof < R.wage), full = st.length >= MMAX;
+    return { want, R, ok: cash && paid && !d.hired && !full, cash, paid, full, hiredToday: !!d.hired, prof, need: (R.hire + R.wage * 2) * 3 };
+  }
+  // the owner (the user) can also hire or let go by hand
+  function mUserHire(role) {
+    const R = ROLES[role];
+    if (!R || role === 'boss' || coins() < R.hire || mStaff().length >= MMAX) return;
+    const t = farmNow(), tape = mTaped(() => mHire(role, t)), w = tape.r;
+    mCatBook(t, tape.moves, 'hire'); mBook(t, w.id, -R.hire, 0);
+    mLog(t, w.id, `Chủ trại thuê ${R.icon} ${w.name} làm ${R.name} (${R.hire} xu, lương ${R.wage} xu/ngày)`, 0);
+  }
+  function mFire(id) {
+    const w = mStaff().find((x) => x.id === id);
+    if (!w || w.role === 'boss' || !confirm(`Cho ${w.name} (${ROLES[w.role].name}) nghỉ việc?`)) return;
+    save.set('mgr/staff', mStaff().filter((x) => x.id !== id));
+    mLog(farmNow(), id, `Chủ trại cho ${w.name} (${ROLES[w.role].name}) nghỉ việc`, 0);
+  }
   const JOBS = {
     // 1) things about to die: pests (crop dies 12 h later), sick animals (24 h), sick fish, hungry animals
     rescue(t, w) {
@@ -2485,26 +2525,9 @@
       { const U = UPGRADES.kitchen, n = upg('kitchen'), cost = U.cost[n]; if (cost && level() >= U.lvl[n] && [...Array(kitchenSlots()).keys()].every((s) => simCook(s).status !== 'empty') && mCanInvest(cost) && farm.upgrade('kitchen')) return { kind: 'upgrade', text: `bếp kín lò, xây thêm lò (${cost} xu)`, at: barnAt(), icon: '🔨', big: true }; }
       { const U = UPGRADES.barn, n = upg('barn'), cost = U.cost[n]; if (cost && level() >= U.lvl[n] && orderBook(dayNo(t)).every((o) => o.done) && mCanInvest(cost) && farm.upgrade('barn')) return { kind: 'upgrade', text: `giao hết đơn trong ngày, mở rộng kho nhận thêm đơn (${cost} xu)`, at: barnAt(), icon: '🔨', big: true }; }
       if (d.hired || st.length >= MMAX) return null;
-      // hire: one per day, when a trade has work and nobody (or work is being missed), and the profit covers the wage
-      const late = (d.late || 0) + (mDayRec(t - 864e5).late || 0);
-      const goodsHeld = Object.keys(GOODS).reduce((s, k) => s + Math.max(0, have(k)), 0);
-      const small = animalIds('small').length, big = animalIds('big').length, pondUsed = level() >= 2 && [0, 1, 2].some((i) => simPond(i).status !== 'empty');
-      const want = !count('farmer') && (land() >= 8 || empty >= 2 || late >= 2) ? ['farmer', empty >= 2 ? 'ruộng bỏ trống, cần người trồng trọt' : 'ruộng rộng, cần người trồng trọt']
-        : !count('angler') && st.length >= 2 ? ['angler', 'câu cá ngoài suối kiếm thêm tiền']
-        : !count('poultry') && !count('rancher') && small >= 3 ? ['poultry', 'chuồng gia cầm đông']
-        : !count('cattle') && !count('rancher') && big >= 2 ? ['cattle', 'có gia súc cần chăm']
-        : !count('pondkeeper') && !count('fisher') && pondUsed ? ['pondkeeper', 'ao cá cần người trông']
-        : !count('cook') && level() >= 3 && kitchenSlots() > 0 && st.length >= 3 ? ['cook', 'mở bếp nấu món bán giá cao']
-        : !count('woodcutter') && count('cook') ? ['woodcutter', 'bếp cần củi đều']
-        : !count('seller') && goodsHeld > 30 ? ['seller', 'kho đầy hàng chưa bán']
-        : late >= 4 && count('farmer') < Math.ceil(land() / 6) ? ['farmer', 'ruộng làm không xuể (cây chín quá/chết)']
-        : count('poultry') === 1 && small >= 12 ? ['poultry', 'chuồng gia cầm quá đông']
-        : null;
-      if (!want) return null;
-      const R = ROLES[want[0]];
-      let prof = 0, days = 0; for (let k = 1; k <= 3; k++) { const x = mDayRec(t - k * 864e5); if (x.acts) { prof += x.in - x.out; days++; } }
-      prof = days ? prof / days : d.in - d.out;
-      if (!mCanInvest(R.hire + R.wage * 2) || (st.length > 1 && prof < R.wage)) return null;
+      const plan = mHireWant(t);
+      if (!plan || !plan.ok) return null;
+      const want = plan.want, R = plan.R;
       const nw = mHire(want[0], t);
       d.hired = 1; save.set(`mgr/day/${dayNo(t)}`, d);
       if (mRun && mRun.sum) mRun.sum.hired.push(`${R.icon} ${nw.name}`);
@@ -2963,7 +2986,9 @@
     farmHud.style.cssText = HUD.farm + 'z-index:40;display:flex;gap:6px;align-items:' + (HUD.phone ? 'center;' : 'flex-start;flex-direction:column;');
     const btn = (icon, title, view) => { const b = document.createElement('button'); b.textContent = icon; b.title = title; b.style.cssText = HUD.size + 'cursor:pointer;padding:0;font-size:18px;' + PIX; b.addEventListener('click', (e) => { e.stopPropagation(); openPanel(panelView && panelView.kind === view ? null : { kind: view }); }); return b; };
     const pill = document.createElement('div');
-    pill.style.cssText = 'padding:3px 4px;font-size:12px;line-height:1.15;white-space:nowrap;' + PIX;
+    pill.style.cssText = 'padding:3px 4px;font-size:12px;line-height:1.15;white-space:nowrap;cursor:pointer;' + PIX;
+    pill.title = 'Sổ sách nông trại';
+    pill.addEventListener('click', (e) => { e.stopPropagation(); openPanel(panelView && panelView.kind === 'mgr' ? null : { kind: 'mgr', tab: 'money' }); });
     const ord = btn('📋', 'Đơn hàng hôm nay', 'orders');
     ord.style.position = 'relative';
     ord.innerHTML = '📋<span style="position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;line-height:14px;border-radius:7px;background:#e0402c;color:#fff;font-size:10px;display:none"></span>';
@@ -3184,8 +3209,9 @@
         const days = Math.max(1, Math.ceil((now - w.hired) / 864e5));
         return `<div style="margin:6px 0;border-top:1px solid #33334a;padding-top:4px"><b>${R.icon} ${w.name}</b> <span style="opacity:.7">${R.name} · làm được ${days} ngày</span>`
           + `<div style="font-size:12px;opacity:.9">Hôm nay ${b.acts} việc · tạo ra ~${money(b.value)} xu · 7 ngày ~${money(wk)} xu</div>`
-          + `<div style="font-size:12px;opacity:.7">Lương ${R.wage ? R.wage + ' xu/ngày' : 'chia lời'} · lo: ${R.jobs.map((j) => JOB_VI[j]).join(', ')}</div></div>`;
-      }).join('') + `<div style="font-size:12px;opacity:.7;margin-top:6px">Quản lý tự thuê thêm người khi có việc và có tiền (tối đa ${MMAX}). Hết tiền trả lương thì người mới nhất nghỉ.</div>`;
+          + `<div style="font-size:12px;opacity:.7">Lương ${R.wage ? R.wage + ' xu/ngày' : 'chia lời'} · lo: ${R.jobs.map((j) => JOB_VI[j]).join(', ')}</div>`
+          + (w.role !== 'boss' ? B('fire:' + w.id, 'Cho nghỉ') : '') + '</div>';
+      }).join('') + mHireHtml(st);
     } else {
       const log = save.get('mgr/log', []).slice(0, 60);
       body = log.length ? log.map((e) => {
@@ -3195,7 +3221,8 @@
         return `<div style="margin:4px 0;border-top:1px solid #33334a;padding-top:3px;font-size:12px"><span style="opacity:.6">${when}</span> <b>${staffName(e.id)}</b>: ${text}</div>`;
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
-    return head('👔 Nông trại của bạn') + tabs + body;
+    const build = '17:29 06-11';
+    return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
     net: 'vớt cá', feed: 'cho thú ăn', sweep: 'quét chuồng', fish: 'câu cá', fishMiss: 'câu cá', feedFish: 'rắc cám cho cá', cook: 'nấu bếp', serve: 'bày món', count: 'đếm tiền', sell: 'bán hàng', order: 'giao đơn', inspect: 'kiểm tra ruộng', cure: 'chữa bệnh', stock: 'thả cá giống' };
@@ -3213,6 +3240,21 @@
       + `<div style="margin:4px 0;border-top:1px solid #33334a;padding-top:4px">Phụ trách: <span style="opacity:.85">${R.jobs.map((j) => JOB_VI[j]).join(', ')}</span></div>`
       + (recent.length ? '<div style="opacity:.8;margin-top:6px">Vừa làm</div>' + recent.map((x) => `<div style="font-size:12px;margin:2px 0">• ${x}</div>`).join('') : '')
       + B('openTab:mgr:staff', '👥 Cả đội') + B('openTab:mgr:home', '👔 Sổ sách');
+  }
+  // "Tuyển thêm": what the manager plans to hire next and why, and buttons for the owner to hire by hand
+  function mHireHtml(st) {
+    const p = mHireWant(farmNow()), c = coins();
+    const status = !p ? 'Hiện chưa cần thuê thêm: việc vẫn làm kịp.'
+      : `Lan định thuê <b>${p.R.icon} ${p.R.name}</b> vì ${p.want[1]}. `
+        + (p.full ? `Đã đủ ${MMAX} người.` : p.hiredToday ? 'Hôm nay đã thuê 1 người, mai thuê tiếp.'
+          : !p.cash ? `Chờ két đủ ${money(p.need)} xu (gấp 3 phí thuê + 2 ngày lương).`
+          : !p.paid ? `Chờ lãi mỗi ngày vượt lương ${p.R.wage} xu (hiện ~${money(p.prof)}).` : 'Sẽ thuê ngay trong ca làm.');
+    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller'];
+    return `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>🤝 Tuyển thêm</b> <span style="opacity:.7">(${st.length}/${MMAX} người)</span></div>`
+      + `<div style="font-size:12px;margin:4px 0">${status}</div>`
+      + roles.map((r) => { const R = ROLES[r], n = st.filter((x) => x.role === r).length;
+        return row(`${R.icon} ${R.name} <span style="opacity:.65">${n ? `đang có ${n} · ` : ''}lương ${R.wage}/ngày</span>`, B('hire:' + r, `Thuê · ${R.hire} xu`, c >= R.hire && st.length < MMAX)); }).join('')
+      + '<div style="font-size:11px;opacity:.6;margin-top:4px">Bạn không cần bấm: Lan tự thuê khi có việc và đủ tiền. Nút này để bạn tự quyết nếu muốn.</div>';
   }
   function awayPanelHtml(head) {
     const a = save.get('mgr/away');
@@ -3263,6 +3305,8 @@
     if (act === 'buy') farm.buy(key, Number(n));
     if (act === 'sell') farm.sell(key, n === 'all' ? Infinity : Number(n));
     if (act === 'buyAnimal') farm.buyAnimal(a1);
+    if (act === 'hire') mUserHire(a1);
+    if (act === 'fire') mFire(a1);
     if (act === 'feed') farm.feedAnimal(a1);
     if (act === 'cure') farm.cureAnimal(a1);
     if (act === 'collect') farm.collect(a1);
