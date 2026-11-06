@@ -1791,7 +1791,9 @@
   const coins = () => banks().reduce((s, b) => s + (b.coins || 0), START.coins);
   const xp = () => banks().reduce((s, b) => s + (b.xp || 0), START.xp);
   const have = (k) => banks().reduce((s, b) => s + ((b.inv || {})[k] || 0), START.inv[k] || 0);
+  let mTape = null; // manager bookkeeping: while a worker acts, every money move is noted to file it by source
   function ledger(dCoins, dXp, dInv) {
+    if (mTape && dCoins) mTape.push([dCoins, dXp, dInv || {}]);
     const b = save.get(MY_BANK, {}), inv = { ...(b.inv || {}) };
     for (const [k, n] of Object.entries(dInv || {})) inv[k] = (inv[k] || 0) + n;
     save.set(MY_BANK, { coins: (b.coins || 0) + (dCoins || 0), xp: (b.xp || 0) + (dXp || 0), inv });
@@ -2527,6 +2529,7 @@
     const total = mWages(st);
     if (total > 0) {
       ledger(-total, 0, {});
+      mCatAdd(t, 'out', 'Lương nhân viên', total);
       const d = mDayRec(t); d.wage += total; d.out += total; save.set(`mgr/day/${day}`, d);
       if (mRun && mRun.sum) mRun.sum.out += total;
     }
@@ -2557,6 +2560,31 @@
     }
     if (changed) { const acc = Object.fromEntries(st.map((w) => [w.id, Math.round((w.acc || 0) * 100) / 100])); save.set('mgr/staff', mStaff().map((w) => ({ ...w, acc: acc[w.id] != null ? acc[w.id] : w.acc || 0 }))); }
   }
+  // ── Where the money comes from / goes: each money move of an action filed under a source (per day, mgr/day/<d>.cat)
+  function mTaped(fn) {
+    const outer = mTape, moves = []; mTape = moves;
+    try { return { r: fn(), moves }; } finally { mTape = outer; if (outer) outer.push(...moves); }
+  }
+  const CAT_IN = ['Giao đơn hàng', 'Bán nông sản', 'Bán món ăn', 'Bán trứng, sữa, thịt', 'Bán cá nuôi', 'Bán cá câu', 'Bán củi', 'Bán khác'];
+  const CAT_OUT = ['Lương nhân viên', 'Thuê người', 'Hạt giống', 'Con giống', 'Cá giống', 'Vật tư (cám, thuốc, củi)', 'Mở rộng, nâng cấp'];
+  function mCatOf([c, , inv], kind) {
+    const keys = Object.keys(inv);
+    if (c > 0) {
+      if (kind === 'order') return ['in', 'Giao đơn hàng'];
+      const k = keys.find((x) => inv[x] < 0) || '';
+      return ['in', k === 'cui' ? 'Bán củi' : k.startsWith('d:') ? 'Bán món ăn' : k.startsWith('f:') ? 'Bán cá nuôi' : CATCH_GOODS[k] ? 'Bán cá câu' : PRODUCTS[k] ? 'Bán trứng, sữa, thịt' : CROPS[k] ? 'Bán nông sản' : 'Bán khác'];
+    }
+    const k = keys.find((x) => inv[x] > 0) || '';
+    return ['out', k.startsWith('seed:') ? 'Hạt giống' : k.startsWith('fry:') ? 'Cá giống' : k ? 'Vật tư (cám, thuốc, củi)' : kind === 'hire' ? 'Thuê người' : ['land', 'upgrade'].includes(kind) ? 'Mở rộng, nâng cấp' : 'Con giống'];
+  }
+  function mCatAdd(t, side, name, amt) {
+    if (!amt) return;
+    const d = mDayRec(t), cat = d.cat || (d.cat = { in: {}, out: {} });
+    cat[side][name] = (cat[side][name] || 0) + amt;
+    save.set(`mgr/day/${dayNo(t)}`, d);
+    if (mRun && mRun.sum) { const s = mRun.sum.cat || (mRun.sum.cat = { in: {}, out: {} }); s[side][name] = (s[side][name] || 0) + amt; }
+  }
+  function mCatBook(t, moves, kind) { for (const m of moves) { const [side, name] = mCatOf(m, kind); mCatAdd(t, side, name, Math.abs(m[0])); } }
   // journal + away summary for what a worker did
   function mRecord(id, t, done) {
     for (const r of done) {
@@ -2573,7 +2601,11 @@
   }
   const RAW_JOBS = { ...JOBS };
   // wrap every job so the books know who earned what
-  for (const [k, fn] of Object.entries(JOBS)) JOBS[k] = (t, w) => { const c0 = coins(), r = fn(t, w); if (r && w) mBook(t, w.id, coins() - c0, r.value || 0); return r; };
+  for (const [k, fn] of Object.entries(JOBS)) JOBS[k] = (t, w) => {
+    const c0 = coins(), tape = mTaped(() => fn(t, w)), r = tape.r;
+    if (r && w) { mBook(t, w.id, coins() - c0, r.value || 0); mCatBook(t, tape.moves, r.kind); }
+    return r;
+  };
   // real time (app open): a worker DECIDES now (farm calls are only recorded), walks there, acts it out, and the
   // recorded calls run when the motion ends, so the plot / pen changes under their hands
   const FARM_ACTS = ['plant', 'water', 'fert', 'spray', 'harvest', 'clear', 'fillOrder', 'upgrade', 'buyLand', 'buy', 'sell', 'cook', 'serve', 'stock', 'feedFish', 'cureFish', 'netFish', 'clearPond', 'buyAnimal', 'feedAnimal', 'cureAnimal', 'collect', 'removeAnimal', 'hatch'];
@@ -2582,8 +2614,10 @@
     if (!R) return null;
     for (const k of FARM_ACTS) { saved[k] = farm[k]; farm[k] = (...a) => { calls.push([k, a]); return true; }; }
     let r = null;
-    try { for (const job of mJobs(w)) { r = RAW_JOBS[job](t, w); if (r) break; } } finally { for (const k of FARM_ACTS) farm[k] = saved[k]; }
+    let tape = null;
+    try { tape = mTaped(() => { for (const job of mJobs(w)) { const x = RAW_JOBS[job](t, w); if (x) return x; } return null; }); r = tape.r; } finally { for (const k of FARM_ACTS) farm[k] = saved[k]; }
     if (!r) return null;
+    mCatBook(t, tape.moves, r.kind); // fishing / firewood / hiring pay or cost right away
     r.calls = calls;
     // claim what this worker is about to work on, so nobody else walks to the same plot / animal / cage / stove
     const main = calls.find(([k]) => k !== 'buy');
@@ -2603,7 +2637,8 @@
     if (r.claim) mClaims.delete(r.claim);
     const t = farmNow(), c0 = coins();
     let ok = false;
-    for (const [k, a] of r.calls) ok = farm[k](...a);
+    const tape = mTaped(() => { for (const [k, a] of r.calls) ok = farm[k](...a); });
+    mCatBook(t, tape.moves, r.kind);
     if (!ok && coins() === c0) return false;
     mBook(t, id, coins() - c0, ok ? r.value || 0 : 0);
     if (ok) mRecord(id, t, [r]);
@@ -2615,8 +2650,9 @@
     const t = farmNow(), pk = mPickCrop(i, t);
     if (!pk) return null;
     const k = pk.k, c0 = coins();
-    if (have('seed:' + k) < 1 && !(mSpare() >= CROPS[k].seed && farm.buy('seed:' + k, 1))) return null;
-    if (!farm.plant(i, k)) return null;
+    const tape = mTaped(() => (have('seed:' + k) >= 1 || (mSpare() >= CROPS[k].seed && farm.buy('seed:' + k, 1))) && farm.plant(i, k));
+    mCatBook(t, tape.moves, 'sow');
+    if (!tape.r) return null;
     const r = { kind: 'sow', text: `gieo ${CROPS[k].icon} ${CROPS[k].name}${mFor(pk)}`, at: plotAt(i), icon: '🌱', plot: i, done: true };
     mBook(t, id, coins() - c0, 0); mRecord(id, t, [r]);
     return r;
@@ -3103,7 +3139,7 @@
   function mgrPanelHtml(v, head, c, L) {
     const tab = v.tab || 'home', st = mStaff(), now = farmNow(), today = mDayRec(now);
     const tb = (id, label) => B('tab:' + id, label, true, tab === id ? 'border-color:#7fd65a;' : '');
-    const tabs = tb('home', 'Tổng quan') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký');
+    const tabs = tb('home', 'Tổng quan') + tb('money', 'Thu chi') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký');
     let body = '';
     if (tab === 'home') {
       const days = [...Array(7).keys()].reverse().map((k) => { const t = now - k * 864e5, d = mDayRec(t), dt = new Date(t); return { d, p: d.in - d.out, lab: k ? `${dt.getDate()}/${dt.getMonth() + 1}` : 'Nay' }; });
@@ -3119,11 +3155,28 @@
       }).join('');
       body = `<div style="margin-top:6px">💰 Két: <b>${money(c)}</b> xu · ⭐ Cấp ${L}</div>`
         + row('Hôm nay thu', `<b style="color:#7fd65a">+${money(today.in)}</b>`)
+        + (today.cat && Object.keys(today.cat.in).length ? `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">từ ${Object.entries(today.cat.in).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, v]) => `${n.replace(/^Bán /, 'bán ').replace(/^Giao /, 'giao ')} ${money(v)}`).join(' · ')} ${B('tab:money', 'Xem chi tiết')}</div>` : '')
         + row(`Hôm nay chi <span style="opacity:.6">(lương ${money(today.wage)})</span>`, `<b style="color:#e08a5a">−${money(today.out)}</b>`)
         + row('Lãi hôm nay', `<b>${money(today.in - today.out)}</b>`) + row('Lãi 7 ngày', `<b>${money(week)}</b>`) + bars
         + '<div style="opacity:.8;margin-top:8px">Cơ ngơi</div>'
         + row('🌱 Ruộng', `${land()}/${FARM.plots.length} ô`) + row('🐾 Vật nuôi', `${animalIds().length} con`) + row('👥 Nhân viên', `${st.length} người · lương ${money(mWages(st))} xu/ngày`)
         + `<div style="opacity:.8;margin-top:8px">Đang làm gì ${working ? '' : '<span style="opacity:.7">(ca làm 6h–24h)</span>'}</div>` + doing;
+    } else if (tab === 'money') {
+      // where the money came from / went: today and the last 7 days, by source, biggest first
+      const sumCat = (from, to) => { const o = { in: {}, out: {} }; for (let k = from; k <= to; k++) { const c = mDayRec(now - k * 864e5).cat; if (c) for (const s of ['in', 'out']) for (const [n, v] of Object.entries(c[s])) o[s][n] = (o[s][n] || 0) + v; } return o; };
+      const block = (title, cat) => {
+        const part = (side, col) => {
+          const list = Object.entries(cat[side]).sort((a, b) => b[1] - a[1]), tot = list.reduce((s, [, v]) => s + v, 0);
+          if (!list.length) return '<div style="opacity:.6;font-size:12px;margin:2px 0">Chưa có.</div>';
+          return list.map(([n, v]) => `<div style="margin:3px 0"><div style="display:flex;justify-content:space-between;font-size:12px"><span>${n}</span><span><b>${money(v)}</b> <span style="opacity:.6">${Math.round((v / tot) * 100)}%</span></span></div>`
+            + `<div style="height:5px;background:#0a0a14"><div style="height:5px;width:${Math.max(2, Math.round((v / tot) * 100))}%;background:${col}"></div></div></div>`).join('')
+            + `<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:3px;opacity:.85"><span>Tổng</span><b>${money(tot)}</b></div>`;
+        };
+        return `<div style="opacity:.85;margin-top:8px"><b>${title}</b></div><div style="color:#7fd65a;font-size:12px;margin-top:4px">Nguồn thu</div>${part('in', '#7fd65a')}`
+          + `<div style="color:#e08a5a;font-size:12px;margin-top:6px">Khoản chi</div>${part('out', '#e08a5a')}`;
+      };
+      body = block('Hôm nay', sumCat(0, 0)) + block('7 ngày qua', sumCat(0, 6))
+        + '<div style="font-size:11px;opacity:.6;margin-top:6px">Chỉ tính tiền nhân viên làm ra / tiêu (việc bạn tự bấm không tính vào đây).</div>';
     } else if (tab === 'staff') {
       body = st.map((w) => {
         const R = ROLES[w.role], b = today.by[w.id] || { acts: 0, value: 0 };
@@ -3170,6 +3223,8 @@
     return head('👋 Trong lúc bạn vắng mặt') + `<div>Bạn đi <b>${gone}</b>. Nhân viên đã làm <b>${a.acts}</b> việc.</div>`
       + row('💰 Két thay đổi', `<b style="color:${dc >= 0 ? '#7fd65a' : '#e08a5a'}">${dc >= 0 ? '+' : ''}${money(dc)} xu</b>`)
       + row('Thu / chi', `+${money(a.in)} / −${money(a.out)}`)
+      + (a.cat && Object.keys(a.cat.in).length ? '<div style="opacity:.8;margin-top:6px">Tiền đến từ</div>' + Object.entries(a.cat.in).sort((x, y) => y[1] - x[1]).slice(0, 5).map(([n, v]) => row(n, `+${money(v)}`)).join('') : '')
+      + (a.cat && Object.keys(a.cat.out).length ? '<div style="opacity:.8;margin-top:6px">Chi nhiều nhất</div>' + Object.entries(a.cat.out).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([n, v]) => row(n, `−${money(v)}`)).join('') : '')
       + line('🧺', 'Lượt thu hoạch', (K.harvest || 0) + (K.collect || 0) + (K.net || 0)) + line('🌱', 'Lượt gieo', K.plant) + line('🎣', 'Cá câu được', K.fish)
       + line('📦', 'Đơn hàng giao', K.order) + line('🍳', 'Mẻ nấu', K.cook)
       + (a.land1 > a.land0 ? row('🗺️ Mua thêm đất', `<b>+${a.land1 - a.land0} ô</b>`) : '')
