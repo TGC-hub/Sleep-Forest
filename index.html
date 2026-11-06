@@ -2986,13 +2986,21 @@
   // ── Farm panels (HTML): plot menu, barn, shop; a small HUD with coins / level ──
   const fmtDur = (ms) => { const m = Math.max(0, Math.ceil(ms / 60000)); return m >= 60 ? `${Math.floor(m / 60)} giờ ${m % 60 ? (m % 60) + ' phút' : ''}`.trim() : m < 1 ? 'dưới 1 phút' : `${m} phút`; };
   let farmHud = null, farmPanel = null, panelView = null, panelKey = '';
+  // readable text everywhere (user 2026-11-06: pixel letters are hard to read): the engine's own pixel font name is
+  // pointed at the system font, so its buttons and in-canvas labels change too
+  (function readableText() {
+    const s = document.createElement('style');
+    s.textContent = '@font-face{font-family:"FS Pixel Sans";src:local("Segoe UI"),local("SF Pro Text"),local("Roboto"),local("Helvetica Neue"),local("Arial");font-weight:100 900;}'
+      + 'body,button,input,select,textarea{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif!important;}';
+    (document.head || document.documentElement).append(s);
+  })();
   function ensureFarmHud() {
     if (farmHud && farmHud.isConnected) return;
     farmHud = document.createElement('div');
     farmHud.style.cssText = HUD.farm + 'z-index:40;display:flex;gap:6px;align-items:' + (HUD.phone ? 'center;' : 'flex-start;flex-direction:column;');
     const btn = (icon, title, view) => { const b = document.createElement('button'); b.textContent = icon; b.title = title; b.style.cssText = HUD.size + 'cursor:pointer;padding:0;font-size:18px;' + PIX; b.addEventListener('click', (e) => { e.stopPropagation(); openPanel(panelView && panelView.kind === view ? null : { kind: view }); }); return b; };
     const pill = document.createElement('div');
-    pill.style.cssText = 'padding:3px 4px;font-size:12px;line-height:1.15;white-space:nowrap;cursor:pointer;' + PIX;
+    pill.style.cssText = (HUD.phone ? HUD.size.replace(/width:[^;]+;/, '') + 'padding:0 8px;font-size:14px;font-weight:600;display:flex;align-items:center;' : 'padding:3px 4px;font-size:12px;line-height:1.15;') + 'white-space:nowrap;cursor:pointer;' + PIX;
     pill.title = 'Sổ sách nông trại';
     pill.addEventListener('click', (e) => { e.stopPropagation(); openPanel(panelView && panelView.kind === 'mgr' ? null : { kind: 'mgr', tab: 'money' }); });
     const ord = btn('📋', 'Đơn hàng hôm nay', 'orders');
@@ -3003,7 +3011,12 @@
     barnB.style.position = 'relative';
     barnB.innerHTML = '🏠<span style="position:absolute;top:-5px;right:-5px;font-size:11px;display:none">🍳</span>';
     farmHud.__cook = barnB.firstElementChild;
-    farmHud.append(btn('👔', 'Nhân viên · sổ sách', 'mgr'), barnB, btn('🏪', 'Cửa hàng', 'shop'), ord);
+    // 📊 = straight to where the money comes from
+    const revB = btn('📊', 'Doanh thu từ đâu', 'mgr');
+    revB.addEventListener('click', (e) => { e.stopImmediatePropagation(); openPanel(panelView && panelView.kind === 'mgr' && panelView.tab === 'money' ? null : { kind: 'mgr', tab: 'money' }); }, true);
+    // phone: one row only, so the coin pill itself is the revenue button and the shop opens from the barn
+    if (HUD.phone) farmHud.append(btn('👔', 'Nhân viên · sổ sách', 'mgr'), barnB, ord);
+    else farmHud.append(btn('👔', 'Nhân viên · sổ sách', 'mgr'), revB, barnB, btn('🏪', 'Cửa hàng', 'shop'), ord);
     const cam = window.__forestCam; // phone page only: jump between the forest and the field
     if (cam) {
       const b = document.createElement('button');
@@ -3170,7 +3183,7 @@
   function mgrPanelHtml(v, head, c, L) {
     const tab = v.tab || 'home', st = mStaff(), now = farmNow(), today = mDayRec(now);
     const tb = (id, label) => B('tab:' + id, label, true, tab === id ? 'border-color:#7fd65a;' : '');
-    const tabs = tb('home', 'Tổng quan') + tb('money', 'Thu chi') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký');
+    const tabs = tb('home', 'Tổng quan') + tb('money', '📊 Doanh thu') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký');
     let body = '';
     if (tab === 'home') {
       const days = [...Array(7).keys()].reverse().map((k) => { const t = now - k * 864e5, d = mDayRec(t), dt = new Date(t); return { d, p: d.in - d.out, lab: k ? `${dt.getDate()}/${dt.getMonth() + 1}` : 'Nay' }; });
@@ -3185,6 +3198,7 @@
         return row(`${ROLES[w.role].icon} ${w.name} <span style="opacity:.6">${ROLES[w.role].name}</span>`, `<span style="opacity:.85">${!working ? '😴 nghỉ' + (last ? ' · vừa ' + last : '') : fresh ? n.text : last ? 'vừa ' + last : '🚶 đi một vòng'}</span>`);
       }).join('');
       body = `<div style="margin-top:6px">💰 Két: <b>${money(c)}</b> xu · ⭐ Cấp ${L}</div>`
+        + `<div style="margin:6px 0">${B('tab:money', '📊 Xem doanh thu từ đâu, chi vào đâu', true, 'width:100%;min-height:36px;font-size:14px;')}</div>`
         + row('Hôm nay thu', `<b style="color:#7fd65a">+${money(today.in)}</b>`)
         + (today.cat && Object.keys(today.cat.in).length ? `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">từ ${Object.entries(today.cat.in).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, v]) => `${n.replace(/^Bán /, 'bán ').replace(/^Giao /, 'giao ')} ${money(v)}`).join(' · ')} ${B('tab:money', 'Xem chi tiết')}</div>` : '')
         + row(`Hôm nay chi <span style="opacity:.6">(lương ${money(today.wage)})</span>`, `<b style="color:#e08a5a">−${money(today.out)}</b>`)
@@ -3228,7 +3242,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '17:57 06-11';
+    const build = '18:00 06-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -3331,7 +3345,7 @@
     ensureFarmHud();
     const ready = orderBook().filter(canFill).length;
     const done = cooksDone(), k = `💰${coins()} ⭐${level()}|${ready}|${done}`;
-    if (k !== hudKey) { farmHud.__cook.style.display = done ? 'block' : 'none'; hudKey = k; farmHud.__pill.innerText = k.split('|')[0].replace(' ', HUD.phone ? '\n' : ' '); /* phone: two short lines fit beside ⚙️ */ farmHud.__badge.textContent = ready; farmHud.__badge.style.display = ready ? 'block' : 'none'; }
+    if (k !== hudKey) { farmHud.__cook.style.display = done ? 'block' : 'none'; hudKey = k; farmHud.__pill.innerText = HUD.phone ? `📊 ${money(coins())}` : k.split('|')[0]; /* phone: two short lines fit beside ⚙️ */ farmHud.__badge.textContent = ready; farmHud.__badge.style.display = ready ? 'block' : 'none'; }
     renderPanel();
   }
   // which farm thing is under a map point: a plot index, the shop or the barn (cabin)
