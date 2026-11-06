@@ -414,7 +414,18 @@
     return {
       device: cfg.device,
       get(k, def) { const e = data.items[k]; return e && e.v != null ? e.v : def; },
-      set(k, v) { data.items[k] = { t: Math.max(Date.now(), ((data.items[k] || {}).t || 0) + 1), v }; persist(); notify([k]); schedule(15000); },
+      set(k, v) {
+        data.items[k] = { t: Math.max(Date.now(), ((data.items[k] || {}).t || 0) + 1), v };
+        if (this.__hold) { this.__held.add(k); return; } // inside batch(): write once at the end
+        persist(); notify([k]); schedule(15000);
+      },
+      // many writes in a row (the staff catching up on hours of work) without re-saving the whole store each time
+      batch(fn) {
+        this.__hold = (this.__hold || 0) + 1; if (!this.__held) this.__held = new Set();
+        try { return fn(); } finally {
+          if (--this.__hold === 0 && this.__held.size) { const ks = [...this.__held]; this.__held.clear(); persist(); notify(ks); schedule(15000); }
+        }
+      },
       del(k) { this.set(k, null); },
       keys(prefix) { return Object.keys(data.items).filter((k) => k.startsWith(prefix) && data.items[k].v != null); },
       onChange(f) { listeners.push(f); },
@@ -2109,6 +2120,310 @@
     },
   };
   window.__forestFarm = farm;
+
+  // ── Manager mode: the user owns the farm, the staff run it (also while the app is closed) ──
+  // A head manager starts alone, works the field, sells, then hires farmers, a seller, a fisher, a rancher, a cook,
+  // buys land and animals. Every MSTEP of farm time each worker spends action points on the jobs of their role.
+  // On open, the time since mgr/last is replayed step by step through farmNow() (silently), so the field, pens and
+  // books look exactly as if they had worked all along. Save keys: mgr/staff, mgr/last, mgr/day/<day>, mgr/log, mgr/away.
+  const MSTEP = 5 * 60000, MCATCH = 7 * 864e5, MWORK = [6, 21], MLOG = 160, MMAX = 9;
+  const ROLES = {
+    boss: { name: 'Quản lý', icon: '🧑‍💼', ap: 6, wage: 0, hire: 0, jobs: ['boss', 'harvest', 'field', 'ranch', 'pond', 'cook', 'orders', 'sell', 'fish'] },
+    farmer: { name: 'Nông dân', icon: '🧑‍🌾', ap: 9, wage: 30, hire: 120, jobs: ['harvest', 'field'] },
+    seller: { name: 'Bán hàng', icon: '🛒', ap: 6, wage: 30, hire: 150, jobs: ['orders', 'sell'] },
+    fisher: { name: 'Ngư dân', icon: '🎣', ap: 5, wage: 25, hire: 100, jobs: ['pond', 'fish'] },
+    rancher: { name: 'Chăn nuôi', icon: '🐄', ap: 6, wage: 40, hire: 200, jobs: ['ranch'] },
+    cook: { name: 'Đầu bếp', icon: '👩‍🍳', ap: 5, wage: 45, hire: 250, jobs: ['cook'] },
+  };
+  const MNAMES = ['Lan', 'Minh', 'Hà', 'Phúc', 'Thảo', 'Quân', 'Mai', 'Tùng', 'Vy', 'Khoa', 'Linh', 'Sơn', 'Nga', 'Dũng', 'Uyên', 'Bình', 'Chi', 'Giang', 'Hùng', 'An'];
+  const mStaff = () => save.get('mgr/staff', []);
+  const mLocalH = (t) => { const d = new Date(t); return d.getHours() + d.getMinutes() / 60; };
+  const mWorking = (t) => { const h = mLocalH(t); return h >= MWORK[0] && h < MWORK[1]; };
+  const mNextWork = (t) => { if (mWorking(t)) return t; const d = new Date(t); if (mLocalH(t) >= MWORK[1]) d.setDate(d.getDate() + 1); d.setHours(MWORK[0], 0, 0, 0); return d.getTime(); };
+  const mWages = (st = mStaff()) => st.reduce((s, w) => s + (ROLES[w.role] ? ROLES[w.role].wage : 0), 0);
+  const mReserve = () => 40 + mWages() * 2;
+  const mSpare = () => coins() - mReserve();
+  const mVis = {}; // staff id -> queue of things to walk to and act out (live only)
+  const mNow = {}; // staff id -> { text, at } what they did last (live)
+  let mRun = null; // the run in progress: { live, sum }
+
+  function mHire(role, t, name) {
+    const st = mStaff(), R = ROLES[role], crew = DATA.crew;
+    const usedS = new Set(st.map((w) => w.sheet)), usedN = new Set(st.map((w) => w.name));
+    const sheets = crew ? [...Array(crew.n).keys()].filter((i) => !usedS.has(i)) : [0];
+    const names = MNAMES.filter((n) => !usedN.has(n));
+    const w = { id: 's' + t.toString(36) + Math.random().toString(36).slice(2, 4), name: name || names[Math.floor(Math.random() * names.length)] || 'Nhân viên', role,
+      sheet: sheets[Math.floor(Math.random() * sheets.length)] || 0, hired: t, acc: 0 };
+    if (R.hire) ledger(-R.hire, 0, {});
+    save.set('mgr/staff', st.concat(w));
+    return w;
+  }
+  // the head manager arrives the first time the farm runs in this mode
+  function mEnsureBoss() {
+    if (mStaff().length) return false;
+    const t = farmNow();
+    mHire('boss', t, 'Lan');
+    save.set('mgr/last', t);
+    mLog(t, mStaff()[0].id, 'Nhận việc quản lý nông trại. Từ giờ mọi việc để tôi lo!', 0);
+    return true;
+  }
+  function mLog(t, id, text, c) {
+    const log = save.get('mgr/log', []);
+    log.unshift({ t, id, text, c: Math.round(c || 0) });
+    save.set('mgr/log', log.slice(0, MLOG));
+  }
+  function mDayRec(t) { return save.get(`mgr/day/${dayNo(t)}`, { in: 0, out: 0, wage: 0, acts: 0, by: {} }); }
+  function mBook(t, id, coinsDelta, value) {
+    const day = dayNo(t), d = mDayRec(t);
+    if (coinsDelta > 0) d.in += coinsDelta; else d.out -= coinsDelta;
+    d.acts++;
+    const b = d.by[id] || (d.by[id] = { acts: 0, value: 0 });
+    b.acts++; b.value += Math.max(0, coinsDelta) + (value || 0);
+    save.set(`mgr/day/${day}`, d);
+    if (mRun && mRun.sum) { mRun.sum.in += Math.max(0, coinsDelta); mRun.sum.out += Math.max(0, -coinsDelta); mRun.sum.acts++; }
+  }
+
+  // ── what a worker can do in one action (returns { kind, text, at, value } or null) ──
+  const plotAt = (i) => { const p = FARM.plots[i]; return p ? { x: p.x + 16, y: p.y + 14 } : null; };
+  const pondAt = (i) => ({ x: FARM.pond.x + 30 + i * 50, y: FARM.pond.y - 4 });
+  const penAt = (pen) => { const p = FARM.pens[pen]; return { x: p.x + p.w / 2, y: p.y + p.h + 8 }; };
+  const barnAt = () => ({ x: FARM.barn.x + FARM.barn.w / 2, y: FARM.barn.y + FARM.barn.h + 6 });
+  const shopAt = () => ({ x: FARM.shop.x + FARM.shop.w / 2, y: FARM.shop.y + FARM.shop.h + 6 });
+  const buySome = (k, need) => { if (have(k) >= need) return true; const [kind, id] = k.split(':'), D = kind === 'seed' ? CROPS[id] : kind === 'fry' ? FISHES[id] : null, p = D ? D.seed : TOOLS[k] ? TOOLS[k].price : 0; return p > 0 && mSpare() >= p * need && farm.buy(k, need - have(k)); };
+  // crops worth planting now: unlocked, affordable, best coins per hour, and not ripening long before the staff are back
+  function mPickCrop(i, t) {
+    const L = level(), list = Object.entries(CROPS).filter(([, C]) => C.lvl <= L).map(([k, C]) => {
+      const ripe = t + C.grow * HOUR / WET_RATE, back = mNextWork(ripe);
+      const ok = back - ripe <= C.gold * HOUR * 0.8;
+      return { k, C, ok, score: (C.yield * C.price - C.seed) / C.grow };
+    }).filter((o) => o.ok && o.score > 0 && (have('seed:' + o.k) > 0 || mSpare() >= o.C.seed)).sort((a, b) => b.score - a.score);
+    if (!list.length) return null;
+    const top = list.slice(0, Math.min(3, list.length));
+    return top[i % top.length].k;
+  }
+  const JOBS = {
+    harvest(t) {
+      for (let i = 0; i < land(); i++) { const s = simPlot(i); if (s.status === 'ripe' || s.status === 'over') { const n = s.yield, C = s.C; if (farm.harvest(i)) return { kind: 'harvest', text: `thu ${n} ${C.icon}`, at: plotAt(i), value: n * C.price, icon: '🧺' }; } }
+      return null;
+    },
+    field(t) {
+      for (let i = 0; i < land(); i++) { const s = simPlot(i); if (s.status === 'dead' && farm.clear(i)) return { kind: 'clear', text: 'dọn ô chết', at: plotAt(i), icon: '🧹' }; }
+      for (let i = 0; i < land(); i++) { const s = simPlot(i); if (s.status === 'pest' && buySome('spray', 1) && farm.spray(i)) return { kind: 'spray', text: `bắt sâu ${s.C.icon}`, at: plotAt(i), icon: '🧴' }; }
+      for (let i = 0; i < land(); i++) { const s = simPlot(i); if (s.status === 'grow' && !s.wet && farm.water(i)) return { kind: 'water', text: `tưới ${s.C.icon}`, at: plotAt(i), icon: '💧' }; }
+      for (let i = 0; i < land(); i++) {
+        if (simPlot(i).status !== 'empty') continue;
+        const k = mPickCrop(i, t); if (!k) return null;
+        if (buySome('seed:' + k, 1) && farm.plant(i, k)) return { kind: 'plant', text: `gieo ${CROPS[k].icon}`, at: plotAt(i), icon: '🌱' };
+        return null;
+      }
+      return null;
+    },
+    ranch(t) {
+      for (let s = 0; s < 2; s++) if (farm.hatch(s)) return { kind: 'hatch', text: 'ấp nở gà con', at: penAt('small'), icon: '🐣' };
+      for (const id of animalIds()) { const s = simAnimal(id); if (s && s.status === 'dead' && farm.removeAnimal(id)) return { kind: 'clear', text: `dọn ${s.A.icon} chết`, at: penAt(s.A.pen), icon: '🧹' }; }
+      for (const id of animalIds()) { const s = simAnimal(id); if (s && s.yield && s.status !== 'sick') { const item = s.A.meat || s.A.product, n = s.yield; if (farm.collect(id)) return { kind: 'collect', text: `thu ${n} ${PRODUCTS[item].icon}`, at: penAt(s.A.pen), value: n * PRODUCTS[item].price, icon: '🧺' }; } }
+      for (const id of animalIds()) { const s = simAnimal(id); if (s && s.status === 'sick' && buySome('med', 1) && farm.cureAnimal(id)) return { kind: 'cure', text: `chữa ${s.A.icon}`, at: penAt(s.A.pen), icon: '💊' }; }
+      for (const id of animalIds()) { const s = simAnimal(id); if (s && s.status !== 'dead' && s.fedLeft <= 12 * HOUR && buySome('feed', s.A.feed) && farm.feedAnimal(id)) return { kind: 'feed', text: `cho ${s.A.icon} ăn`, at: penAt(s.A.pen), icon: '🥣' }; }
+      // stock the pens: the best producer the level and the purse allow (a cushion stays for wages and feed)
+      const L = level(), cap = mStaff().some((x) => x.role === 'rancher') ? 99 : 6;
+      if (animalIds().length >= cap) return null;
+      const pick = Object.entries(ANIMALS).filter(([, A]) => A.lvl <= L && penFree(A.pen) > 0 && mSpare() >= A.price * 3 + 100).sort((a, b) => b[1].price - a[1].price)[0];
+      if (pick && farm.buyAnimal(pick[0])) return { kind: 'buyAnimal', text: `mua ${pick[1].icon} ${pick[1].name}`, at: penAt(pick[1].pen), icon: pick[1].icon, big: true };
+      return null;
+    },
+    pond(t) {
+      if (level() < 2) return null;
+      for (let i = 0; i < 3; i++) { const s = simPond(i); if (s.status === 'ripe' || s.status === 'over') { const n = s.yield, C = s.C; if (farm.netFish(i)) return { kind: 'net', text: `vớt ${n} ${C.icon}`, at: pondAt(i), value: n * C.price, icon: '🧺' }; } }
+      for (let i = 0; i < 3; i++) if (simPond(i).status === 'dead' && farm.clearPond(i)) return { kind: 'clear', text: 'dọn lồng cá', at: pondAt(i), icon: '🧹' };
+      for (let i = 0; i < 3; i++) if (simPond(i).status === 'pest' && buySome('fishmed', 1) && farm.cureFish(i)) return { kind: 'cure', text: 'chữa cá', at: pondAt(i), icon: '🧪' };
+      for (let i = 0; i < 3; i++) { const s = simPond(i); if (s.status === 'grow' && !s.wet && buySome('fishfeed', 1) && farm.feedFish(i)) return { kind: 'feed', text: `cho ${s.C.icon} ăn`, at: pondAt(i), icon: '🍤' }; }
+      for (let i = 0; i < 3; i++) {
+        if (simPond(i).status !== 'empty') continue;
+        const L = level(), f = Object.entries(FISHES).filter(([k0, F]) => F.lvl <= L && (have('fry:' + k0) || mSpare() >= F.seed)).sort((a, b) => (b[1].yield * b[1].price - b[1].seed) / b[1].grow - (a[1].yield * a[1].price - a[1].seed) / a[1].grow)[0];
+        if (f && buySome('fry:' + f[0], 1) && farm.stock(i, f[0])) return { kind: 'stock', text: `thả ${f[1].icon}`, at: pondAt(i), icon: '🐟' };
+        return null;
+      }
+      return null;
+    },
+    fish(t, w) {
+      // wild fishing in the stream: free, a catch about half the time, at most 40 tries a day each
+      const d = mDayRec(t), b = d.by[w.id];
+      if (b && b.fish >= 40) return null;
+      if (b) b.fish = (b.fish || 0) + 1; else d.by[w.id] = { acts: 0, value: 0, fish: 1 };
+      save.set(`mgr/day/${dayNo(t)}`, d);
+      const spot = SPOTS.find((s) => s.kind === 'fish'), at = spot ? { x: spot.col * 16 + 8, y: spot.row * 16 + 8 } : pondAt(1);
+      if (Math.random() > 0.55) return { kind: 'fishMiss', text: 'câu hụt', at, icon: '🎣' };
+      const r = Math.random(), item = r < 0.15 ? 'crab' : r < 0.5 ? 'perch' : 'fish';
+      ledger(0, 1, { [item]: 1 });
+      return { kind: 'fish', text: `câu được ${CATCH_GOODS[item].icon}`, at, value: CATCH_GOODS[item].price, icon: '🎣' };
+    },
+    cook(t) {
+      for (let s = 0; s < kitchenSlots(); s++) { const c = simCook(s); if (c.status === 'done' && farm.serve(s)) return { kind: 'serve', text: `xong ${c.n} ${c.R.icon}`, at: barnAt(), value: c.R.price * c.n, icon: '🍽️' }; }
+      let slot = 0; while (slot < kitchenSlots() && simCook(slot).status !== 'empty') slot++;
+      if (slot >= kitchenSlots() || level() < 1) return null;
+      const L = level(), cand = Object.entries(RECIPES).filter(([, R]) => R.lvl <= L).map(([k, R]) => {
+        const cost = Object.entries(R.need).reduce((s, [g, q]) => s + priceOf(g) * q, 0);
+        return { k, R, gain: R.price - cost };
+      }).filter((o) => o.gain > 0).sort((a, b) => b.gain - a.gain);
+      for (const o of cand) {
+        if (!Object.entries(o.R.need).every(([g, q]) => have(g) >= q)) continue;
+        if (!buySome('cui', fuelOf(o.R))) return null;
+        const n = canCook(o.k, 3) ? 3 : 1;
+        if (farm.cook(slot, o.k, n)) return { kind: 'cook', text: `nấu ${n} ${o.R.icon} ${o.R.name}`, at: barnAt(), icon: '🔥' };
+      }
+      return null;
+    },
+    orders(t) {
+      const book = orderBook(dayNo(t));
+      for (const o of book) if (canFill(o) && farm.fillOrder(o.slot)) return { kind: 'order', text: `giao đơn cho ${o.who}`, at: shopAt(), icon: '📦', big: true };
+      return null;
+    },
+    sell(t) {
+      // keep what today's open orders need, and ingredients for the cook; sell the rest, one kind per action
+      const keep = {};
+      for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) keep[k] = (keep[k] || 0) + q;
+      if (mStaff().some((w) => w.role === 'cook' || w.role === 'boss')) for (const R of Object.values(RECIPES)) if (R.lvl <= level()) for (const k of Object.keys(R.need)) keep[k] = Math.max(keep[k] || 0, 6);
+      const goods = Object.keys(GOODS).map((k) => ({ k, n: have(k) - (keep[k] || 0), p: priceOf(k) })).filter((g) => g.n > 0 && g.p > 0).sort((a, b) => b.n * b.p - a.n * a.p);
+      const g = goods[0];
+      if (g && farm.sell(g.k, g.n)) return { kind: 'sell', text: `bán ${g.n} ${GOODS[g.k].icon} được ${g.n * g.p} xu`, at: shopAt(), icon: '💰' };
+      return null;
+    },
+    // the head manager's own decisions: land, pen upgrades, hiring
+    boss(t, w) {
+      const d = mDayRec(t), st = mStaff(), count = (r) => st.filter((x) => x.role === r).length;
+      if (land() < FARM.plots.length && mSpare() >= landPrice() + 60 && farm.buyLand()) return { kind: 'land', text: `mua thêm ô đất (${land()} ô)`, at: plotAt(land() - 1), icon: '🗺️', big: true };
+      for (const pen of ['small', 'big']) { const U = UPGRADES[pen], n = upg(pen), cost = U.cost[n]; if (cost && penFree(pen) < 1 && level() >= U.lvl[n] && mSpare() >= cost * 2 && farm.upgrade(pen)) return { kind: 'upgrade', text: `nới rộng ${U.name}`, at: penAt(pen), icon: '🔨', big: true }; }
+      if (st.some((x) => x.role === 'cook')) { const U = UPGRADES.kitchen, n = upg('kitchen'), cost = U.cost[n]; if (cost && level() >= U.lvl[n] && mSpare() >= cost * 3 && farm.upgrade('kitchen')) return { kind: 'upgrade', text: 'xây thêm lò bếp', at: barnAt(), icon: '🔨', big: true }; }
+      if (d.hired || st.length >= MMAX) return null;
+      const goodsHeld = Object.keys(GOODS).reduce((s, k) => s + Math.max(0, have(k)), 0);
+      // like the managers of an idle tycoon: a hand for whichever station is piling up
+      const want = count('farmer') < Math.ceil(land() / 8) ? 'farmer'
+        : !count('rancher') && animalIds().length >= 4 ? 'rancher'
+        : !count('fisher') && level() >= 2 ? 'fisher'
+        : !count('seller') && goodsHeld > 25 ? 'seller'
+        : !count('cook') && level() >= 3 && kitchenSlots() > 0 ? 'cook'
+        : count('farmer') < Math.ceil(land() / 12) + 1 && land() >= 16 ? 'farmer'
+        : count('rancher') < 2 && animalIds().length >= 16 ? 'rancher'
+        : null;
+      if (!want) return null;
+      const R = ROLES[want];
+      if (mSpare() < R.hire + R.wage * 3 + 60) return null;
+      const nw = mHire(want, t);
+      d.hired = 1; save.set(`mgr/day/${dayNo(t)}`, d);
+      if (mRun && mRun.sum) mRun.sum.hired.push(`${R.icon} ${nw.name}`);
+      return { kind: 'hire', text: `thuê ${R.icon} ${nw.name} làm ${R.name} (${R.hire} xu, lương ${R.wage} xu/ngày)`, at: barnAt(), icon: '🤝', big: true };
+    },
+  };
+
+  // pay the day's wages when a new day starts (whoever is still on the books); if the purse is empty the newest worker leaves
+  function mPayday(t) {
+    const day = dayNo(t), paid = save.get('mgr/payday', 0);
+    if (paid >= day) return;
+    save.set('mgr/payday', day);
+    if (!paid) return;
+    let st = mStaff();
+    while (st.some((w) => w.role !== 'boss') && coins() < mWages(st)) {
+      const gone = st.filter((w) => w.role !== 'boss').sort((a, b) => b.hired - a.hired)[0];
+      st = st.filter((w) => w !== gone);
+      mLog(t, gone.id, `${gone.name} (${ROLES[gone.role].name}) nghỉ việc vì nông trại hết tiền trả lương`, 0);
+      if (mRun && mRun.sum) mRun.sum.left.push(gone.name);
+    }
+    save.set('mgr/staff', st);
+    const total = mWages(st);
+    if (total > 0) {
+      ledger(-total, 0, {});
+      const d = mDayRec(t); d.wage += total; d.out += total; save.set(`mgr/day/${day}`, d);
+      if (mRun && mRun.sum) mRun.sum.out += total;
+    }
+  }
+
+  // one step of farm time for every worker
+  function mStep(t) {
+    mPayday(t);
+    if (!mWorking(t)) return;
+    const st = mStaff().map((w) => ({ ...w })), stepH = MSTEP / HOUR;
+    let changed = false;
+    for (const w0 of st) {
+      const w = w0, R = ROLES[w.role]; if (!R) continue;
+      w.acc = Math.min(4, (w.acc || 0) + R.ap * stepH);
+      const done = [];
+      while (w.acc >= 1) {
+        let r = null;
+        for (const job of R.jobs) { if (w.role === 'boss' && job === 'fish' && done.length) break; r = JOBS[job](t, w); if (r) break; }
+        if (r && r.kind === 'fishMiss' && w.role === 'boss') r.big = false;
+        if (!r) { w.acc = Math.min(w.acc, 1); break; }
+        w.acc -= 1; done.push(r);
+      }
+      changed = true;
+      for (const r of done) {
+        if (mRun && mRun.live) { (mVis[w.id] || (mVis[w.id] = [])).push(r); if (mVis[w.id].length > 4) mVis[w.id].shift(); mNow[w.id] = { text: r.text, at: Date.now() }; }
+        if (r.big) mLog(t, w.id, r.text, 0);
+        if (mRun && mRun.sum) { const k = r.kind; mRun.sum.kinds[k] = (mRun.sum.kinds[k] || 0) + 1; }
+      }
+      if (done.length) {
+        // a short line in the journal per worker per hour (merged with the same hour's line)
+        const log = save.get('mgr/log', []), hr = Math.floor(t / HOUR), small = done.filter((r) => !r.big).map((r) => r.text);
+        if (small.length) {
+          const top = log.find((e) => e.id === w.id && e.hr === hr);
+          if (top) { top.items = (top.items || []).concat(small).slice(-30); save.set('mgr/log', log); }
+          else { log.unshift({ t, hr, id: w.id, items: small }); save.set('mgr/log', log.slice(0, MLOG)); }
+        }
+      }
+    }
+    if (changed) { const acc = Object.fromEntries(st.map((w) => [w.id, Math.round((w.acc || 0) * 100) / 100])); save.set('mgr/staff', mStaff().map((w) => ({ ...w, acc: acc[w.id] != null ? acc[w.id] : w.acc || 0 }))); }
+  }
+  // wrap every job so the books know who earned what
+  for (const [k, fn] of Object.entries(JOBS)) JOBS[k] = (t, w) => { const c0 = coins(), r = fn(t, w); if (r && w) mBook(t, w.id, coins() - c0, r.value || 0); return r; };
+
+  // replay the time since the last step; silent (no sounds, no floaters) unless it is just the next step live
+  // one device at a time runs the staff (otherwise phone and PC would both sell the same goods): a lease in the save
+  const MLEASE = 10 * 60000;
+  function mHoldLease() {
+    const l = save.get('mgr/lease'), me = save.device, now = Date.now();
+    if (l && l.dev !== me && l.until > now) return false;
+    if (!l || l.dev !== me || l.until - now < MLEASE - 2 * 60000) save.set('mgr/lease', { dev: me, until: now + MLEASE });
+    return true;
+  }
+  function mCatchUp() {
+    if (!mHoldLease()) return;
+    if (mEnsureBoss()) return;
+    const real = farmNow();
+    let last = save.get('mgr/last', 0);
+    if (!last) { save.set('mgr/last', real); return; }
+    if (real - last < MSTEP) return;
+    const gap = real - last;
+    if (gap > MCATCH) last = real - MCATCH;
+    const live = gap <= 3 * MSTEP, base = farmOffset, fl = floaters.length, muted = [];
+    const sum = { from: save.get('mgr/last', 0), to: real, coins0: coins(), in: 0, out: 0, acts: 0, kinds: {}, hired: [], left: [], land0: land(), animals0: animalIds().length, lvl0: level() };
+    if (!live) for (const k of Object.keys(sfx)) if (typeof sfx[k] === 'function' && !['resume', 'setPref', 'state'].includes(k)) { muted.push([k, sfx[k]]); sfx[k] = () => {}; }
+    mRun = { live, sum };
+    let t = last;
+    try {
+      save.batch(() => {
+        for (t = last + MSTEP; t <= real; t += MSTEP) { farmOffset = t - Date.now(); mStep(t); }
+        t -= MSTEP;
+        save.set('mgr/last', t);
+      });
+    } finally {
+      farmOffset = base; mRun = null;
+      for (const [k, f] of muted) sfx[k] = f;
+      if (!live) floaters.length = fl;
+    }
+    if (gap >= 30 * 60000) {
+      Object.assign(sum, { coins1: coins(), land1: land(), animals1: animalIds().length, lvl1: level() });
+      save.set('mgr/away', sum);
+      mAwayPending = true;
+    }
+  }
+  let mAwayPending = false, mNextCheck = 0;
+  function mTick(now) {
+    if (now < mNextCheck) return;
+    mNextCheck = now + 4000;
+    try { mCatchUp(); } catch (e) { console.warn('[Claude Forest] manager: ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' <- ') : e)); }
+    if (mAwayPending && typeof openPanel === 'function' && farmPanel) { mAwayPending = false; openPanel({ kind: 'away' }); }
+  }
+  window.__forestMgr = { staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
+    day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
   farm.debug = { simCook, specialOf, priceOf, RECIPES, workReward, fuelOf };
 
   // ── Drawing the field (map pixel space, on the farm layer) ──
@@ -2374,7 +2689,7 @@
     barnB.style.position = 'relative';
     barnB.innerHTML = '🏠<span style="position:absolute;top:-5px;right:-5px;font-size:11px;display:none">🍳</span>';
     farmHud.__cook = barnB.firstElementChild;
-    farmHud.append(barnB, btn('🏪', 'Cửa hàng', 'shop'), ord);
+    farmHud.append(btn('👔', 'Nhân viên · sổ sách', 'mgr'), barnB, btn('🏪', 'Cửa hàng', 'shop'), ord);
     const cam = window.__forestCam; // phone page only: jump between the forest and the field
     if (cam) {
       const b = document.createElement('button');
@@ -2394,6 +2709,7 @@
   }
   function openPanel(view) {
     panelView = view; panelKey = '';
+    if (view && view.kind === 'away') mAwayPending = false;
     if (farmPanel) farmPanel.style.display = view ? 'block' : 'none';
     if (view) { farmPanel.scrollTop = 0; renderPanel(); }
   }
@@ -2527,7 +2843,75 @@
       }
       return head('🏪 Cửa hàng làng') + `<div>💰 <b>${c}</b> xu · ⭐ Cấp ${L} <span style="opacity:.7">(${xp()}/${next} kinh nghiệm)</span></div>` + tabs + body;
     }
+    if (v.kind === 'mgr') return mgrPanelHtml(v, head, c, L);
+    if (v.kind === 'away') return awayPanelHtml(head);
     return '';
+  }
+  // ── Manager panels: the user only watches; the staff decide ──
+  const money = (n) => (n < 0 ? '−' : '') + Math.abs(Math.round(n)).toLocaleString('vi-VN');
+  const staffName = (id) => { const w = mStaff().find((x) => x.id === id); return w ? `${ROLES[w.role].icon} ${w.name}` : 'Người cũ'; };
+  const JOB_VI = { harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
+  const mLastDid = (id) => { const e = save.get('mgr/log', []).find((x) => x.id === id); return e ? (e.items ? e.items[e.items.length - 1] : e.text) : ''; };
+  function mgrPanelHtml(v, head, c, L) {
+    const tab = v.tab || 'home', st = mStaff(), now = farmNow(), today = mDayRec(now);
+    const tb = (id, label) => B('tab:' + id, label, true, tab === id ? 'border-color:#7fd65a;' : '');
+    const tabs = tb('home', 'Tổng quan') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký');
+    let body = '';
+    if (tab === 'home') {
+      const days = [...Array(7).keys()].reverse().map((k) => { const t = now - k * 864e5, d = mDayRec(t), dt = new Date(t); return { d, p: d.in - d.out, lab: k ? `${dt.getDate()}/${dt.getMonth() + 1}` : 'Nay' }; });
+      const top = Math.max(1, ...days.map((x) => Math.max(x.d.in, x.d.out)));
+      const bars = '<div style="display:flex;gap:4px;align-items:flex-end;height:64px;margin:6px 0 2px">'
+        + days.map((x) => `<div style="flex:1;display:flex;gap:1px;align-items:flex-end;height:100%" title="${x.lab}: thu ${money(x.d.in)}, chi ${money(x.d.out)}"><div style="flex:1;background:#7fd65a;height:${Math.round((x.d.in / top) * 100)}%"></div><div style="flex:1;background:#e08a5a;height:${Math.round((x.d.out / top) * 100)}%"></div></div>`).join('') + '</div>'
+        + '<div style="display:flex;gap:4px;font-size:10px;opacity:.7">' + days.map((x) => `<div style="flex:1;text-align:center">${x.lab}</div>`).join('') + '</div>'
+        + '<div style="font-size:11px;opacity:.75;margin-top:2px"><span style="color:#7fd65a">■</span> thu · <span style="color:#e08a5a">■</span> chi</div>';
+      const week = days.reduce((s, x) => s + x.p, 0), working = mWorking(now);
+      const doing = st.map((w) => {
+        const n = mNow[w.id], fresh = n && Date.now() - n.at < 15 * 60000, last = !fresh && mLastDid(w.id);
+        return row(`${ROLES[w.role].icon} ${w.name} <span style="opacity:.6">${ROLES[w.role].name}</span>`, `<span style="opacity:.85">${!working ? '😴 nghỉ' + (last ? ' · vừa ' + last : '') : fresh ? n.text : last ? 'vừa ' + last : '🚶 đi một vòng'}</span>`);
+      }).join('');
+      body = `<div style="margin-top:6px">💰 Két: <b>${money(c)}</b> xu · ⭐ Cấp ${L}</div>`
+        + row('Hôm nay thu', `<b style="color:#7fd65a">+${money(today.in)}</b>`)
+        + row(`Hôm nay chi <span style="opacity:.6">(lương ${money(today.wage)})</span>`, `<b style="color:#e08a5a">−${money(today.out)}</b>`)
+        + row('Lãi hôm nay', `<b>${money(today.in - today.out)}</b>`) + row('Lãi 7 ngày', `<b>${money(week)}</b>`) + bars
+        + '<div style="opacity:.8;margin-top:8px">Cơ ngơi</div>'
+        + row('🌱 Ruộng', `${land()}/${FARM.plots.length} ô`) + row('🐾 Vật nuôi', `${animalIds().length} con`) + row('👥 Nhân viên', `${st.length} người · lương ${money(mWages(st))} xu/ngày`)
+        + `<div style="opacity:.8;margin-top:8px">Đang làm gì ${working ? '' : '<span style="opacity:.7">(ca làm 6h–21h)</span>'}</div>` + doing;
+    } else if (tab === 'staff') {
+      body = st.map((w) => {
+        const R = ROLES[w.role], b = today.by[w.id] || { acts: 0, value: 0 };
+        let wk = 0; for (let k = 0; k < 7; k++) { const x = mDayRec(now - k * 864e5).by[w.id]; if (x) wk += x.value; }
+        const days = Math.max(1, Math.ceil((now - w.hired) / 864e5));
+        return `<div style="margin:6px 0;border-top:1px solid #33334a;padding-top:4px"><b>${R.icon} ${w.name}</b> <span style="opacity:.7">${R.name} · làm được ${days} ngày</span>`
+          + `<div style="font-size:12px;opacity:.9">Hôm nay ${b.acts} việc · tạo ra ~${money(b.value)} xu · 7 ngày ~${money(wk)} xu</div>`
+          + `<div style="font-size:12px;opacity:.7">Lương ${R.wage ? R.wage + ' xu/ngày' : 'chia lời'} · lo: ${R.jobs.map((j) => JOB_VI[j]).join(', ')}</div></div>`;
+      }).join('') + `<div style="font-size:12px;opacity:.7;margin-top:6px">Quản lý tự thuê thêm người khi có việc và có tiền (tối đa ${MMAX}). Hết tiền trả lương thì người mới nhất nghỉ.</div>`;
+    } else {
+      const log = save.get('mgr/log', []).slice(0, 60);
+      body = log.length ? log.map((e) => {
+        const d = new Date(e.t), when = `${String(d.getDate()).padStart(2, '0')}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        let text = e.text;
+        if (e.items) { const cnt = {}; for (const x of e.items) cnt[x] = (cnt[x] || 0) + 1; text = Object.entries(cnt).map(([x, n]) => (n > 1 ? `${x} ×${n}` : x)).join(', '); }
+        return `<div style="margin:4px 0;border-top:1px solid #33334a;padding-top:3px;font-size:12px"><span style="opacity:.6">${when}</span> <b>${staffName(e.id)}</b>: ${text}</div>`;
+      }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
+    }
+    return head('👔 Nông trại của bạn') + tabs + body;
+  }
+  function awayPanelHtml(head) {
+    const a = save.get('mgr/away');
+    if (!a) return head('👋 Trong lúc bạn vắng mặt') + '<div>Chưa có gì.</div>';
+    const hrs = (a.to - a.from) / HOUR, K = a.kinds || {}, dc = (a.coins1 || 0) - (a.coins0 || 0);
+    const line = (icon, text, n) => (n ? row(`${icon} ${text}`, `<b>${n}</b>`) : '');
+    const gone = hrs >= 24 ? `${Math.floor(hrs / 24)} ngày ${Math.round(hrs % 24)} giờ` : fmtDur(a.to - a.from);
+    return head('👋 Trong lúc bạn vắng mặt') + `<div>Bạn đi <b>${gone}</b>. Nhân viên đã làm <b>${a.acts}</b> việc.</div>`
+      + row('💰 Két thay đổi', `<b style="color:${dc >= 0 ? '#7fd65a' : '#e08a5a'}">${dc >= 0 ? '+' : ''}${money(dc)} xu</b>`)
+      + row('Thu / chi', `+${money(a.in)} / −${money(a.out)}`)
+      + line('🧺', 'Lượt thu hoạch', (K.harvest || 0) + (K.collect || 0) + (K.net || 0)) + line('🌱', 'Lượt gieo', K.plant) + line('🎣', 'Cá câu được', K.fish)
+      + line('📦', 'Đơn hàng giao', K.order) + line('🍳', 'Mẻ nấu', K.cook)
+      + (a.land1 > a.land0 ? row('🗺️ Mua thêm đất', `<b>+${a.land1 - a.land0} ô</b>`) : '')
+      + (a.animals1 !== a.animals0 ? row('🐾 Vật nuôi', `${a.animals0} → ${a.animals1}`) : '')
+      + (a.lvl1 > a.lvl0 ? row('⭐ Lên cấp', `${a.lvl0} → ${a.lvl1}`) : '')
+      + (a.hired.length ? row('🤝 Thuê mới', a.hired.join(', ')) : '') + (a.left.length ? row('👋 Nghỉ việc', a.left.join(', ')) : '')
+      + B('openTab:mgr:home', '👔 Xem sổ sách') + B('openTab:mgr:log', '📜 Nhật ký');
   }
   function renderPanel() {
     if (!panelView || !farmPanel) return;
@@ -3363,6 +3747,7 @@
     const used = new Set(villagers.map((v) => v.sheet));
     const office = window.__forestOffice;
     if (office && office.characters) for (const ch of office.characters.values()) if (ch.sheet !== undefined) used.add(ch.sheet);
+    if (job !== 'staff') for (const w of mStaff()) used.add(w.sheet % VCREW.n);
     const free = [...Array(VCREW.n).keys()].filter((i) => !used.has(i));
     if (!free.length) return null;
     const door = partner ? partner.home : pickOne(VCREW.doors);
@@ -3404,10 +3789,51 @@
     }
     return false;
   }
+  // staff: one map person per worker on shift; they walk to each thing they did (plot, pen, pond, shop) and act it out
+  function nearWalk(px, py) {
+    const c0 = Math.floor(px / 16), r0 = Math.floor(py / 16);
+    for (let d = 0; d <= 3; d++) for (let dr = -d; dr <= d; dr++) for (let dc = -d; dc <= d; dc++) if (Math.max(Math.abs(dc), Math.abs(dr)) === d && walkable(c0 + dc, r0 + dr)) return { c: c0 + dc, r: r0 + dr };
+    return null;
+  }
+  const ROLE_HOME = (role) => role === 'farmer' ? (FARM.plots[0] && { x: FARM.plots[0].x + 40, y: FARM.plots[0].y + 30 }) : role === 'fisher' ? pondAt(1) : role === 'rancher' ? penAt('small') : role === 'cook' ? barnAt() : role === 'seller' ? shopAt() : barnAt();
+  function staffSync(now) {
+    if (!VCREW || !VCREW.doors.length) return;
+    const st = mStaff(), on = mWorking(farmNow());
+    for (const v of villagers) if (v.staff && (!on || !st.some((w) => w.id === v.staff)) && v.step !== 'home') goHome(v);
+    if (!on) return;
+    for (const w of st) {
+      if (villagers.some((v) => v.staff === w.id)) continue;
+      if (staffSync.next && now < (staffSync.next[w.id] || 0)) continue;
+      (staffSync.next || (staffSync.next = {}))[w.id] = now + 1500 + Math.random() * 2500; // stagger arrivals
+      const v = spawnVillager(now, 'staff');
+      if (!v) return;
+      v.sheet = w.sheet % VCREW.n; v.staff = w.id; v.role = w.role; v.name = w.name; v.jobsLeft = 0; v.step = 'idle'; v.until = 0;
+    }
+  }
+  function staffTick(v, now) {
+    const q = mVis[v.staff];
+    if (v.step === 'going' && !v.path.length) {
+      v.step = 'doing'; v.start = now;
+      v.until = now + (v.task ? 3500 + Math.random() * 2000 : 1500 + Math.random() * 3500);
+      if (v.task && v.task.at) faceToward(v, v.task.at);
+      return;
+    }
+    if (v.step === 'doing' && now < v.until) return;
+    if (v.step === 'doing' || v.step === 'idle') {
+      v.task = null;
+      const r = q && q.shift();
+      let tile = null;
+      if (r && r.at) { tile = nearWalk(r.at.x, r.at.y); v.task = r; }
+      if (!tile) { const h = ROLE_HOME(v.role), t = h && nearWalk(h.x + (Math.random() - 0.5) * 64, h.y + (Math.random() - 0.5) * 32); tile = t || farTile(v, 1, 4); }
+      v.step = tile && villagerGo(v, tile.c, tile.r) ? 'going' : 'idle';
+      if (v.step === 'idle') { v.step = 'doing'; v.start = now; v.until = now + 2000; }
+    }
+  }
   function villagerTick(now, dt, ph) {
     if (!VCREW) return;
     const office = window.__forestOffice;
     const day = ph.night < 0.5 && weather.level < 0.4;
+    staffSync(now);
     // a new villager (or a pair) every 5-14 s by day, up to VMAX outside
     if (day && now > nextVillager && villagers.length < VMAX) {
       nextVillager = now + 3000 + Math.random() * 6000;
@@ -3427,6 +3853,7 @@
         v.state = v.path.length ? 'walk' : 'idle';
         if (v.path.length) continue;
       }
+      if (v.staff && v.step !== 'home') { staffTick(v, now); continue; }
       // night or rain: everyone heads home
       if (!day && v.step !== 'home') goHome(v);
       if (v.step === 'out') {
@@ -3512,6 +3939,15 @@
         g.save(); g.globalAlpha = Math.min(1, (now - v.born) / 400, near && v.step === 'home' ? 1 - v.moveProgress : 1);
         window.__forestAnim.draw(g, crewAtlas, sx, sy, C.w, C.h, v.x - dw / 2, v.y + 8 - dh + hop, dw, dh, v, 'char', v.dir === DIR.LEFT, true);
         g.restore();
+        if (v.staff) {
+          if (v.step !== 'doing' || !v.task) return;
+          const k = Math.min(1, (now - v.start) / 250), bob = Math.sin((now - v.start) / 300) * 1;
+          g.save(); g.globalAlpha = k;
+          g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(v.x - 6, v.y - 30 + bob, 12, 11); g.fillRect(v.x - 1, v.y - 19 + bob, 2, 2);
+          g.font = '8px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(v.task.icon || '•', v.x, v.y - 24 + bob);
+          g.restore();
+          return;
+        }
         if (v.step !== 'doing') return;
         g.imageSmoothingEnabled = false;
         const t = (now - v.start) / 1000, h = hand(v);
@@ -3571,7 +4007,7 @@
     try {
       weatherTick(now, fdt, ph);
       critterTick(now, fdt, ph);
-      farmTick(now); petTick(now, ph); interactTick(now); villagerTick(now, fdt, ph);
+      mTick(now); farmTick(now); petTick(now, ph); interactTick(now); villagerTick(now, fdt, ph);
       drawFarm(now, ph); drawVillagers(now);
       const fg = fx.getContext('2d');
       drawVisits(fg, now); drawInteract(fg, now); drawFishing(fg, now); drawAnimals(fg, now);
