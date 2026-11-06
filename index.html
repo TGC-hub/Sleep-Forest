@@ -3312,7 +3312,7 @@
         return `<div style="opacity:.85;margin-top:8px"><b>${title}</b></div><div style="color:#7fd65a;font-size:12px;margin-top:4px">Nguồn thu</div>${part('in', '#7fd65a')}`
           + `<div style="color:#e08a5a;font-size:12px;margin-top:6px">Khoản chi</div>${part('out', '#e08a5a')}`;
       };
-      body = block('Hôm nay', sumCat(0, 0)) + block('7 ngày qua', sumCat(0, 6))
+      body = mWhyHtml(sumCat(0, 0), 0, 'Hôm nay') + mWhyHtml(sumCat(0, 6), 6, '7 ngày qua') + block('Hôm nay', sumCat(0, 0)) + block('7 ngày qua', sumCat(0, 6))
         + '<div style="font-size:11px;opacity:.6;margin-top:6px">Chỉ tính tiền nhân viên làm ra / tiêu (việc bạn tự bấm không tính vào đây).</div>';
     } else if (tab === 'staff') {
       // payroll first: what the staff cost every day and what is still owed
@@ -3344,7 +3344,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '18:33 06-11';
+    const build = '18:36 06-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -3378,6 +3378,29 @@
       + roles.map((r) => { const R = ROLES[r], n = st.filter((x) => x.role === r).length;
         return row(`${R.icon} ${R.name} <span style="opacity:.65">${n ? `đang có ${n} · ` : ''}lương ${R.wage}/ngày</span>`, B('hire:' + r, `Thuê · ${R.hire} xu`, c >= R.hire && st.length < MMAX)); }).join('')
       + '<div style="font-size:11px;opacity:.6;margin-top:4px">Bạn không cần bấm: Lan tự thuê khi có việc và đủ tiền. Nút này để bạn tự quyết nếu muốn.</div>';
+  }
+  // "Vì sao lãi / lỗ": the result split into running the farm vs one-off investments, then the causes in plain words
+  const CAT_INVEST = ['Thuê người', 'Mở rộng, nâng cấp', 'Con giống'];
+  function mWhyHtml(cat, days, title) {
+    const sum = (o, keys) => Object.entries(o).filter(([k]) => !keys || keys.includes(k)).reduce((s, [, v]) => s + v, 0);
+    const inc = sum(cat.in), outAll = sum(cat.out), inv = sum(cat.out, CAT_INVEST), wage = cat.out['Lương nhân viên'] || 0, run = outAll - inv;
+    if (!inc && !outAll) return '';
+    const op = inc - run, res = inc - outAll, now = farmNow(), st = mStaff();
+    const pn = (n) => `<b style="color:${n >= 0 ? '#7fd65a' : '#e08a5a'}">${n >= 0 ? '+' : '−'}${money(Math.abs(n))}</b>`;
+    const why = [];
+    if (res < 0 && op >= 0) why.push(`Lỗ vì <b>đầu tư</b> ${money(inv)} xu (${CAT_INVEST.filter((k) => cat.out[k]).map((k) => `${k.toLowerCase()} ${money(cat.out[k])}`).join(', ')}). Riêng làm ăn vẫn lãi ${money(op)} xu, đầu tư sẽ hoàn dần.`);
+    if (op < 0) why.push(`Làm ăn đang <b>lỗ ${money(-op)} xu</b>: chi chạy trại (${Object.entries(cat.out).filter(([k]) => !CAT_INVEST.includes(k)).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k.toLowerCase()} ${money(v)}`).join(', ')}) lớn hơn tiền thu ${money(inc)}.`);
+    if (wage && inc && wage / inc > 0.35) why.push(`Lương chiếm <b>${Math.round((wage / inc) * 100)}%</b> tiền thu: nhiều người so với việc đang có.`);
+    const losers = st.filter((w) => w.role !== 'boss').map((w) => { let n = 0; for (let k = 0; k <= days; k++) n += mStaffDay(w, now - k * 864e5).net; return { w, n }; }).filter((x) => x.n < 0).sort((a, b) => a.n - b.n);
+    if (losers.length) why.push(`Đang lỗ: ${losers.slice(0, 4).map((x) => `${ROLES[x.w.role].icon} ${x.w.name} (${ROLES[x.w.role].name}) −${money(-x.n)}`).join(', ')}. Làm ra ít hơn lương + vật tư.`);
+    const top = Object.entries(cat.in).sort((a, b) => b[1] - a[1])[0];
+    if (top && inc) why.push(`Thu nhiều nhất: ${top[0].toLowerCase()} (${Math.round((top[1] / inc) * 100)}%).`);
+    if (cat.in['Bán củi']) why.push(`${money(cat.in['Bán củi'])} xu bán củi là từ trước khi đổi luật: từ nay củi chỉ để nấu, khoản thu này sẽ không còn.`);
+    if (res >= 0 && !losers.length && why.length < 2) why.push('Không có khoản lỗ nào đáng lo.');
+    return `<div style="margin-top:8px;padding:8px;border:1px solid #44445a;border-radius:8px;background:rgba(255,255,255,0.03)">`
+      + `<div><b>${title}: ${res >= 0 ? 'lãi' : 'lỗ'}</b> ${pn(res)} xu</div>`
+      + `<div style="font-size:12px;opacity:.9;margin-top:2px">Làm ăn (thu − chi chạy trại, gồm lương) ${pn(op)} · Đầu tư một lần ${pn(-inv)}</div>`
+      + `<div style="font-size:13px;margin-top:4px">${why.map((x) => `• ${x}`).join('<br>')}</div></div>`;
   }
   function awayPanelHtml(head) {
     const a = save.get('mgr/away');
