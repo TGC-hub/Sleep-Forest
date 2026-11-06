@@ -2205,16 +2205,48 @@
     for (let i = 0; i < land(); i++) { const s = simPlot(i, t); if (s.crop && need[s.crop] != null && s.status !== 'dead') need[s.crop] -= s.yield || s.C.yield; }
     return need;
   }
-  // seed choice: first a crop an open order needs (if it ripens before the day ends), else the best earner
+  // ── Production plan: what the farm should be making right now. Demand = today's open orders + the kitchen's menu
+  // (the most profitable dishes it can cook, 3 batches each; a dish made of dishes counts their ingredients too).
+  // Shortage = demand − barn − what is already growing / being raised. Field, pens, pond and stove follow it.
+  function mMenu() {
+    if (kitchenSlots() < 1 || !mStaff().some((x) => x.role === 'cook' || x.role === 'boss')) return [];
+    const L = level();
+    return Object.entries(RECIPES).filter(([, R]) => R.lvl <= L && !R.base).map(([k, R]) => ({ k, R,
+      gain: priceOf('d:' + k) - Object.entries(R.need).reduce((s, [g, q]) => s + priceOf(g) * q, 0) - fuelOf(R) * TOOLS.cui.price }))
+      .filter((o) => o.gain > 0).sort((a, b) => b.gain - a.gain).slice(0, kitchenSlots() + 1);
+  }
+  function mDemand(t) {
+    const need = {}, src = {};
+    const add = (k, q, s, depth) => {
+      if (q <= 0) return;
+      need[k] = (need[k] || 0) + q;
+      if (src[k] !== 'order') src[k] = s;
+      const R = k.startsWith('d:') && RECIPES[k.slice(2)];
+      if (R && depth < 3) { const short = Math.max(0, need[k] - have(k)); for (const [g, n] of Object.entries(R.need)) add(g, n * Math.min(q, short), s, depth + 1); }
+    };
+    for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) add(k, q, 'order', 0);
+    for (const m of mMenu()) add('d:' + m.k, 3, 'kitchen', 0);
+    // already on its way: crops in the ground, fish in the cages, one round of produce from each animal
+    const pipe = {};
+    for (let i = 0; i < land(); i++) { const s = simPlot(i, t); if (s.crop && s.status !== 'dead') pipe[s.crop] = (pipe[s.crop] || 0) + (s.yield || s.C.yield); }
+    if (level() >= 2) for (let i = 0; i < 3; i++) { const s = simPond(i, t); if (s.crop && s.status !== 'dead') pipe['f:' + s.crop] = (pipe['f:' + s.crop] || 0) + (s.yield || s.C.yield); }
+    for (const id of animalIds()) { const s = simAnimal(id, t); if (s && s.status !== 'dead') { const it = s.A.meat || s.A.product; pipe[it] = (pipe[it] || 0) + s.A.yield; } }
+    const short = {};
+    for (const [k, q] of Object.entries(need)) { const n = q - have(k) - (pipe[k] || 0); if (n > 0) short[k] = n; }
+    return { need, src, short };
+  }
+  const mFor = (pk) => (pk && pk.src === 'order' ? ' cho đơn hàng' : pk && pk.src === 'kitchen' ? ' cho bếp' : '');
+  // seed choice: a crop that is short for an order (if it ripens today) or for the kitchen; else the best earner
   function mPickCrop(i, t) {
-    const L = level(), dayEnd = (dayNo(t) + 1) * 864e5 + new Date(t).getTimezoneOffset() * 60000;
-    const forOrder = Object.entries(mOrderNeeds(t)).filter(([k, n]) => {
+    const L = level(), dayEnd = (dayNo(t) + 1) * 864e5 + new Date(t).getTimezoneOffset() * 60000, D = mDemand(t);
+    const cand = Object.entries(D.short).filter(([k]) => {
       const C = CROPS[k];
-      return n > 0 && C.lvl <= L && t + (C.grow * HOUR) / WET_RATE < dayEnd && (have('seed:' + k) > 0 || mSpare() >= C.seed);
-    }).sort((a, b) => CROPS[a[0]].grow - CROPS[b[0]].grow)[0];
-    if (forOrder) return { k: forOrder[0], order: true };
+      if (!C || C.lvl > L || !(have('seed:' + k) > 0 || mSpare() >= C.seed)) return false;
+      return D.src[k] !== 'order' || t + (C.grow * HOUR) / WET_RATE < dayEnd;
+    }).sort((a, b) => (D.src[a[0]] === 'order' ? 0 : 1) - (D.src[b[0]] === 'order' ? 0 : 1) || CROPS[a[0]].grow - CROPS[b[0]].grow)[0];
+    if (cand) return { k: cand[0], src: D.src[cand[0]], order: D.src[cand[0]] === 'order' };
     const best = mPickBest(i, t);
-    return best && { k: best, order: false };
+    return best && { k: best, src: null, order: false };
   }
   function mPickBest(i, t) {
     const L = level(), list = Object.entries(CROPS).filter(([, C]) => C.lvl <= L).map(([k, C]) => {
@@ -2267,7 +2299,13 @@
   const keepers = () => mStaff().filter((x) => ['poultry', 'cattle', 'rancher'].includes(x.role)).length;
   const animalCap = () => 6 + 8 * keepers();
   const treeAt = () => { const trees = ((typeof CR !== 'undefined' && CR && CR.perches) || []).filter((p) => p.kind === 'tree'); const p = trees[Math.floor(Math.random() * trees.length)]; return p ? { x: p.bx, y: p.by } : null; };
-  const bestFry = () => Object.entries(FISHES).filter(([k0, F]) => F.lvl <= level() && (have('fry:' + k0) || mSpare() >= F.seed)).sort((a, b) => (b[1].yield * b[1].price - b[1].seed) / b[1].grow - (a[1].yield * a[1].price - a[1].seed) / a[1].grow)[0];
+  // fry: a fish an order / the kitchen is short of first, else the best earner
+  const bestFry = () => {
+    const D = mDemand(farmNow()), ok = Object.entries(FISHES).filter(([k0, F]) => F.lvl <= level() && (have('fry:' + k0) || mSpare() >= F.seed));
+    const wanted = ok.filter(([k0]) => D.short['f:' + k0] > 0).sort((a, b) => (D.src['f:' + a[0]] === 'order' ? 0 : 1) - (D.src['f:' + b[0]] === 'order' ? 0 : 1))[0];
+    if (wanted) return [wanted[0], wanted[1], D.src['f:' + wanted[0]]];
+    return ok.sort((a, b) => (b[1].yield * b[1].price - b[1].seed) / b[1].grow - (a[1].yield * a[1].price - a[1].seed) / a[1].grow)[0];
+  };
   function mReplant(i, t) {
     const pk = mPickCrop(i, t); if (!pk) return null;
     return buySome('seed:' + pk.k, 1) && farm.plant(i, pk.k) ? pk : null;
@@ -2290,7 +2328,7 @@
         if (s.status !== 'dead' || !mFree('plot:' + i) || !farm.clear(i)) continue;
         mLate(t);
         const pk = mReplant(i, t), was = s.C ? s.C.icon : '';
-        return { kind: 'replant', text: pk ? `dọn ${was} chết, gieo lại ${CROPS[pk.k].icon} ${CROPS[pk.k].name}${pk.order ? ' cho đơn hàng' : ''}` : `dọn ${was} chết`, at: plotAt(i), icon: pk ? '🌱' : '🧹', plot: i };
+        return { kind: 'replant', text: pk ? `dọn ${was} chết, gieo lại ${CROPS[pk.k].icon} ${CROPS[pk.k].name}${mFor(pk)}` : `dọn ${was} chết`, at: plotAt(i), icon: pk ? '🌱' : '🧹', plot: i };
       }
       for (const id of penIds(sc)) {
         const s = simAnimal(id);
@@ -2319,7 +2357,7 @@
       for (let i = 0; i < land(); i++) {
         if (simPlot(i).status !== 'empty' || !mFree('plot:' + i)) continue;
         const pk = mReplant(i, t); if (!pk) break;
-        return { kind: 'plant', text: `gieo ${CROPS[pk.k].icon} ${CROPS[pk.k].name}${pk.order ? ' cho đơn hàng' : ''}`, at: plotAt(i), icon: '🌱', plot: i };
+        return { kind: 'plant', text: `gieo ${CROPS[pk.k].icon} ${CROPS[pk.k].name}${mFor(pk)}`, at: plotAt(i), icon: '🌱', plot: i };
       }
       return null;
     },
@@ -2348,8 +2386,15 @@
       }
       // buy the animal that pays itself back fastest (within 5 days), with 3x its price (and feed) in the purse
       if (animalIds().length + incN >= animalCap() || !mFree('buyAnimal')) return null;
-      const L = level(), pick = Object.entries(ANIMALS).filter(([, A]) => A.lvl <= L && (sc.pen === 'any' || A.pen === sc.pen) && penFree(A.pen) > 0 && payback(A) <= 5 && mCanInvest(A.price + feedDay(A) * 2)).sort((a, b) => payback(a[1]) - payback(b[1]))[0];
-      if (pick && farm.buyAnimal(pick[0])) return { kind: 'buyAnimal', text: `mua ${pick[1].icon} ${pick[1].name} (hoàn vốn ~${Math.ceil(payback(pick[1]))} ngày)`, at: penAt(pick[1].pen), icon: pick[1].icon, big: true };
+      // first an animal whose produce an order / the kitchen is short of (if it pays back within 8 days), else the
+      // fastest payback within 5 days; always with 3x the price (and its feed) in the purse
+      const L = level(), D = mDemand(t), ok = Object.entries(ANIMALS).filter(([, A]) => A.lvl <= L && (sc.pen === 'any' || A.pen === sc.pen) && penFree(A.pen) > 0 && mCanInvest(A.price + feedDay(A) * 2));
+      const forUse = ok.filter(([, A]) => D.short[A.meat || A.product] > 0 && payback(A) <= 8).sort((a, b) => payback(a[1]) - payback(b[1]))[0];
+      const pick = forUse || ok.filter(([, A]) => payback(A) <= 5).sort((a, b) => payback(a[1]) - payback(b[1]))[0];
+      if (pick && farm.buyAnimal(pick[0])) {
+        const A = pick[1], it = A.meat || A.product;
+        return { kind: 'buyAnimal', text: forUse ? `mua ${A.icon} ${A.name} để có ${PRODUCTS[it].icon}${mFor({ src: D.src[it] })}` : `mua ${A.icon} ${A.name} (hoàn vốn ~${Math.ceil(payback(A))} ngày)`, at: penAt(A.pen), icon: A.icon, big: true };
+      }
       return null;
     },
     pond(t, w) {
@@ -2358,7 +2403,7 @@
       for (let i = 0; i < 3; i++) {
         if (simPond(i).status !== 'empty' || !mFree('pond:' + i)) continue;
         const f = bestFry();
-        if (f && buySome('fry:' + f[0], 1) && farm.stock(i, f[0])) return { kind: 'stock', text: `thả ${f[1].icon} ${f[1].name}`, at: pondAt(i), icon: '🐟' };
+        if (f && buySome('fry:' + f[0], 1) && farm.stock(i, f[0])) return { kind: 'stock', text: `thả ${f[1].icon} ${f[1].name}${mFor({ src: f[2] })}`, at: pondAt(i), icon: '🐟' };
         break;
       }
       return null;
@@ -2392,16 +2437,17 @@
       for (let s = 0; s < kitchenSlots(); s++) { const c = simCook(s); if (c.status === 'done' && mFree('cook:' + s) && farm.serve(s)) return { kind: 'serve', text: `xong ${c.n} ${c.R.icon} ${c.R.name}`, at: barnAt(), value: c.R.price * c.n, icon: '🍽️' }; }
       let slot = 0; while (slot < kitchenSlots() && (simCook(slot).status !== 'empty' || !mFree('cook:' + slot))) slot++;
       if (slot >= kitchenSlots()) return null;
-      // only dishes that earn more than their ingredients and firewood would sell for
+      // dishes an order asks for first (the order pays more); then only dishes worth more than their ingredients + firewood
+      const ordered = {}; for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) if (k.startsWith('d:') && have(k) < q) ordered[k] = 1;
       const L = level(), cand = Object.entries(RECIPES).filter(([, R]) => R.lvl <= L).map(([k, R]) => {
         const cost = Object.entries(R.need).reduce((s, [g, q]) => s + priceOf(g) * q, 0) + fuelOf(R) * TOOLS.cui.price;
         return { k, R, gain: priceOf('d:' + k) - cost };
-      }).filter((o) => o.gain > 0).sort((a, b) => b.gain - a.gain);
+      }).filter((o) => o.gain > 0 || ordered['d:' + o.k]).sort((a, b) => (ordered['d:' + b.k] ? 1 : 0) - (ordered['d:' + a.k] ? 1 : 0) || b.gain - a.gain);
       for (const o of cand) {
         if (!Object.entries(o.R.need).every(([g, q]) => have(g) >= q)) continue;
         if (!buySome('cui', fuelOf(o.R))) return null;
         const n = canCook(o.k, 3) ? 3 : 1;
-        if (farm.cook(slot, o.k, n)) return { kind: 'cook', text: `nấu ${n} ${o.R.icon} ${o.R.name} (lời ~${o.gain * n} xu)`, at: barnAt(), icon: '🔥' };
+        if (farm.cook(slot, o.k, n)) return { kind: 'cook', text: `nấu ${n} ${o.R.icon} ${o.R.name}${ordered['d:' + o.k] ? ' cho đơn hàng' : ` (lời ~${o.gain * n} xu)`}`, at: barnAt(), icon: '🔥' };
       }
       return null;
     },
@@ -2412,9 +2458,9 @@
     },
     sell(t) {
       // keep what today's open orders need (and, unless money is short, a few ingredients for the stove); sell the rest
-      const keep = {}, broke = mBroke();
-      for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) keep[k] = (keep[k] || 0) + q;
-      if (!broke) for (const R of Object.values(RECIPES)) if (R.lvl <= level()) for (const k of Object.keys(R.need)) keep[k] = Math.max(keep[k] || 0, 6);
+      // keep what the orders and (unless money is short) the kitchen's menu need; sell the rest
+      const broke = mBroke(), D = mDemand(t), keep = {};
+      for (const [k, q] of Object.entries(D.need)) if (!broke || D.src[k] === 'order') keep[k] = q;
       const goods = Object.keys(GOODS).map((k) => ({ k, n: have(k) - (keep[k] || 0), p: priceOf(k) })).filter((g) => g.n > 0 && g.p > 0 && mFree('sell:' + g.k)).sort((a, b) => b.n * b.p - a.n * a.p);
       // like a player: one trip to the shop when there is a worthwhile load (or money is short), not one fish at a time
       const load = goods.reduce((s, x) => s + x.n * x.p, 0), g = goods[0];
@@ -2571,7 +2617,7 @@
     const k = pk.k, c0 = coins();
     if (have('seed:' + k) < 1 && !(mSpare() >= CROPS[k].seed && farm.buy('seed:' + k, 1))) return null;
     if (!farm.plant(i, k)) return null;
-    const r = { kind: 'sow', text: `gieo ${CROPS[k].icon} ${CROPS[k].name}${pk.order ? ' cho đơn hàng' : ''}`, at: plotAt(i), icon: '🌱', plot: i, done: true };
+    const r = { kind: 'sow', text: `gieo ${CROPS[k].icon} ${CROPS[k].name}${mFor(pk)}`, at: plotAt(i), icon: '🌱', plot: i, done: true };
     mBook(t, id, coins() - c0, 0); mRecord(id, t, [r]);
     return r;
   }
