@@ -3344,7 +3344,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '18:26 06-11';
+    const build = '18:33 06-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -4281,6 +4281,19 @@
     return false;
   }
   // staff: one map person per worker on shift; they walk to each thing they did (plot, pen, pond, shop) and act it out
+  // the nearest walkable tile no other worker stands on or is walking to (so nobody hides behind a colleague)
+  function nearWalkFree(px, py, self) {
+    const taken = new Set();
+    for (const o of villagers) {
+      if (o === self || !o.staff) continue;
+      taken.add(`${o.tileCol},${o.tileRow}`);
+      const e = o.path && o.path[o.path.length - 1]; if (e) taken.add(`${e.col},${e.row}`);
+    }
+    const c0 = Math.floor(px / 16), r0 = Math.floor(py / 16);
+    for (let d = 0; d <= 4; d++) for (let dr = -d; dr <= d; dr++) for (let dc = -d; dc <= d; dc++)
+      if (Math.max(Math.abs(dc), Math.abs(dr)) === d && walkable(c0 + dc, r0 + dr) && !taken.has(`${c0 + dc},${r0 + dr}`)) return { c: c0 + dc, r: r0 + dr };
+    return nearWalk(px, py);
+  }
   function nearWalk(px, py) {
     const c0 = Math.floor(px / 16), r0 = Math.floor(py / 16);
     for (let d = 0; d <= 3; d++) for (let dr = -d; dr <= d; dr++) for (let dc = -d; dc <= d; dc++) if (Math.max(Math.abs(dc), Math.abs(dr)) === d && walkable(c0 + dc, r0 + dr)) return { c: c0 + dc, r: r0 + dr };
@@ -4377,7 +4390,7 @@
       r = r || (q && q.shift());
       if (!r) { const hm = ROLE_HOME(v.role); r = { kind: 'rest', at: hm || { x: v.x, y: v.y }, cos: 1 }; v.lastRest = now; }
       let tile = null;
-      if (r && r.at) { tile = r.stand || nearWalk(r.at.x, r.at.y); v.task = r; }
+      if (r && r.at) { const sp = r.stand ? { x: r.stand.c * 16 + 8, y: r.stand.r * 16 + 8 } : r.at; tile = nearWalkFree(sp.x, sp.y, v); v.task = r; }
       if (!tile) { v.task = null; tile = farTile(v, 1, 4); }
       v.step = tile && villagerGo(v, tile.c, tile.r) ? 'going' : 'idle';
       if (v.step === 'idle') { v.step = 'doing'; v.start = now; v.until = now + 1500; }
