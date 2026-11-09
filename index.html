@@ -1051,7 +1051,9 @@
     });
   }
   // the engine's own characters no longer do farm chores or visit animals (user 2026-11-06: no aimless people)
-  let SHOW_AGENTS = (() => { try { return localStorage.getItem('forest-show-agents') === '1'; } catch { return false; } })();
+  // the Claude sessions that are working show at their desks by default (user 2026-11-09: "không thấy nhân vật AI làm việc đâu");
+  // idle sessions stay hidden (2026-11-06: no wandering agents on the map). New key, so an old "hide" does not stick.
+  let SHOW_AGENTS = (() => { try { return localStorage.getItem('forest-show-agents2') !== '0'; } catch { return true; } })();
   function farmTick(now) {
     const office = window.__forestOffice;
     if (!office || !office.characters) return;
@@ -3938,7 +3940,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '18:04 09-11';
+    const build = '18:13 09-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -4115,7 +4117,7 @@
     if (act === 'buy') farm.buy(key, Number(n));
     if (act === 'sell') farm.sell(key, n === 'all' ? Infinity : Number(n));
     if (act === 'buyAnimal') farm.buyAnimal(a1);
-    if (act === 'agents') { SHOW_AGENTS = !SHOW_AGENTS; try { localStorage.setItem('forest-show-agents', SHOW_AGENTS ? '1' : '0'); } catch {} }
+    if (act === 'agents') { SHOW_AGENTS = !SHOW_AGENTS; try { localStorage.setItem('forest-show-agents2', SHOW_AGENTS ? '1' : '0'); } catch {} }
     if (act === 'zooOpen') zoo.open();
     if (act === 'zooBuy') zoo.buy(a1);
     if (act === 'zooFeedAll') for (const id of zooIds()) zoo.feed(id);
