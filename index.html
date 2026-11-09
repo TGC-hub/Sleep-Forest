@@ -2185,7 +2185,7 @@
   // buys land and animals. Every MSTEP of farm time each worker spends action points on the jobs of their role.
   // On open, the time since mgr/last is replayed step by step through farmNow() (silently), so the field, pens and
   // books look exactly as if they had worked all along. Save keys: mgr/staff, mgr/last, mgr/day/<day>, mgr/log, mgr/away.
-  const MSTEP = 5 * 60000, MCATCH = 7 * 864e5, MWORK = [6, 24], MLOG = 160, MMAX = 12;
+  const MSTEP = 5 * 60000, MCATCH = 7 * 864e5, MWORK = [6, 18], MLOG = 160, MMAX = 12; // shift 6-18 (user 2026-11-09); later = overtime, x2 pay
   const ROLES = {
     boss: { name: 'Quản lý', icon: '🧑‍💼', ap: 6, wage: 0, hire: 0, jobs: ['rescue', 'dead', 'boss', 'harvest', 'orders', 'field', 'ranch', 'pond', 'cook', 'sell', 'water', 'wood', 'fish'] },
     farmer: { name: 'Trồng trọt', icon: '🧑‍🌾', ap: 9, wage: 30, hire: 120, jobs: ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'field', 'water'] },
@@ -2216,7 +2216,9 @@
     const gone = new Set(save.keys('mgr/gone/').map((k) => k.slice(9))), byId = new Map();
     for (const w of save.get('mgr/staff', [])) if (w && w.id) byId.set(w.id, w);
     for (const k of save.keys('mgr/w/')) { const w = save.get(k); if (w && w.id) byId.set(w.id, { ...(byId.get(w.id) || {}), ...w }); }
-    return (mRosterCache = [...byId.values()].filter((w) => !gone.has(w.id)).sort((a, b) => (a.hired || 0) - (b.hired || 0)));
+    const list = [...byId.values()].filter((w) => !gone.has(w.id)).sort((a, b) => (a.hired || 0) - (b.hired || 0));
+    const boss = list.find((w) => w.role === 'boss'); // only one head manager: the first one hired (a device that made its own before its first sync)
+    return (mRosterCache = list.filter((w) => w.role !== 'boss' || w === boss));
   }
   const mStaff = () => { const acc = save.get('mgr/acc', {}); return mRoster().map((w) => ({ ...w, acc: acc[w.id] != null ? acc[w.id] : w.acc || 0 })); };
   const mSetAcc = (m) => save.set('mgr/acc', { ...save.get('mgr/acc', {}), ...m });
@@ -2917,11 +2919,12 @@
     return true;
   }
   // orders are due by 23:30 (the staff stop at midnight)
-  const orderDeadline = (t) => { const d = new Date(t); d.setHours(23, 30, 0, 0); return d.getTime(); };
+  const orderDeadline = (t) => shiftEnd(t) - 45 * 60000; // ripe 45 min before the shift ends: time to harvest and deliver
   // what fertilizer it takes to make each open order in time, and whether that pays (or a small loss keeps the
   // reputation: up to what a missed order would cost in lower prices over the next two weeks, at most 30% of it)
-  function mRushPlan(t) {
-    const end = orderDeadline(t), day = dayNo(t), all = orderBook(day), F = TOOLS.fert.price;
+  function mRushPlan(t, endAt) {
+    const d0 = new Date(t); d0.setHours(0, 0, 0, 0);
+    const end = endAt != null ? d0.getTime() + endAt : orderDeadline(t), day = dayNo(t), all = orderBook(day), F = TOOLS.fert.price;
     const bookCoins = all.reduce((s, o) => s + o.coins, 0), used = {}, plans = [];
     for (const o of all) {
       if (o.done || canFill(o)) continue;
@@ -2954,13 +2957,25 @@
       const repWorth = Math.round(-REP.miss * REP.days * 0.006 * bookCoins), allow = Math.min(repWorth, Math.round(o.coins * 0.3));
       plans.push({ o, ok: true, ferts, cost, profit, allow, steps, worth: profit >= 0 || -profit <= allow });
     }
+    // fertilizer vs overtime: if keeping the crew on until 22:00 costs less than the bags, leave it for the 17:30 call
+    if (endAt == null && mLocalH(t) < 17.5) {
+      const alt = mRushPlan(t, 22 * HOUR - 45 * 60000), st = mStaff();
+      for (const P of plans) {
+        if (!P.ok || !P.steps.length) continue;
+        const A = alt.find((x) => x.o.slot === P.o.slot); if (!A || !A.ok) continue;
+        const crops = Object.keys(P.o.want).some((k) => CROPS[k]);
+        const crew = st.filter((w) => w.role === 'boss' || (crops && w.role === 'farmer')).reduce((sum, w) => sum + otCost(w, 22), 0);
+        if (A.cost + crew < P.cost) { P.preferOT = true; P.otCost = A.cost + crew; }
+      }
+    }
     return plans;
   }
   // the job: fertilize a plot an order needs (the farmer, the manager)
   function mRushJob(t, w) {
-    if (!mScope(w).plots || !mWorking(t)) return null;
+    if (!mScope(w).plots || !mOnShift(w, t)) return null;
+    if (orderDeadline(t) - t < 90 * 60000) return null; // too late to start: bags would be wasted; the 17:30 call (overtime / cancel) decides
     for (const P of mRushPlan(t)) {
-      if (!P.ok || !P.worth || !P.steps.length) continue;
+      if (!P.ok || !P.worth || !P.steps.length || P.preferOT) continue;
       const st = P.steps.find((s) => mFree('plot:' + s.i) && simPlot(s.i, t).status === 'grow');
       if (!st) continue;
       // an order worth saving may dip into the wage reserve for a 15-coin bag; an empty purse borrows
@@ -2972,7 +2987,82 @@
     return null;
   }
   // in the evening the manager cancels what cannot be made in time, or would cost too much to save (−3 beats −5)
-  function mOrderEvening(t) {
+  // ── Shift and overtime (user 2026-11-09): the staff work 6:00-18:00. Overtime (until 20, 22 or 24) is decided by the
+  // manager from how the farm stands, or by the owner on a worker's card, and pays double: wage / 12 h x 2 per hour,
+  // charged at the next payday for the hours actually worked. ot/<day>/<id> = { until, by: 'boss' | 'owner', why }.
+  const OT_OPTIONS = [20, 22, 24];
+  const mOT = (id, t = farmNow()) => save.get(`ot/${dayNo(t)}/${id}`, null);
+  const mOnShift = (w, t = farmNow()) => { const h = mLocalH(t); if (h >= MWORK[0] && h < MWORK[1]) return true; const o = h >= MWORK[1] && mOT(w.id, t); return !!(o && o.until > 0 && h < o.until); };
+  const otRate = (w) => ((ROLES[w.role] || {}).wage || 0) / (MWORK[1] - MWORK[0]) * 2; // coins per overtime hour
+  const otCost = (w, until) => Math.round(otRate(w) * Math.max(0, until - MWORK[1]));
+  function mSetOT(id, until, by, why, t = farmNow()) {
+    const k = `ot/${dayNo(t)}/${id}`, cur = save.get(k);
+    // user 2026-11-09: the manager has the say on the worker cards too (may change the owner's overtime; logged)
+    if (by === 'boss' && cur && cur.until === until) return false;
+    save.set(k, until > MWORK[1] ? { until, by, why: why || '', t } : { until: 0, by, t });
+    return true;
+  }
+  // the latest time today the staff who can deliver an order (manager, farmers, seller) are still on shift
+  function shiftEnd(t) {
+    let end = MWORK[1];
+    for (const w of mStaff()) if (['boss', 'farmer', 'seller'].includes(w.role)) { const o = mOT(w.id, t); if (o && o.until > end) end = o.until; }
+    const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime() + end * HOUR;
+  }
+  // at 17:30 the manager decides: keep people on to finish orders that can still be made (and pay for it), or cancel
+  function mEvening(t) {
+    const h = mLocalH(t), day = dayNo(t), st = mStaff(), boss = st.find((w) => w.role === 'boss'), bid = boss ? boss.id : '';
+    if (h >= 17.5 && h < MWORK[1] && !save.get(`otplan/${day}`)) {
+      save.set(`otplan/${day}`, 1);
+      const late = mRushPlan(t, 22 * HOUR - 45 * 60000).filter((P) => P.ok), now = mRushPlan(t).filter((P) => P.ok && P.worth && !P.steps.length);
+      const need = late.filter((P) => !now.some((Q) => Q.o.slot === P.o.slot));
+      const crews = new Set();
+      const keep = [];
+      for (const P of need) {
+        const crops = Object.keys(P.o.want).some((k) => CROPS[k]), dish = Object.keys(P.o.want).some((k) => k.startsWith('d:'));
+        const who = st.filter((w) => w.role === 'boss' || (crops && w.role === 'farmer') || (dish && w.role === 'cook'));
+        const extra = who.filter((w) => !crews.has(w.id)).reduce((s, w) => s + otCost(w, 22), 0);
+        if (P.profit - extra >= -P.allow) { keep.push(P); who.forEach((w) => crews.add(w.id)); }
+      }
+      for (const id of crews) mSetOT(id, 22, 'boss', 'làm cho kịp đơn hàng', t);
+      // overtime the owner set with nothing left that pays for it: the manager sends them home on time (logged)
+      for (const w of st) { const o = mOT(w.id, t); if (o && o.by === 'owner' && o.until > MWORK[1] && !crews.has(w.id) && w.role !== 'boss') {
+        const ripeN = [...Array(land()).keys()].filter((i) => simPlot(i, t).status === 'ripe').length, useful = (w.role === 'farmer' && ripeN >= 3) || (w.role === 'cook' && [...Array(kitchenSlots()).keys()].some((k) => simCook(k, t).status !== 'empty')) || ['angler', 'seller', 'guide'].includes(w.role);
+        if (!useful && mSetOT(w.id, 0, 'boss', '', t)) mLog(t, bid, `⏱️ Quản lý cho ${w.name} về đúng 18h: tối nay không còn việc đáng trả lương tăng ca`, 0);
+      } }
+      if (crews.size) mLog(t, bid, `⏱️ Cho ${[...crews].map((id) => (st.find((w) => w.id === id) || {}).name).join(', ')} tăng ca đến 22h (x2 lương) để kịp ${keep.length} đơn hàng`, 0);
+      // a field full of ripe crops: one farmer stays 2 more hours to bring them in, if the crops are worth it
+      const ripe = [...Array(land()).keys()].filter((i) => simPlot(i, t).status === 'ripe');
+      const farmer = st.find((w) => w.role === 'farmer' && !crews.has(w.id));
+      if (farmer && ripe.length >= 6) {
+        const worth = ripe.reduce((s, i) => { const x = simPlot(i, t); return s + x.yield * priceOf(x.crop); }, 0);
+        if (worth > otCost(farmer, 20) * 3 && mSetOT(farmer.id, 20, 'boss', `thu ${ripe.length} ô đã chín`, t)) mLog(t, bid, `⏱️ Cho ${farmer.name} tăng ca đến 20h (x2 lương) để thu ${ripe.length} ô đã chín`, 0);
+      }
+    }
+    // when the last delivering shift is about to end: cancel what will not be made (−1 now beats −3 at midnight)
+    const end = shiftEnd(t);
+    if (t >= end - 20 * 60000 && t < end && !save.get(`ocheck/${day}`)) {
+      save.set(`ocheck/${day}`, 1);
+      for (const P of mRushPlan(t)) {
+        if (P.ok && P.worth && !P.steps.length) continue;
+        orderCancel(day, P.o.slot, t, bid, !P.ok ? 'không kịp làm đủ hàng trước khi hết ca' : `bón phân cho kịp sẽ lỗ ~${money(-P.profit)} xu, quá mức đáng để giữ uy tín`);
+      }
+    }
+  }
+  // overtime pay for yesterday, at the next payday (owed like a wage, paid with today's wages)
+  function mOTPay(t) {
+    const yt = t - 864e5, yd = mDayRec(yt), debt = mDebts(), lines = [];
+    for (const w of mStaff()) {
+      const b = yd.by[w.id]; if (!b || !b.otH || b.otPaid) continue;
+      const amt = Math.round(otRate(w) * b.otH); b.otPaid = amt || -1;
+      if (amt <= 0) continue;
+      (debt[w.id] || (debt[w.id] = { name: w.name, amt: 0 })).amt += amt;
+      lines.push(`${w.name} ${money(amt)} xu (${Math.round(b.otH * 10) / 10} giờ)`);
+    }
+    save.set(`mgr/day/${dayNo(yt)}`, yd); save.set('mgr/debt', debt);
+    if (lines.length) { const boss = mStaff().find((w) => w.role === 'boss'); mLog(t, boss ? boss.id : '', `⏱️ Lương tăng ca hôm qua (x2): ${lines.join(', ')}`, 0); }
+  }
+
+  function mOrderEveningOld(t) {
     if (mLocalH(t) < 21) return;
     const boss = mStaff().find((w) => w.role === 'boss'), day = dayNo(t);
     for (const P of mRushPlan(t)) {
@@ -3037,6 +3127,8 @@
     // zoo food bill for animals nobody fed is not charged (they just go hungry); feeding is paid when it happens
     if (mStaff().some((w) => w.role === 'hr')) mHrReport(t - 864e5);
     mLazyCut(t);
+    mOTPay(t);
+    mManagerReview(t);
     mRepDay(t - 864e5);
     let st = mStaff();
     const debt = mDebts(), d = mDayRec(t);
@@ -3066,6 +3158,25 @@
     const b = mDayRec(t).by[w.id] || {}, shift = b.shift || 0;
     return { acts: b.acts || 0, value: b.value || 0, cost: b.cost || 0, wage: b.wage || 0, net: (b.value || 0) - (b.cost || 0) - (b.wage || 0), att: shift ? 1 - (b.slack || 0) / shift : null };
   }
+  // user 2026-11-09: "quản lý coi như là tôi, có quyền hết": every morning the manager may let one worker go who
+  // has been losing money (4 of the last 5 days in the red, more than 2 days' wages lost in all) or is rarely
+  // working (under 60% attendance over 5 days). Only after 5 days on the job; never the manager.
+  function mManagerReview(t) {
+    const st = mStaff(), boss = st.find((w) => w.role === 'boss');
+    let worst = null;
+    for (const w of st) {
+      const R = ROLES[w.role]; if (!R || w.role === 'boss' || !R.wage || t - (w.hired || t) < 5 * 864e5) continue;
+      const days = [1, 2, 3, 4, 5].map((k) => mStaffDay(w, t - k * 864e5)), red = days.filter((d) => d.net < 0).length, sum = days.reduce((a, d) => a + d.net, 0);
+      const atts = days.map((d) => d.att).filter((x) => x != null), att = atts.length ? atts.reduce((a, x) => a + x, 0) / atts.length : 1;
+      const why = red >= 4 && sum < -2 * R.wage ? `làm lỗ ${red}/5 ngày gần nhất (tổng ${money(sum)} xu)` : att < 0.6 && atts.length >= 3 ? `hay lười (chỉ làm ${Math.round(att * 100)}% giờ ca trong 5 ngày)` : null;
+      if (why && (!worst || sum < worst.sum)) worst = { w, why, sum };
+    }
+    if (!worst) return;
+    const { w, why } = worst, e = mDebts()[w.id];
+    mRemoveWorker(w.id, 'fired-by-manager');
+    mLog(t, boss ? boss.id : '', `👋 Quản lý cho ${w.name} (${ROLES[w.role].name}) nghỉ việc: ${why}${e && e.amt > 0 ? ` (còn nợ lương ${money(e.amt)} xu, sẽ trả khi có tiền)` : ''}`, 0);
+    if (mRun && mRun.sum) mRun.sum.left.push(w.name);
+  }
   function mHrReport(t) {
     const rows = mStaff().filter((w) => w.role !== 'boss').map((w) => ({ w, s: mStaffDay(w, t) })).filter((x) => x.s.att != null);
     if (!rows.length) return;
@@ -3078,14 +3189,17 @@
   // one step of farm time for every worker
   function mStep(t) {
     mPayday(t);
-    if (!mWorking(t)) return;
+    if (mLocalH(t) < MWORK[0]) return; // the farm is open 6-24: visitors, the campfire, the story
     mVisitors(t);
-    mOrderEvening(t); // cancel what cannot be made in time (from 21:00)
+    mEvening(t); // 17:30: overtime for orders that can still be made, or cancel; cancel what is left when the shift ends
     xStep(t); // campfire, campers, the traveller's story, finished islet buildings
+    if (!mStaff().some((w) => mOnShift(w, t))) return;
     const st = mStaff().map((w) => ({ ...w })), stepH = MSTEP / HOUR;
     let changed = false;
     for (const w0 of st) {
       const w = w0, R = ROLES[w.role]; if (!R) continue;
+      if (!mOnShift(w, t)) continue; // off shift (6-18, or after their overtime)
+      if (mLocalH(t) >= MWORK[1]) { const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 }); b.otH = (b.otH || 0) + stepH; save.set(`mgr/day/${dayNo(t)}`, d); }
       // attendance: a less diligent worker slacks off now and then (nothing done that step); unpaid wages make it worse
       {
         const owed = (mDebts()[w.id] || {}).amt || 0, dil = dilOf(w) * (R.wage && owed >= R.wage * 3 ? 0.7 : 1);
@@ -3285,7 +3399,7 @@
     try { mCatchUp(); } catch (e) { console.warn('[Claude Forest] manager: ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' <- ') : e)); }
     if (mAwayPending && typeof openPanel === 'function' && farmPanel) { mAwayPending = false; openPanel({ kind: 'away' }); }
   }
-  window.__forestMgr = { broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
+  window.__forestMgr = { ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
   farm.debug = { simCook, specialOf, priceOf, RECIPES, workReward, fuelOf };
 
@@ -3761,7 +3875,7 @@
       const week = days.reduce((s, x) => s + x.p, 0), working = mWorking(now);
       const doing = st.map((w) => {
         const n = mNow[w.id], fresh = n && Date.now() - n.at < 15 * 60000, last = !fresh && mLastDid(w.id);
-        return row(`${ROLES[w.role].icon} ${w.name} <span style="opacity:.6">${ROLES[w.role].name}</span>`, `<span style="opacity:.85">${!working ? '😴 nghỉ' + (last ? ' · vừa ' + last : '') : fresh ? n.text : last ? 'vừa ' + last : '🚶 đi một vòng'}</span>`);
+        return row(`${ROLES[w.role].icon} ${w.name} <span style="opacity:.6">${ROLES[w.role].name}</span>`, `<span style="opacity:.85">${!mOnShift(w, now) ? '😴 nghỉ' + (last ? ' · vừa ' + last : '') : fresh ? n.text : last ? 'vừa ' + last : '🚶 đi một vòng'}</span>`);
       }).join('');
       body = (mRunnerText() ? `<div style="font-size:12px;opacity:.85;margin-top:6px">${mRunnerText()}</div>` : '') + `<div style="margin-top:6px">💰 Két: <b>${money(c)}</b> xu · ⭐ Cấp ${L}</div>`
         + `<div style="margin:6px 0">${B('tab:money', '📊 Xem doanh thu từ đâu, chi vào đâu', true, 'width:100%;min-height:36px;font-size:14px;')}</div>`
@@ -3774,7 +3888,7 @@
         + row('Lãi hôm nay', `<b>${money(today.in - today.out)}</b>`) + row('Lãi 7 ngày', `<b>${money(week)}</b>`) + bars
         + '<div style="opacity:.8;margin-top:8px">Cơ ngơi</div>'
         + row('🌱 Ruộng', `${land()}/${FARM.plots.length} ô`) + row('🐾 Vật nuôi', `${animalIds().length} con`) + row('👥 Nhân viên', `${st.length} người · lương ${money(mWages(st))} xu/ngày`)
-        + `<div style="opacity:.8;margin-top:8px">Đang làm gì ${working ? '' : '<span style="opacity:.7">(ca làm 6h–24h)</span>'}</div>` + doing;
+        + `<div style="opacity:.8;margin-top:8px">Đang làm gì ${working ? '' : '<span style="opacity:.7">(ca làm 6h–18h)</span>'}</div>` + doing;
     } else if (tab === 'mail') {
       body = mailPanelHtml();
     } else if (tab === 'money') {
@@ -3823,7 +3937,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '15:03 09-11';
+    const build = '15:22 09-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -3833,12 +3947,17 @@
     if (!w) return head('Nhân viên') + '<div>Người này đã nghỉ việc.</div>';
     const R = ROLES[w.role], now = farmNow(), b = mDayRec(now).by[w.id] || { acts: 0, value: 0 }, map = villagers.find((x) => x.staff === w.id);
     let wk = 0; for (let k = 0; k < 7; k++) { const x = mDayRec(now - k * 864e5).by[w.id]; if (x) wk += x.value; }
-    const T = map && map.task, doing = !mWorking(now) ? '😴 Hết ca, đang nghỉ' : !map ? 'Đang trên đường tới trại' : T ? (T.cos ? MOTION_VI[T.kind] || 'làm việc' : T.text) + (map.step === 'going' ? ' (đang đi tới)' : '') : 'Đi một vòng';
+    const T = map && map.task, doing = !mOnShift(w, now) ? '😴 Hết ca, đang nghỉ' : !map ? 'Đang trên đường tới trại' : T ? (T.cos ? MOTION_VI[T.kind] || 'làm việc' : T.text) + (map.step === 'going' ? ' (đang đi tới)' : '') : 'Đi một vòng';
     const recent = save.get('mgr/log', []).filter((e) => e.id === w.id).slice(0, 4).map((e) => e.items ? e.items.slice(-4).join(', ') : e.text);
     return head(`${R.icon} ${w.name} <span style="color:${ROLE_COL[w.role] || '#fff'}">· ${R.name}</span>`)
       + row('Đang làm', `<b>${doing}</b>`)
       + row('Hôm nay', `${b.acts} việc · ~${money(b.value)} xu`) + row('7 ngày tạo ra', `~${money(wk)} xu`)
       + row('Lương', R.wage ? `${R.wage} xu/ngày` : 'chia lời')
+      + (() => { // shift + overtime (owner's buttons; the manager decides at 17:30 otherwise)
+        const o = mOT(w.id, now), rate = otRate(w), cur = o && o.until > MWORK[1] ? `⏱️ tăng ca đến ${o.until}h (${o.by === 'owner' ? 'bạn cho' : 'quản lý cho: ' + (o.why || '')}) · ~${money(otCost(w, o.until))} xu` : o && o.by === 'boss' ? 'quản lý cho nghỉ đúng giờ' : 'không tăng ca';
+        return row('Ca làm', `6h–18h · ${cur}`) + `<div style="font-size:11px;opacity:.75;margin:-2px 0 2px">Tăng ca x2 lương: ${rate ? '~' + money(rate) + ' xu/giờ' : 'quản lý không lấy lương'}. Trả vào ngày lương hôm sau theo giờ làm thật. Quản lý được quyền đổi lúc 17:30 nếu tình hình trại cần.</div><div>`
+          + OT_OPTIONS.map((u) => B(`ot:${w.id}:${u}`, `đến ${u}h${rate ? ' · ' + money(otCost(w, u)) : ''}`, true, o && o.until === u ? 'border-color:#7fd65a;' : '')).join('') + B(`ot:${w.id}:0`, 'Không tăng ca', true, !o || !o.until ? 'border-color:#7fd65a;' : '') + '</div>';
+      })()
       + (R.wage ? (() => { const y = mDayRec(now - 864e5).by[w.id] || {}, lazyH = Math.round((b.slack || 0) * 10) / 10; return row('Lười', `hôm nay ${lazyH} giờ${y.cut ? ` · hôm qua bị trừ ${money(y.cut)} xu` : ''}`) + '<div style="font-size:11px;opacity:.7;margin:-2px 0 4px">Lười bị trừ lương ngày đó (theo số giờ lười/giờ ca). Lúc bạn đang mở app xem thì không ai dám lười.</div>'; })() : '') + row('Vào làm', `${Math.max(1, Math.ceil((now - w.hired) / 864e5))} ngày`)
       + `<div style="margin:4px 0;border-top:1px solid #33334a;padding-top:4px">Phụ trách: <span style="opacity:.85">${R.jobs.map((j) => JOB_VI[j]).join(', ')}</span></div>`
       + (recent.length ? '<div style="opacity:.8;margin-top:6px">Vừa làm</div>' + recent.map((x) => `<div style="font-size:12px;margin:2px 0">• ${x}</div>`).join('') : '')
@@ -3986,6 +4105,7 @@
     if (act === 'land') farm.buyLand();
     if (act === 'upgrade') farm.upgrade(a1);
     if (act === 'fill') farm.fillOrder(Number(a1));
+    if (act === 'ot') { mSetOT(a1, Number(a2), 'owner', 'chủ trại cho'); const w = mStaff().find((x) => x.id === a1); if (w) mLog(farmNow(), a1, Number(a2) ? `Chủ trại cho ${w.name} tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} nghỉ đúng giờ (không tăng ca)`, 0); }
     if (act === 'ocancel' && confirm('Huỷ đơn này? Uy tín −1 (để trễ đến hết ngày là −3).')) orderCancel(dayNo(), Number(a1), farmNow(), '', 'chủ trại huỷ');
     if (act === 'cook') { let slot = 0; while (slot < kitchenSlots() && simCook(slot).status !== 'empty') slot++; farm.cook(slot, a1, Number(a2)); }
     if (act === 'serve') farm.serve(Number(a1));
@@ -4884,10 +5004,10 @@
     : role === 'woodcutter' ? treeAt() || barnAt() : role === 'seller' ? shopAt() : barnAt();
   function staffSync(now) {
     if (!VCREW || !VCREW.doors.length) return;
-    const st = mStaff(), on = mWorking(farmNow());
-    for (const v of villagers) if (v.staff && (!on || !st.some((w) => w.id === v.staff)) && v.step !== 'home') goHome(v);
-    if (!on) return;
+    const st = mStaff(), tn = farmNow();
+    for (const v of villagers) if (v.staff && v.step !== 'home') { const w = st.find((x) => x.id === v.staff); if (!w || !mOnShift(w, tn)) goHome(v); }
     for (const w of st) {
+      if (!mOnShift(w, tn)) continue;
       if (villagers.some((v) => v.staff === w.id)) continue;
       if (staffSync.next && now < (staffSync.next[w.id] || 0)) continue;
       (staffSync.next || (staffSync.next = {}))[w.id] = now + 1500 + Math.random() * 2500; // stagger arrivals
@@ -4946,7 +5066,7 @@
       const T = v.task;
       // the decided action happens as the motion ends; after hoeing an empty plot, sow it on the spot
       if (T.calls) mExec(v.staff, T);
-      const sown = (T.kind === 'hoe' || (T.kind === 'clear' && T.plot != null)) && T.plot != null && mWorking(farmNow()) && mHoldLease() && mSowAt(v.staff, T.plot);
+      const sown = (T.kind === 'hoe' || (T.kind === 'clear' && T.plot != null)) && T.plot != null && mOnShift({ id: v.staff }, farmNow()) && mHoldLease() && mSowAt(v.staff, T.plot);
       if (sown) { v.task = sown; v.start = now; v.until = now + MDUR.sow; return; }
     }
     if (v.step === 'doing' || v.step === 'idle') {
@@ -4954,7 +5074,7 @@
       // while you watch, a worker does the next useful thing straight away (like a player tapping through the farm);
       // nothing useful left -> a short rest near their station (no make-believe work)
       let r = null;
-      const w = mWorking(farmNow()) && mStaff().find((x) => x.id === v.staff);
+      const w0 = mStaff().find((x) => x.id === v.staff), w = w0 && mOnShift(w0, farmNow()) && w0;
       // the same pace as while you are away: an action only when the worker has one in hand (their hourly rate)
       if (w && (w.acc || 0) >= 1 && mHoldLease()) {
         r = mPlan(w, farmNow());
