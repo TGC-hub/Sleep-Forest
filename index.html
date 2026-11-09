@@ -398,13 +398,14 @@
       const e = new Error(why); e.status = res.status; return e;
     };
 
-    let running = null, again = false;
+    let running = null, again = false, syncedAt = 0; // syncedAt: start time of the last sync that finished OK in this page
     // pull, merge, push back whatever the remote is missing; retries when the other device wrote in between
     function sync(opts = {}) {
       if (!cfg.token) return Promise.resolve(false);
       if (running) { again = true; return running; }
       clearTimeout(pushTimer);
       status.state = 'busy'; notify(null);
+      const began = Date.now();
       running = (async () => {
         for (let attempt = 0; attempt < 4; attempt++) {
           const res = await api('GET');
@@ -424,7 +425,7 @@
         }
         throw new Error('GitHub đang bận, thử lại sau');
       })().then((ok) => {
-        status.state = 'idle'; status.msg = ''; status.at = cfg.lastSync = Date.now(); persistCfg();
+        status.state = 'idle'; status.msg = ''; status.at = cfg.lastSync = Date.now(); persistCfg(); syncedAt = began;
         return ok;
       }, (e) => {
         status.state = 'error'; status.msg = e.message || String(e);
@@ -461,6 +462,7 @@
       keys(prefix) { return Object.keys(data.items).filter((k) => k.startsWith(prefix) && data.items[k].v != null); },
       onChange(f) { listeners.push(f); },
       sync: () => sync(),
+      syncedAt: () => syncedAt,
       status: () => ({ ...status, connected: !!cfg.token, repo: SYNC_REPO }),
       connect(token) { cfg.token = String(token || '').trim(); status.state = cfg.token ? 'idle' : 'off'; persistCfg(); notify(null); return sync(); },
       disconnect() { delete cfg.token; status.state = 'off'; status.msg = ''; persistCfg(); notify(null); },
@@ -3055,12 +3057,28 @@
 
   // replay the time since the last step; silent (no sounds, no floaters) unless it is just the next step live
   // one device at a time runs the staff (otherwise phone and PC would both sell the same goods): a lease in the save
-  const MLEASE = 10 * 60000;
+  // With sync on, a device acts only on a FRESH copy of the save: it pulled within MFRESH, and a lease it has
+  // just claimed has been pushed and read back (both devices claiming at once: the newer write wins, the other waits).
+  // 2026-11-09: the phone opened with an old copy (lease long expired, mgr/last 11 h ago), replayed hours the PC
+  // had already run and both banks got the money (x2). Same for the PC coming back after days.
+  const MLEASE = 10 * 60000, MFRESH = 150000;
+  let mClaimAt = 0, mWait = '';
   function mHoldLease() {
-    const l = save.get('mgr/lease'), me = save.device, now = Date.now();
-    if (l && l.dev !== me && l.until > now) return false;
-    if (!l || l.dev !== me || l.until - now < MLEASE - 2 * 60000) save.set('mgr/lease', { dev: me, until: now + MLEASE });
+    const now = Date.now(), me = save.device, on = save.status().connected;
+    if (on && now - save.syncedAt() > MFRESH) { mWait = 'sync'; save.sync(); return false; }
+    const l = save.get('mgr/lease');
+    if (l && l.dev !== me && l.until > now) { mWait = l.dev; mClaimAt = 0; return false; }
+    if (!l || l.dev !== me) { save.set('mgr/lease', { dev: me, until: now + MLEASE }); mClaimAt = now; if (on) { mWait = 'claim'; save.sync(); return false; } }
+    if (on && mClaimAt && save.syncedAt() <= mClaimAt) { mWait = 'claim'; return false; }
+    mClaimAt = 0; mWait = '';
+    if (l && l.dev === me && l.until - now < MLEASE - 2 * 60000) save.set('mgr/lease', { dev: me, until: now + MLEASE });
     return true;
+  }
+  // who runs the staff right now (shown in the manager panel)
+  function mRunnerText() {
+    if (!mWait) return '';
+    if (mWait === 'sync' || mWait === 'claim') return '⏳ Đang đồng bộ với máy kia trước khi cho nhân viên làm tiếp…';
+    return `🖥️ Máy ${mWait.startsWith('pc-') ? 'PC' : 'điện thoại'} khác đang điều hành nhân viên — máy này chỉ xem (không tính tiền hai lần).`;
   }
   function mCatchUp() {
     if (!mHoldLease()) return;
@@ -3573,7 +3591,7 @@
         const n = mNow[w.id], fresh = n && Date.now() - n.at < 15 * 60000, last = !fresh && mLastDid(w.id);
         return row(`${ROLES[w.role].icon} ${w.name} <span style="opacity:.6">${ROLES[w.role].name}</span>`, `<span style="opacity:.85">${!working ? '😴 nghỉ' + (last ? ' · vừa ' + last : '') : fresh ? n.text : last ? 'vừa ' + last : '🚶 đi một vòng'}</span>`);
       }).join('');
-      body = `<div style="margin-top:6px">💰 Két: <b>${money(c)}</b> xu · ⭐ Cấp ${L}</div>`
+      body = (mRunnerText() ? `<div style="font-size:12px;opacity:.85;margin-top:6px">${mRunnerText()}</div>` : '') + `<div style="margin-top:6px">💰 Két: <b>${money(c)}</b> xu · ⭐ Cấp ${L}</div>`
         + `<div style="margin:6px 0">${B('tab:money', '📊 Xem doanh thu từ đâu, chi vào đâu', true, 'width:100%;min-height:36px;font-size:14px;')}</div>`
         + row('Hôm nay thu', `<b style="color:#7fd65a">+${money(today.in)}</b>`)
         + (today.cat && Object.keys(today.cat.in).length ? `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">từ ${Object.entries(today.cat.in).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, v]) => `${n.replace(/^Bán /, 'bán ').replace(/^Giao /, 'giao ')} ${money(v)}`).join(' · ')} ${B('tab:money', 'Xem chi tiết')}</div>` : '')
@@ -3632,7 +3650,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:58 09-11';
+    const build = '12:04 09-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
