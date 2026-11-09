@@ -1803,7 +1803,10 @@
     egg: { name: 'Trứng gà', icon: '🥚', price: 8 }, duckegg: { name: 'Trứng vịt', icon: '🪺', price: 11 }, goatmilk: { name: 'Sữa dê', icon: '🍼', price: 28 },
     wool: { name: 'Lông cừu', icon: '🧶', price: 45 }, alpaca: { name: 'Len alpaca', icon: '🧣', price: 95 }, ostrichegg: { name: 'Trứng đà điểu', icon: '🥚', price: 110 }, horsehair: { name: 'Lông bờm ngựa', icon: '🪮', price: 90 }, milk: { name: 'Sữa bò', icon: '🥛', price: 35 }, rabbitmeat: { name: 'Thịt thỏ', icon: '🍖', price: 55 }, pork: { name: 'Thịt heo', icon: '🥓', price: 80 },
   };
-  const CATCH_GOODS = { fish: { name: 'Cá chép', icon: '🐟', price: 12 }, perch: { name: 'Cá rô', icon: '🐠', price: 10 }, crab: { name: 'Cua', icon: '🦀', price: 15 }, gold: { name: 'Cá vàng', icon: '✨', price: 80 }, boot: { name: 'Ủng cũ', icon: '🥾', price: 1 } };
+  const CATCH_GOODS = { fish: { name: 'Cá chép', icon: '🐟', price: 12 }, perch: { name: 'Cá rô', icon: '🐠', price: 10 }, crab: { name: 'Cua', icon: '🦀', price: 15 }, gold: { name: 'Cá vàng', icon: '✨', price: 80 }, boot: { name: 'Ủng cũ', icon: '🥾', price: 1 },
+    // lake fish (2026-11-09): the dearer, the rarer
+    loc: { name: 'Cá lóc', icon: '🐟', price: 22 }, catfish: { name: 'Cá trê', icon: '🐡', price: 25 }, koi: { name: 'Cá koi', icon: '🎏', price: 45 },
+    sturgeon: { name: 'Cá tầm', icon: '🦈', price: 90 }, arowana: { name: 'Cá rồng', icon: '🐉', price: 160 } };
   // ── Kitchen: harvests cooked into dishes worth more (barn key d:<id>); some dishes need other dishes.
   // min = cooking time in minutes; x3 cooks three at once in the same time.
   const RECIPES = {
@@ -2395,6 +2398,11 @@
   // charges a day ticket and bites twice as often; better bait = more bites, more money per bait
   const BAITS = ['bait1', 'bait2', 'bait3'], BAIT_MUL = { bait1: 1, bait2: 1.35, bait3: 1.7 };
   const LAKE_TICKET = 15, CATCH_AVG = { wild: 11, lake: 13 };
+  // what bites in the lake: the dearer the fish, the rarer; good bait (cám ×1.4, tôm ×2) draws more of the big ones (≥ 40 xu)
+  const LAKE_FISH = [['perch', 30], ['fish', 30], ['crab', 14], ['loc', 12], ['catfish', 8], ['koi', 4], ['gold', 2.5], ['sturgeon', 1.5], ['arowana', 0.6]];
+  const lakeWeights = (bk) => LAKE_FISH.map(([k, w]) => [k, w * (CATCH_GOODS[k].price >= 40 ? (bk === 'bait3' ? 2 : bk === 'bait2' ? 1.4 : 1) : 1)]);
+  const lakeAvg = (bk) => { const ws = lakeWeights(bk), tot = ws.reduce((s, [, w]) => s + w, 0); return ws.reduce((s, [k, w]) => s + w * CATCH_GOODS[k].price, 0) / tot; };
+  function lakePick(bk) { const ws = lakeWeights(bk); let r = Math.random() * ws.reduce((s, [, w]) => s + w, 0); for (const [k, w] of ws) if ((r -= w) < 0) return k; return 'fish'; }
   const lakeAt = () => FARM.lake && { x: FARM.lake.x + FARM.lake.w / 2, y: FARM.lake.y + FARM.lake.h / 2 };
   // the bank: loans at 3% a day (added every morning); the limit grows with the farm
   const LOAN_RATE = 0.03;
@@ -2726,7 +2734,7 @@
       for (const place of hasLake ? ['wild', 'lake'] : ['wild']) for (const bk of BAITS) {
         const p = Math.min(0.9, (place === 'lake' ? 0.42 : 0.2) * BAIT_MUL[bk] * skill);
         const ticket = place === 'lake' && b.lakeDay !== today ? LAKE_TICKET / left : 0;
-        const ev = p * CATCH_AVG[place] - TOOLS[bk].price - ticket;
+        const ev = p * (place === 'lake' ? lakeAvg(bk) : CATCH_AVG.wild) - TOOLS[bk].price - ticket;
         if (!best || ev > best.ev) best = { place, bk, p, ev };
       }
       if (!best || best.ev <= 0) return null;
@@ -2740,10 +2748,11 @@
       if (best.place === 'lake') { const s = FARM.lake.spots[Math.floor(Math.random() * FARM.lake.spots.length)]; at = { x: s.tc * 16 + 8, y: s.tr * 16 + 8 }; stand = { c: s.c, r: s.r }; where = 'hồ câu'; }
       else { const spots = SPOTS.filter((s) => s.kind === 'fish'), s = spots[Math.floor(Math.random() * spots.length)]; at = s ? { x: s.tc * 16 + 8, y: s.tr * 16 + 8 } : pondAt(1); stand = s ? { c: s.col, r: s.row } : null; where = 'suối'; }
       if (Math.random() > best.p) { save.set(`mgr/day/${today}`, d); return { kind: 'fishMiss', text: `câu hụt ở ${where}, mất 1 ${bait.icon} ${bait.name.toLowerCase()}`, at, stand, icon: '🎣' }; }
-      const r = Math.random(), item = best.place === 'lake' ? (r < 0.04 ? 'gold' : r < 0.2 ? 'crab' : r < 0.5 ? 'perch' : 'fish') : (r < 0.06 ? 'boot' : r < 0.2 ? 'crab' : r < 0.55 ? 'perch' : 'fish');
+      const r = Math.random(), item = best.place === 'lake' ? lakePick(best.bk) : (r < 0.06 ? 'boot' : r < 0.2 ? 'crab' : r < 0.55 ? 'perch' : 'fish');
       b.caught = (b.caught || 0) + 1; save.set(`mgr/day/${today}`, d);
       ledger(0, 1, { [item]: 1 });
-      return { kind: 'fish', text: `câu được ${CATCH_GOODS[item].icon} ${CATCH_GOODS[item].name.toLowerCase()} (${CATCH_GOODS[item].price} xu) ở ${where}, mồi ${bait.icon}`, at, stand, value: CATCH_GOODS[item].price, icon: '🎣' };
+      const big = CATCH_GOODS[item].price >= 40; // a rare catch goes in the journal on its own line
+      return { kind: 'fish', text: `${big ? '🎉 ' : ''}câu được ${CATCH_GOODS[item].icon} ${CATCH_GOODS[item].name.toLowerCase()} (${CATCH_GOODS[item].price} xu) ở ${where}, mồi ${bait.icon}`, at, stand, value: CATCH_GOODS[item].price, icon: big ? CATCH_GOODS[item].icon : '🎣', big };
     },
     // the zoo keeper (and the head manager): bury what died, feed whoever is getting hungry
     zoo(t) {
@@ -3623,7 +3632,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:07 09-11';
+    const build = '10:58 09-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -3713,6 +3722,13 @@
       + `<div>Vé câu hồ: <b>${LAKE_TICKET} xu</b>/người/ngày. Cá ở hồ cắn câu nhiều gấp đôi sông suối (suối, biển thì miễn vé).</div>`
       + `<div style="font-size:13px;margin-top:4px">Mỗi lần thả câu mất 1 mồi, câu hụt cũng mất. Mồi càng xịn cá càng hay cắn:</div>`
       + BAITS.map((k) => { const T = TOOLS[k]; return row(`${T.icon} ${T.name} <span style="opacity:.7">${T.price} xu · ${T.note} · còn ${Math.max(0, have(k))}</span>`, B(`buy:${k}:10`, `+10 · ${T.price * 10}`, c >= T.price * 10)); }).join('')
+      + (() => {
+        // the fish of the lake: price and the share of bites with a worm vs fresh shrimp
+        const share = (bk) => { const ws = lakeWeights(bk), tot = ws.reduce((s, [, w]) => s + w, 0); return Object.fromEntries(ws.map(([k, w]) => [k, (w / tot) * 100])); };
+        const s1 = share('bait1'), s3 = share('bait3'), pc = (v) => (v < 1 ? v.toFixed(1) : Math.round(v)) + '%';
+        return '<div style="opacity:.85;margin-top:8px">Cá trong hồ <span style="opacity:.7">(cá càng đắt càng hiếm; % khi đã cắn câu: giun → tôm)</span></div>'
+          + LAKE_FISH.slice().sort((a, b) => CATCH_GOODS[b[0]].price - CATCH_GOODS[a[0]].price).map(([k]) => { const G = CATCH_GOODS[k]; return row(`${G.icon} ${G.name} <span style="opacity:.7">${G.price} xu</span>`, `<span style="font-size:12px">${pc(s1[k])} → ${pc(s3[k])}</span>`); }).join('');
+      })()
       + `<div style="font-size:12px;opacity:.8;margin-top:6px">Hôm nay nhân viên thả câu ${casts} lần, dính ${caught} con.</div>`
       + '<div style="font-size:12px;opacity:.6">Nhân viên tự chọn chỗ câu và loại mồi lời nhất; không lời thì không câu.</div>';
   }
