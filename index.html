@@ -3663,7 +3663,7 @@
   (function readableText() {
     const s = document.createElement('style');
     s.textContent = '@font-face{font-family:"FS Pixel Sans";src:local("Segoe UI"),local("SF Pro Text"),local("Roboto"),local("Helvetica Neue"),local("Arial");font-weight:100 900;}'
-      + 'body,button,input,select,textarea,div,span,b,i,p,label,small,strong{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif!important;}'; // divs too: on the PC the engine's pixel font still reached the panel text (2026-11-09)
+      + 'body,button,input,select,textarea,:is(div,span,b,i,p,label,small,strong):not(.xterm,.xterm *){font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif!important;}'; // divs too (the engine's pixel font reached the panel text), but never the terminal (.xterm): it needs its monospace font (user 2026-11-09: prompt text got hard to read)
     (document.head || document.documentElement).append(s);
   })();
   function ensureFarmHud() {
@@ -3937,7 +3937,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '15:22 09-11';
+    const build = '15:26 09-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
