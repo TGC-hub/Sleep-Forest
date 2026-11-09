@@ -2861,6 +2861,31 @@
     }
     return total;
   }
+  // user 2026-11-09: a worker who slacked off loses that day's wage in proportion (slack hours / shift hours).
+  // Runs at the next payday on yesterday's books: an unpaid wage is simply owed less; a paid one comes back to the purse.
+  function mLazyCut(t) {
+    const yt = t - 864e5, yd = mDayRec(yt), debt = mDebts(), cuts = [];
+    let back = 0;
+    for (const w of mStaff()) {
+      const b = yd.by[w.id]; if (!b || !b.wage || !b.slack || !b.shift || b.cut) continue;
+      const cut = Math.min(b.wage, Math.round((b.wage * b.slack) / b.shift)); if (cut <= 0) continue;
+      const e = debt[w.id], fromDebt = e ? Math.min(e.amt, cut) : 0;
+      if (fromDebt) { e.amt -= fromDebt; if (e.amt <= 0) delete debt[w.id]; }
+      back += cut - fromDebt;
+      b.cut = cut; b.wage -= cut;
+      cuts.push(`${w.name} −${money(cut)} xu (lười ${Math.round(b.slack * 10) / 10}/${Math.round(b.shift)} giờ)`);
+    }
+    if (!cuts.length) return;
+    if (back > 0) {
+      ledger(back, 0, {});
+      yd.out = Math.max(0, yd.out - back); yd.wage = Math.max(0, (yd.wage || 0) - back);
+      if (yd.cat && yd.cat.out['Lương nhân viên']) yd.cat.out['Lương nhân viên'] = Math.max(0, yd.cat.out['Lương nhân viên'] - back);
+    }
+    save.set(`mgr/day/${dayNo(yt)}`, yd); save.set('mgr/debt', debt);
+    const boss = mStaff().find((w) => w.role === 'boss');
+    mLog(t, boss ? boss.id : '', `✂️ Trừ lương ngày hôm qua vì lười: ${cuts.join(', ')}`, back);
+    if (mRun && mRun.sum) mRun.sum.cuts = (mRun.sum.cuts || []).concat(cuts);
+  }
   function mPayday(t) {
     const day = dayNo(t), paid = save.get('mgr/payday', 0);
     if (paid >= day) return;
@@ -2870,6 +2895,7 @@
     { const Ln = mLoan(); if (Ln.owed > 0) { const int = Math.max(1, Math.round(Ln.owed * LOAN_RATE)); save.set('mgr/loan', { ...Ln, owed: Ln.owed + int }); mCatAdd(t, 'out', 'Lãi ngân hàng', int); const dd = mDayRec(t); dd.out += int; save.set(`mgr/day/${day}`, dd); } }
     // zoo food bill for animals nobody fed is not charged (they just go hungry); feeding is paid when it happens
     if (mStaff().some((w) => w.role === 'hr')) mHrReport(t - 864e5);
+    mLazyCut(t);
     let st = mStaff();
     const debt = mDebts(), d = mDayRec(t);
     for (const w of st) {
@@ -2920,7 +2946,8 @@
       // attendance: a less diligent worker slacks off now and then (nothing done that step); unpaid wages make it worse
       {
         const owed = (mDebts()[w.id] || {}).amt || 0, dil = dilOf(w) * (R.wage && owed >= R.wage * 3 ? 0.7 : 1);
-        const slack = hash01(t, (parseInt(w.id.slice(1), 36) || 3) % 100003, 77) > dil;
+        // user 2026-11-09: while the owner is watching (live), nobody slacks off
+        const slack = !(mRun && mRun.live) && hash01(t, (parseInt(w.id.slice(1), 36) || 3) % 100003, 77) > dil;
         const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 });
         b.shift = (b.shift || 0) + stepH; if (slack) b.slack = (b.slack || 0) + stepH;
         save.set(`mgr/day/${dayNo(t)}`, d);
@@ -3646,7 +3673,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '12:29 09-11';
+    const build = '14:04 09-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -3661,7 +3688,8 @@
     return head(`${R.icon} ${w.name} <span style="color:${ROLE_COL[w.role] || '#fff'}">· ${R.name}</span>`)
       + row('Đang làm', `<b>${doing}</b>`)
       + row('Hôm nay', `${b.acts} việc · ~${money(b.value)} xu`) + row('7 ngày tạo ra', `~${money(wk)} xu`)
-      + row('Lương', R.wage ? `${R.wage} xu/ngày` : 'chia lời') + row('Vào làm', `${Math.max(1, Math.ceil((now - w.hired) / 864e5))} ngày`)
+      + row('Lương', R.wage ? `${R.wage} xu/ngày` : 'chia lời')
+      + (R.wage ? (() => { const y = mDayRec(now - 864e5).by[w.id] || {}, lazyH = Math.round((b.slack || 0) * 10) / 10; return row('Lười', `hôm nay ${lazyH} giờ${y.cut ? ` · hôm qua bị trừ ${money(y.cut)} xu` : ''}`) + '<div style="font-size:11px;opacity:.7;margin:-2px 0 4px">Lười bị trừ lương ngày đó (theo số giờ lười/giờ ca). Lúc bạn đang mở app xem thì không ai dám lười.</div>'; })() : '') + row('Vào làm', `${Math.max(1, Math.ceil((now - w.hired) / 864e5))} ngày`)
       + `<div style="margin:4px 0;border-top:1px solid #33334a;padding-top:4px">Phụ trách: <span style="opacity:.85">${R.jobs.map((j) => JOB_VI[j]).join(', ')}</span></div>`
       + (recent.length ? '<div style="opacity:.8;margin-top:6px">Vừa làm</div>' + recent.map((x) => `<div style="font-size:12px;margin:2px 0">• ${x}</div>`).join('') : '')
       + B('openTab:mgr:staff', '👥 Cả đội') + B('openTab:mgr:home', '👔 Sổ sách');
