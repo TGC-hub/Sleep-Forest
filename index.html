@@ -3937,7 +3937,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '15:26 09-11';
+    const build = '15:48 09-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -5808,7 +5808,7 @@
     for (const [id, P] of Object.entries(XPROJ)) {
       const I = XISLE[id]; if (!I) continue;
       const p = xProj(id), built = !!p && t >= p.done, k = p ? Math.min(1, (t - p.t0) / (p.done - p.t0)) : 0;
-      if (!p) { depth(SKY, (g) => xLabel(g, I.sign.x, I.sign.y, `${P.icon} ${P.name} · chờ xây (cấp ${P.lvl}, ${money(P.cost)} xu)`)); continue; }
+      if (!p) { depth(SKY, (g) => xLabel(g, I.sign.x, I.sign.y, `${P.icon} ${P.name} · chạm để xây (cấp ${P.lvl}, ${money(P.cost)} xu)`)); continue; }
       const alpha = built ? 1 : 0.25 + 0.45 * k;
       if (!built) depth(SKY, (g) => { xLabel(g, I.sign.x, I.sign.y - 6, `🔨 Đang xây ${P.name} ${Math.floor(k * 100)}%`); g.fillStyle = '#3a3a4a'; g.fillRect(I.sign.x - 20, I.sign.y - 4, 40, 3); g.fillStyle = '#ffb02e'; g.fillRect(I.sign.x - 20, I.sign.y - 4, Math.round(40 * k), 3); });
       if (id === 'bees') I.items.forEach((it, i) => {
@@ -6019,7 +6019,10 @@
           if (built && id === 'bees') more = [0, 1, 2, 3].map((i) => { const h = xHive(i, t); return `tổ ${i + 1}: ${h.ready ? '🍯 có mật' : Math.floor(h.progress * 100) + '%'}`; }).join(' · ') + ` · hoa trong ruộng: ${xFlowers()} ô`;
           if (built && id === 'orchard') more = ORCH.map(([k], i) => { const tr = xTree(i, t); return `${GOODS[k].icon} ${tr.ready ? 'chín' : Math.floor(tr.progress * 100) + '%'} (đã hái ${tr.picks} lứa)`; }).join(' · ');
           if (built && id === 'camp') { const nn = xNight(t); more = nn && nn.camp ? `đêm nay ${nn.camp} khách${nn.campFire ? ', có lửa trại' : ', hết củi'}` : 'khách đến lúc 19:00'; }
-          return row(`${P.icon} ${P.name}`, st) + `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">${more || P.what}</div>`;
+          // the owner can build it too (user 2026-11-09): enough level and coins, no 3x rule
+          const can = !p && level() >= P.lvl && coins() >= P.cost, whyNot = p ? '' : level() < P.lvl ? `cần cấp ${P.lvl} (bạn cấp ${level()})` : coins() < P.cost ? `thiếu ${money(P.cost - coins())} xu` : '';
+          return row(`${P.icon} ${P.name}`, st) + `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">${more || P.what}</div>`
+            + (!p ? `<div>${B('xbuild:' + id, `🔨 Xây ngay · ${money(P.cost)} xu`, can)}${whyNot ? `<span style="font-size:12px;opacity:.75"> ${whyNot}</span>` : ''}</div>` : '');
         }).join('');
     }
     return head('🌙 Đêm · ngủ · mở rộng') + tabs + body;
@@ -6064,6 +6067,15 @@
         return true;
       }
       const P = PLACES.find(([nm]) => nm === a1); if (P) { save.set('cfg/place', { name: P[0], lat: P[1], lon: P[2] }); xWxFetch(true); }
+      return true;
+    }
+    if (act === 'xbuild') {
+      const P = XPROJ[a1], t = farmNow(); if (!P || xProj(a1) || level() < P.lvl || coins() < P.cost) return true;
+      if (!confirm(`Xây ${P.name} với ${money(P.cost)} xu? Xong sau ${P.build} giờ.`)) return true;
+      ledger(-P.cost, 0, {});
+      save.set('proj/' + a1, { t0: t, done: t + P.build * HOUR, by: '' });
+      mCatAdd(t, 'out', 'Mở rộng, nâng cấp', P.cost); { const d = mDayRec(t); d.out += P.cost; save.set(`mgr/day/${dayNo(t)}`, d); }
+      mLog(t, '', `🔨 Chủ trại cho xây ${P.icon} ${P.name} (${money(P.cost)} xu, xong sau ${P.build} giờ)`, -P.cost);
       return true;
     }
     if (act === 'xpomo') {
