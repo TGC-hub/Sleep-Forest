@@ -4392,7 +4392,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '14:50 10-11';
+    const build = '15:33 10-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6384,6 +6384,31 @@
     { const b = barRec(), h = mLocalH(farmNow()); if (XISLE.bar && b && b.open && h >= BAR_OPEN && h < BAR_CLOSE) out.push({ x: XISLE.bar.stall.x, y: XISLE.bar.stall.y - 22, r: 42, warm: 1 }); }
     return out;
   }
+
+  // ── PC: the sea around the map instead of black (user 2026-11-10 "trên pc chưa bỏ cái màn đen à") ──
+  // apply.js patchView calls this from the engine's floor renderer, before the tiles: fill the whole canvas with the
+  // Cozy water (32x32 map px, on the map grid), the sky band above the map's sky rows; the tiles then draw on top
+  const seaImg = new Image();
+  seaImg.src = './forest-sea.png?v=62412cbf';
+  let seaPat = null;
+  window.__forestBg = (ctx, ox, oy, z) => {
+    try {
+      const cw = ctx.canvas.width, ch = ctx.canvas.height;
+      if (!seaPat && seaImg.complete && seaImg.naturalWidth) seaPat = ctx.createPattern(seaImg, 'repeat');
+      ctx.save(); ctx.imageSmoothingEnabled = false;
+      ctx.translate(ox, oy); ctx.scale(z, z);
+      ctx.fillStyle = seaPat || '#2a7fc0'; ctx.fillRect(Math.floor(-ox / z) - 32, Math.floor(-oy / z) - 32, cw / z + 64, ch / z + 64);
+      ctx.restore();
+      const skyY = oy + 96 * z; // SKY_TOP = 6 rows at the top of the map
+      if (skyY > 0) {
+        const h = hourNow(), night = h < 5.5 || h >= 19.5, dusk = !night && (h < 7 || h >= 17.5);
+        const top = ctx.createLinearGradient(0, 0, 0, skyY);
+        top.addColorStop(0, night ? '#05081a' : dusk ? '#3b3a78' : '#3f8fd8');
+        top.addColorStop(1, night ? '#101a3a' : dusk ? '#f0a070' : '#8cc8f0');
+        ctx.fillStyle = top; ctx.fillRect(0, 0, cw, Math.ceil(skyY) + 1);
+      }
+    } catch (e) { /* never break the engine's frame */ }
+  };
 
   // ── drawing the islets, the traveller, the seasons ──
   const extraImg = new Image();
