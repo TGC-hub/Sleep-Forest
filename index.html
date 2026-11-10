@@ -2233,7 +2233,28 @@
   // wages owed (user 2026-11-06: not enough money on payday -> a debt, not a firing): mgr/debt = { id: { name, amt } }
   const mDebts = () => save.get('mgr/debt', {});
   const mDebtTotal = () => Object.values(mDebts()).reduce((s, e) => s + (e.amt || 0), 0);
-  const mReserve = () => 40 + mWages() * 2 + mDebtTotal();
+  // ── Cash-flow plan (user 2026-11-10: "quản lý phải tính toán: mua cái gì, mua xong đến cuối ngày lại có tiền; làm ăn
+  // dài ngày nên không nhất thiết lúc nào cũng an toàn"). Instead of a fixed reserve of 2 days' wages and "3x the price"
+  // for investments, the manager forecasts what comes in before the next payday (crops ripe by the end of the shift at
+  // 70% of the list price, barn stock not held for orders at 60%, the usual takings from the stove / fishing / tickets
+  // over the hours left at 60%) and what falls due then (wages, wages owed, bank interest). The reserve is the gap.
+  let mFcCache = null;
+  function mForecast(t = farmNow()) {
+    const key = Math.floor(t / MSTEP);
+    if (mFcCache && mFcCache.key === key) return mFcCache.f;
+    const dayEnd = shiftEnd(t), held = {};
+    for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) held[k] = (held[k] || 0) + q;
+    let crops = 0; for (let i = 0; i < land(); i++) { const x = simPlot(i, t); if (x.C && (x.status === 'ripe' || x.status === 'over' || (x.status === 'grow' && t + x.left <= dayEnd))) crops += (x.yield || x.C.yield) * x.C.price; }
+    let stock = 0; for (const k of Object.keys(GOODS)) { const n = have(k) - (held[k] || 0); if (n > 0 && k !== 'cui') stock += Math.min(n, 14) * priceOf(k); } // the shop pays less after 14 of a kind
+    let run = 0, nd = 0; for (let k = 1; k <= 3; k++) { const d = mDayRec(t - k * 864e5); if (!d.acts) continue; const c = (d.cat || { in: {} }).in; run += ['Bán cá câu', 'Bán món ăn', 'Vé tham quan farm', 'Vé sở thú', 'Tiền tip hướng dẫn', 'Vé cắm trại', 'Bán trứng, sữa, thịt', 'Bán cá nuôi', 'Bán mật ong, trái cây'].reduce((a, n) => a + (c[n] || 0), 0); nd++; }
+    run = nd ? run / nd : 0;
+    const left = Math.max(0, Math.min(1, (dayEnd - t) / ((MWORK[1] - MWORK[0]) * HOUR)));
+    const f = { crops: Math.round(crops * 0.7), stock: Math.round(stock * 0.6), run: Math.round(run * left * 0.6), wages: mWages(), owed: mDebtTotal(), interest: Math.round((mLoan().owed || 0) * LOAN_RATE) };
+    f.inflow = f.crops + f.stock + f.run; f.outflow = f.wages + f.owed + f.interest;
+    mFcCache = { key, f }; return f;
+  }
+  // what must stay in the purse: only the part of tomorrow's bills the forecast takes in does not cover
+  const mReserve = () => { const F = mForecast(); return Math.max(20, F.outflow - F.inflow); };
   // how diligent a worker is (fixed per person, from their id): 1 = never slacks; the head manager always 1
   const dilOf = (w) => (w.role === 'boss' ? 1 : 0.62 + 0.45 * hash01(parseInt(w.id.slice(1), 36) || 7, 911, 3));
   const mSlackNow = {}; // live: who is slacking off this step (they rest instead of working)
@@ -2362,10 +2383,13 @@
   const mFree = (k) => !(mClaims.get(k) > Date.now());
   function mLate(t) { const d = mDayRec(t); d.late = (d.late || 0) + 1; save.set(`mgr/day/${dayNo(t)}`, d); }
   const mMinSeed = () => Math.min(...Object.values(CROPS).filter((C) => C.lvl <= level()).map((C) => C.seed));
-  const mBroke = () => coins() < mReserve() + mMinSeed();
-  // user rule: an investment (land, upgrade, hire, livestock) only with 3x its price in the purse, and what is left
+  // with a margin both ways, so a purse hovering at the line does not flip "hết vốn / đủ vốn" every few minutes
+  const mBroke = () => { const line = mReserve() + mMinSeed(); return save.get('mgr/broke', false) ? coins() < line + mMinSeed() * 3 + 50 : coins() < line; };
+  // (2026-11-10: the 3x rule is gone, see mCanInvest / mForecast) an investment (land, upgrade, hire, livestock):
   // after paying must still cover the wages and a round of seed
-  const mCanInvest = (cost) => { const cash = coins() - mLoan().owed; return cash >= cost * 3 && cash - cost >= mReserve() + mMinSeed() * 2; }; // never on borrowed money: pay the bank first
+  // an investment: paid out of the purse now, and the forecast still covers tomorrow's bills and a round of seed (no 3x rule)
+  // but while the farm owes TJBank (3% a day, ~90% a month) the bank is paid first: nothing on the farm earns that much
+  const mCanInvest = (cost) => !(mLoan().owed > 0) && coins() >= cost && coins() - cost - mReserve() >= mMinSeed() * 2;
   function mBrokeNote(t, id) {
     const b = mBroke(), was = !!save.get('mgr/broke', false);
     if (b === was) return;
@@ -2615,8 +2639,8 @@
     const R = ROLES[want[0]];
     let prof = 0, days = 0; for (let k = 1; k <= 3; k++) { const x = mDayRec(t - k * 864e5); if (x.acts) { prof += x.in - x.out; days++; } }
     prof = days ? prof / days : d.in - d.out;
-    const cash = mCanInvest(R.hire + R.wage * 2), paid = !(st.length > 1 && prof < R.wage), full = st.length >= mMax();
-    return { want, R, ok: cash && paid && !d.hired && !full, cash, paid, full, hiredToday: !!d.hired, prof, need: (R.hire + R.wage * 2) * 3 };
+    const cash = mCanInvest(R.hire + R.wage), paid = !(st.length > 1 && prof < R.wage), full = st.length >= mMax();
+    return { want, R, ok: cash && paid && !d.hired && !full, cash, paid, full, hiredToday: !!d.hired, prof, need: R.hire + R.wage + mReserve() + mMinSeed() * 2 };
   }
   // the owner (the user) can also hire or let go by hand
   function mUserHire(role) {
@@ -2642,7 +2666,10 @@
       if (!owed) {
         const Ln = mLoan(), spare = coins() - mReserve();
         { const c0 = coins(), got = mLoanNeeds(t); if (got) return { kind: 'loan', text: `vay TJBank ${money(got)} xu cho trại (hết vốn)`, at: FARM.bank ? { x: FARM.bank.x + 25, y: FARM.bank.y + 50 } : barnAt(), icon: '🏦', big: true, value: 0 }; }
-        if (Ln.owed > 0 && spare > 150 && !mDayRec(t).loans) { const paid = mRepay(spare >= Ln.owed ? Ln.owed : spare - 100, t); return paid ? { kind: 'pay', text: `trả TJBank ${money(paid)} xu`, at: FARM.bank ? { x: FARM.bank.x + 25, y: FARM.bank.y + 50 } : barnAt(), icon: '🏦', big: true } : null; }
+        // repay with whatever the forecast does not need for tomorrow's bills and a few rounds of seed (not the same day it
+        // borrowed, unless there is a good surplus, so it does not borrow and repay in circles)
+        const free = coins() - mReserve() - mMinSeed() * 4;
+        if (Ln.owed > 0 && free > 60 && (!mDayRec(t).loans || free > 250)) { const spare = free + 100; const paid = mRepay(spare >= Ln.owed ? Ln.owed : spare - 100, t); return paid ? { kind: 'pay', text: `trả TJBank ${money(paid)} xu`, at: FARM.bank ? { x: FARM.bank.x + 25, y: FARM.bank.y + 50 } : barnAt(), icon: '🏦', big: true } : null; }
         return null;
       }
       if (coins() < owed) mLoanFor(t, owed, 'để trả nợ lương (kẻo nhân viên bỏ việc)');
@@ -3900,6 +3927,7 @@
         + row('Hôm nay thu', `<b style="color:#7fd65a">+${money(today.in)}</b>`)
         + (today.cat && Object.keys(today.cat.in).length ? `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">từ ${Object.entries(today.cat.in).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, v]) => `${n.replace(/^Bán /, 'bán ').replace(/^Giao /, 'giao ')} ${money(v)}`).join(' · ')} ${B('tab:money', 'Xem chi tiết')}</div>` : '')
         + row(`Hôm nay chi <span style="opacity:.6">(lương ${money(today.wage)})</span>`, `<b style="color:#e08a5a">−${money(today.out)}</b>`)
+        + (() => { const F = mForecast(), end = coins() + F.inflow - F.outflow; return row('🧮 Quản lý tính đến ngày lương mai', `<b style="color:${end >= 0 ? '#7fd65a' : '#e08a5a'}">${end >= 0 ? 'dư' : 'thiếu'} ${money(Math.abs(end))}</b>`) + `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">sẽ thu ~${money(F.inflow)} (cây chín ${money(F.crops)}, kho ${money(F.stock)}, bán/vé ${money(F.run)}) · phải trả ${money(F.outflow)} (lương ${money(F.wages)}${F.owed ? `, nợ lương ${money(F.owed)}` : ''}${F.interest ? `, lãi TJBank ${money(F.interest)}` : ''})</div>`; })()
         + row('⭐ Uy tín', `${repNow()}/100 · ${repName(repNow())} · đơn hàng ×${repMul(repNow())}`)
         + row('🚶 Du khách hôm nay', `${(today.visit || {}).people || 0} người · ${(today.visit || {}).groups || 0} đoàn`)
         + (mLoan().owed ? row('🏦 Nợ TJBank', `<b style="color:#e08a5a">${money(mLoan().owed)}</b> (lãi ${Math.round(LOAN_RATE * 100)}%/ngày)`) : '')
@@ -3955,7 +3983,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:03 10-11';
+    const build = '09:11 10-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -3987,7 +4015,7 @@
     const status = !p ? 'Hiện chưa cần thuê thêm: việc vẫn làm kịp.'
       : `Lan định thuê <b>${p.R.icon} ${p.R.name}</b> vì ${p.want[1]}. `
         + (p.full ? `Đã đủ ${mMax()} người.` : p.hiredToday ? 'Hôm nay đã thuê 1 người, mai thuê tiếp.'
-          : !p.cash ? `Chờ két đủ ${money(p.need)} xu (gấp 3 phí thuê + 2 ngày lương).`
+          : !p.cash ? `Chờ két đủ ~${money(p.need)} xu (phí thuê + 1 ngày lương, sau khi tính đủ lương mai).`
           : !p.paid ? `Chờ lãi mỗi ngày vượt lương ${p.R.wage} xu (hiện ~${money(p.prof)}).` : 'Sẽ thuê ngay trong ca làm.');
     const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'guide', 'zookeeper'];
     return `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>🤝 Tuyển thêm</b> <span style="opacity:.7">(${st.length}/${mMax()} người)</span></div>`
@@ -4027,7 +4055,7 @@
       + `<div>Mở sở thú để đón khách xem thú: vé sở thú <b>${ZOO_FEE} xu</b>/khách, đắt hơn vé tham quan farm (${FARM_FEE} xu).</div>`
       + `<div style="margin-top:6px;font-size:13px">Mở khoá: <b>${money(ZOO_UNLOCK)} xu</b> · cần cấp ${ZOO_LVL} (bạn cấp ${L}). Sau đó mua từng con thú và trả tiền thức ăn mỗi ngày.</div>`
       + B('zooOpen', `🔓 Mở sở thú · ${money(ZOO_UNLOCK)} xu`, c >= ZOO_UNLOCK && L >= ZOO_LVL)
-      + '<div style="font-size:12px;opacity:.7;margin-top:4px">Quản lý tự mở khi két đủ gấp 3 số tiền này.</div>';
+      + '<div style="font-size:12px;opacity:.7;margin-top:4px">Quản lý tự mở khi tính ra trả xong vẫn đủ lương ngày mai.</div>';
     const ids = zooIds(), today = mDayRec(farmNow()), vis = today.visit || { groups: 0, people: 0 }, stars = zooStars(), revs = save.get('zoo/reviews', []);
     let body = `<div>Đánh giá: <b style="color:#ffd84a">${stars.toFixed(1)} ★</b> → vé sở thú <b>${zooFee()} xu</b>/khách (5★ = ${Math.round(ZOO_FEE * 1.15)}, 1★ = ${Math.round(ZOO_FEE * 0.55)})</div>`
       + `<div style="font-size:13px">Sức hút: <b>${zooAppeal()}</b> · khách vào sở thú hôm nay: ${vis.zoo || 0} người</div>`
@@ -6164,7 +6192,7 @@
         + row('🍅 Hôm nay xong', `${today} lượt`)
         + (p ? row(p.mode === 'work' ? '🍅 Đang tập trung' : '☕ Đang nghỉ', `còn ${fmtDur(p.end - Date.now())}`) + `<div>${B('xpomo:stop', '⏹ Dừng')}${B('xpomo:skip', '⏭ Sang lượt kế')}</div>` : `<div style="margin-top:6px">${B('xpomo:start', '▶ Bắt đầu 25 phút')}</div>`);
     } else {
-      body = '<div style="margin-top:6px;opacity:.85">Ba đảo nhỏ phía đông nối cầu với hồ câu và sở thú. Quản lý tự xây khi đủ cấp và có gấp 3 lần tiền; nhân viên tự lấy mật, hái quả, đón khách.</div>'
+      body = '<div style="margin-top:6px;opacity:.85">Ba đảo nhỏ phía đông nối cầu với hồ câu và sở thú. Quản lý tự xây khi đủ cấp và tính ra xây xong vẫn đủ trả lương; nhân viên tự lấy mật, hái quả, đón khách.</div>'
         + Object.entries(XPROJ).map(([id, P]) => {
           const p = xProj(id), built = !!p && t >= p.done;
           let st = !p ? `<span style="opacity:.7">chờ xây · cấp ${P.lvl} · ${money(P.cost)} xu</span>` : !built ? `🔨 đang xây ${Math.floor(((t - p.t0) / (p.done - p.t0)) * 100)}% · còn ${fmtDur(p.done - t)}` : '<span style="color:#7fd65a">✓ đã xong</span>';
