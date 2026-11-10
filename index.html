@@ -2338,7 +2338,7 @@
     const L = level(), dayEnd = (dayNo(t) + 1) * 864e5 + new Date(t).getTimezoneOffset() * 60000, D = mDemand(t);
     const cand = Object.entries(D.short).filter(([k]) => {
       const C = CROPS[k];
-      if (!C || C.lvl > L || !(have('seed:' + k) > 0 || mSpare() >= C.seed)) return false;
+      if (!C || C.lvl > L || !mSeedAfford(k)) return false;
       return D.src[k] !== 'order' || t + (C.grow * HOUR) / WET_RATE < dayEnd;
     }).sort((a, b) => (D.src[a[0]] === 'order' ? 0 : 1) - (D.src[b[0]] === 'order' ? 0 : 1) || CROPS[a[0]].grow - CROPS[b[0]].grow)[0];
     if (cand) return { k: cand[0], src: D.src[cand[0]], order: D.src[cand[0]] === 'order' };
@@ -2350,7 +2350,7 @@
       const ripe = t + C.grow * HOUR / WET_RATE, back = mNextWork(ripe);
       const ok = back - ripe <= C.gold * HOUR * 0.8;
       return { k, C, ok, score: (C.yield * C.price - C.seed) / C.grow };
-    }).filter((o) => o.ok && o.score > 0 && (have('seed:' + o.k) > 0 || mSpare() >= o.C.seed)).sort((a, b) => b.score - a.score);
+    }).filter((o) => o.ok && o.score > 0 && mSeedAfford(o.k)).sort((a, b) => b.score - a.score);
     if (!list.length) return null;
     const top = list.slice(0, Math.min(3, list.length));
     return top[i % top.length].k;
@@ -2403,9 +2403,24 @@
     if (wanted) return [wanted[0], wanted[1], D.src['f:' + wanted[0]]];
     return ok.sort((a, b) => (b[1].yield * b[1].price - b[1].seed) / b[1].grow - (a[1].yield * a[1].price - a[1].seed) / a[1].grow)[0];
   };
-  function mReplant(i, t) {
+  // seed for an empty plot (user 2026-11-10: "hết giống thì tự đi xin quản lý mua thêm"): an empty plot earns nothing,
+  // so the manager pays for seed even out of the wage reserve (noted once a day), and borrows if the purse is empty
+  const mSeedAfford = (k) => have('seed:' + k) > 0 || coins() >= CROPS[k].seed || (loanLimit() - mLoan().owed >= CROPS[k].seed && (mDayRec(farmNow()).loans || 0) < 2);
+  function mSeedFor(k, t, w) {
+    const key = 'seed:' + k, C = CROPS[k];
+    if (have(key) >= 1) return true;
+    if (coins() < C.seed) mLoanFor(t, C.seed * 6, 'để mua hạt giống (ruộng đang bỏ trống)');
+    if (coins() < C.seed) return false;
+    if (mSpare() < C.seed && !save.get(`seedask/${dayNo(t)}`)) {
+      save.set(`seedask/${dayNo(t)}`, 1);
+      const boss = mStaff().find((x) => x.role === 'boss');
+      mLog(t, boss ? boss.id : '', w && w.role === 'boss' ? `🌱 Hết hạt giống: ${w.name} (quản lý) chi cả tiền dự phòng mua thêm (ruộng bỏ trống thì không ra tiền)` : `🌱 ${w ? w.name : 'Nông dân'} hết hạt giống, xin quản lý mua thêm: quản lý chi cả tiền dự phòng (ruộng bỏ trống thì không ra tiền)`, 0);
+    }
+    return farm.buy(key, 1);
+  }
+  function mReplant(i, t, w) {
     const pk = mPickCrop(i, t); if (!pk) return null;
-    return buySome('seed:' + pk.k, 1) && farm.plant(i, pk.k) ? pk : null;
+    return mSeedFor(pk.k, t, w) && farm.plant(i, pk.k) ? pk : null;
   }
   // ── Fishing lake, bank, zoo, visitors, staff housing (user 2026-11-09) ─────────────────────────────────────────
   // fishing: every cast costs a bait (a miss loses it too); the stream / sea is free but bites are rare, the lake
@@ -2661,7 +2676,7 @@
         const s = simPlot(i);
         if (s.status !== 'dead' || !mFree('plot:' + i) || !farm.clear(i)) continue;
         mLate(t);
-        const pk = mReplant(i, t), was = s.C ? s.C.icon : '';
+        const pk = mReplant(i, t, w), was = s.C ? s.C.icon : '';
         return { kind: 'replant', text: pk ? `dọn ${was} chết, gieo lại ${CROPS[pk.k].icon} ${CROPS[pk.k].name}${mFor(pk)}` : `dọn ${was} chết`, at: plotAt(i), icon: pk ? '🌱' : '🧹', plot: i };
       }
       for (const id of penIds(sc)) {
@@ -2679,18 +2694,18 @@
       }
       return null;
     },
-    harvest(t) {
+    harvest(t, w) {
       for (let i = 0; i < land(); i++) {
         const s = simPlot(i);
-        if ((s.status === 'ripe' || s.status === 'over') && mFree('plot:' + i)) { const n = s.yield, C = s.C, late = s.status === 'over'; if (farm.harvest(i)) { if (late) mLate(t); return { kind: 'harvest', text: `thu ${n} ${C.icon}${late ? ' (hơi muộn)' : ''}`, at: plotAt(i), value: n * C.price, icon: '🧺', plot: i }; } }
+        if ((s.status === 'ripe' || s.status === 'over') && mFree('plot:' + i)) { const n = s.yield, C = s.C, late = s.status === 'over'; if (farm.harvest(i)) { if (late) mLate(t); const pk = w && mScope(w).plots ? mReplant(i, t, w) : null; /* harvest, then sow the plot again right away */ return { kind: 'harvest', text: `thu ${n} ${C.icon}${late ? ' (hơi muộn)' : ''}${pk ? `, gieo lại ${CROPS[pk.k].icon} ${CROPS[pk.k].name}${mFor(pk)}` : ''}`, at: plotAt(i), value: n * C.price, icon: '🧺', plot: i }; } }
       }
       return null;
     },
     // sow the empty plots (crops an order needs first)
-    field(t) {
+    field(t, w) {
       for (let i = 0; i < land(); i++) {
         if (simPlot(i).status !== 'empty' || !mFree('plot:' + i)) continue;
-        const pk = mReplant(i, t); if (!pk) break;
+        const pk = mReplant(i, t, w); if (!pk) break;
         return { kind: 'plant', text: `gieo ${CROPS[pk.k].icon} ${CROPS[pk.k].name}${mFor(pk)}`, at: plotAt(i), icon: '🌱', plot: i };
       }
       return null;
@@ -3330,7 +3345,7 @@
     const t = farmNow(), pk = mPickCrop(i, t);
     if (!pk) return null;
     const k = pk.k, c0 = coins();
-    const tape = mTaped(() => (have('seed:' + k) >= 1 || (mSpare() >= CROPS[k].seed && farm.buy('seed:' + k, 1))) && farm.plant(i, k));
+    const tape = mTaped(() => mSeedFor(k, t, mStaff().find((x) => x.id === id)) && farm.plant(i, k));
     mCatBook(t, tape.moves, 'sow');
     if (!tape.r) return null;
     const r = { kind: 'sow', text: `gieo ${CROPS[k].icon} ${CROPS[k].name}${mFor(pk)}`, at: plotAt(i), icon: '🌱', plot: i, done: true };
@@ -3940,7 +3955,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '18:13 09-11';
+    const build = '09:03 10-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
