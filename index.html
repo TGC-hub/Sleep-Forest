@@ -2194,7 +2194,7 @@
     poultry: { name: 'Nuôi gia cầm', icon: '🐔', ap: 6, wage: 35, hire: 180, jobs: ['rescue', 'dead', 'ranch'] },
     cattle: { name: 'Nuôi gia súc', icon: '🐄', ap: 6, wage: 40, hire: 220, jobs: ['rescue', 'dead', 'ranch'] },
     pondkeeper: { name: 'Nuôi cá', icon: '🐟', ap: 5, wage: 30, hire: 150, jobs: ['rescue', 'dead', 'pond', 'water'] },
-    angler: { name: 'Câu cá', icon: '🎣', ap: 6, wage: 25, hire: 100, jobs: ['fish'] },
+    angler: { name: 'Câu cá', icon: '🎣', ap: 2.5, wage: 25, hire: 100, jobs: ['fish'] },
     woodcutter: { name: 'Kiếm củi', icon: '🪓', ap: 6, wage: 20, hire: 80, jobs: ['wood'] },
     cook: { name: 'Đầu bếp', icon: '👩‍🍳', ap: 5, wage: 45, hire: 250, jobs: ['cook', 'wood'] },
     seller: { name: 'Bán hàng', icon: '🛒', ap: 6, wage: 30, hire: 150, jobs: ['orders', 'sell'] },
@@ -4379,7 +4379,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '14:06 10-11';
+    const build = '14:27 10-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -5441,8 +5441,8 @@
     for (let d = 0; d <= 3; d++) for (let dr = -d; dr <= d; dr++) for (let dc = -d; dc <= d; dc++) if (Math.max(Math.abs(dc), Math.abs(dr)) === d && walkable(c0 + dc, r0 + dr)) return { c: c0 + dc, r: r0 + dr };
     return null;
   }
-  const ROLE_HOME = (role) => role === 'farmer' ? (FARM.plots[0] && { x: FARM.plots[0].x + 40, y: FARM.plots[0].y + 30 })
-    : role === 'angler' && lakeAt() ? { x: FARM.lake.x - 10, y: FARM.lake.y + FARM.lake.h / 2 }
+  const ROLE_HOME = (role, id) => role === 'farmer' ? (FARM.plots[0] && { x: FARM.plots[0].x + 40, y: FARM.plots[0].y + 30 })
+    : role === 'angler' && lakeAt() && FARM.lake.spots && FARM.lake.spots.length ? (() => { const L = FARM.lake.spots, sp = L[Math.floor(hash01(parseInt(String(id || 'a').slice(1), 36) || 7, 4242, 9) * L.length) % L.length]; return { x: sp.c * 16 + 8, y: sp.r * 16 + 8 }; })()
     : role === 'guide' && FARM.pier ? { x: (FARM.pier.c - 6) * 16, y: FARM.pier.r * 16 + 8 }
     : role === 'zookeeper' && FARM.zoo ? zooGateAt()
     : ['fisher', 'pondkeeper', 'angler'].includes(role) ? pondAt(1) : ['rancher', 'poultry'].includes(role) ? penAt('small') : role === 'cattle' ? penAt('big')
@@ -5535,9 +5535,16 @@
         r = { kind: 'cook', at: stoveAt(), stand: stoveStand(), cos: 1 };
       if (!r && v.lastRest && now - v.lastRest < 2000) r = null;
       r = r || (q && q.shift());
-      if (!r) { const hm = ROLE_HOME(v.role); r = { kind: 'rest', at: hm || { x: v.x, y: v.y }, cos: 1 }; v.lastRest = now; }
+      // an angler between casts keeps sitting with the rod where they last fished (user 2026-11-10: "nhân viên câu cá sao cứ đứng hết 1 chỗ")
+      if (!r && v.role === 'angler' && v.fishSpot && now - v.fishSpot.t < 60 * 60000) {
+        const F = v.fishSpot, sp = F.stand ? { x: F.stand.c * 16 + 8, y: F.stand.r * 16 + 8 } : F.at;
+        r = { kind: 'fishMiss', at: F.at, stand: F.stand, cos: 1, wait: Math.hypot(v.x - sp.x, v.y - sp.y) < 24 };
+      }
+      if (!r) { const hm = ROLE_HOME(v.role, v.staff); r = { kind: 'rest', at: hm || { x: v.x, y: v.y }, cos: 1 }; v.lastRest = now; }
       let tile = null;
-      if (r && r.at) { const sp = r.stand ? { x: r.stand.c * 16 + 8, y: r.stand.r * 16 + 8 } : r.at; tile = nearWalkFree(sp.x, sp.y, v); v.task = r; }
+      if (r && r.at) { const sp = r.stand ? { x: r.stand.c * 16 + 8, y: r.stand.r * 16 + 8 } : r.at; tile = r.wait ? { c: v.tileCol, r: v.tileRow } : nearWalkFree(sp.x, sp.y, v); v.task = r; }
+      if (r && !r.cos && (r.kind === 'fish' || r.kind === 'fishMiss') && r.at) v.fishSpot = { at: r.at, stand: r.stand, t: now };
+      if (r && r.wait) { v.step = 'doing'; v.start = now; v.until = now + 15000; faceToward(v, r.at); return; } // stays put, rod in the water
       if (!tile) { v.task = null; tile = farTile(v, 1, 4); }
       v.step = tile && villagerGo(v, tile.c, tile.r) ? 'going' : 'idle';
       if (v.step === 'idle') { v.step = 'doing'; v.start = now; v.until = now + 1500; }
