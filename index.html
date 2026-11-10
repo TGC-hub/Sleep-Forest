@@ -134,6 +134,20 @@
     }
     // static draw order (the engine sorts by sprite bottom; chairs by their first row; desk riders just above)
     S.order = S.items.map(([t, c, r], i) => { const ty = S.types[t]; let z = r * 16 + ty.h; if (ty.chair) z = (r + 1) * 16; if (ty.surface) z += 0.5; if (ty.layer) z = ty.layer; return { t, c, r, z, i }; });
+    // perf (user 2026-11-10 "tối ưu ... cho không lag"): the still flat ground (sea, island grass, cliffs, bridges, tufts,
+    // flowers... = flat layer with one frame, ~3,000 items) is baked once into the floor picture at map scale, so a frame
+    // draws one image instead of sorting and drawing them all
+    {
+      const bake = document.createElement('canvas'); bake.width = S.w; bake.height = S.h;
+      const bg = bake.getContext('2d'); bg.imageSmoothingEnabled = false; bg.drawImage(floorImg, 0, 0, S.w, S.h);
+      const keep = [];
+      for (const d of S.order.slice().sort((a, b) => a.z - b.z || a.i - b.i)) {
+        const ty = S.types[d.t];
+        if (ty.layer && ty.layer < 0 && ty.frames.length === 1) { const [sx, sy, w, h] = S.frames[ty.frames[0]]; bg.drawImage(atlas, sx, sy, w, h, d.c * 16, d.r * 16, w, h); }
+        else keep.push(d);
+      }
+      floorImg = bake; S.order = keep;
+    }
     window.__forestOffice = office;
     ready = true;
   }
@@ -954,10 +968,20 @@
     g.drawImage(mask, 0, 0);
   }
 
+  let glowCv = null;
+  function fireflyGlow() { // 14x14 soft green-yellow glow, drawn with globalAlpha = blink
+    if (glowCv) return glowCv;
+    glowCv = mk(14, 14); const q = glowCv.getContext('2d'), gr = q.createRadialGradient(7, 7, 0, 7, 7, 7);
+    gr.addColorStop(0, 'rgba(235,255,150,1)'); gr.addColorStop(0.35, 'rgba(200,255,90,0.45)'); gr.addColorStop(1, 'rgba(160,255,80,0)');
+    q.fillStyle = gr; q.fillRect(0, 0, 14, 14); return glowCv;
+  }
   function drawShade(ph, now) {
     const g = shade.getContext('2d');
     g.globalCompositeOperation = 'source-over';
-    g.clearRect(0, 0, W, H);
+    if (shade.__drawn !== false) g.clearRect(0, 0, W, H);
+    const dark0 = 0.68 * ph.night;
+    shade.__drawn = ph.warm > 0.01 || weather.level > 0.01 || dark0 > 0.01;
+    if (!shade.__drawn) return false;
     if (ph.warm > 0.01) { g.fillStyle = ph.dawn ? `rgba(255,140,170,${0.26 * ph.warm})` : `rgba(255,110,30,${0.3 * ph.warm})`; g.fillRect(0, SKY_H, W, H - SKY_H); }
     if (weather.level > 0.01) { g.fillStyle = `rgba(36,48,70,${0.4 * weather.level})`; g.fillRect(0, SKY_H, W, H - SKY_H); }
     const dark = 0.68 * ph.night;
@@ -1004,13 +1028,12 @@
           const x = home.x + Math.sin(t * (0.3 + hash01(i, 3, 7) * 0.4) + i) * 14, y = home.y - 6 + Math.sin(t * (0.5 + hash01(i, 4, 7) * 0.5) + i * 2) * 6;
           const blink = Math.max(0, Math.sin(t * (1.2 + hash01(i, 5, 7)) + i * 1.7)) ** 2 * k;
           if (blink < 0.05) continue;
-          const gr = g.createRadialGradient(x, y, 0, x, y, 7);
-          gr.addColorStop(0, `rgba(235,255,150,${blink})`); gr.addColorStop(0.35, `rgba(200,255,90,${0.45 * blink})`); gr.addColorStop(1, 'rgba(160,255,80,0)');
-          g.fillStyle = gr; g.fillRect(x - 7, y - 7, 14, 14);
+          g.globalAlpha = blink; g.drawImage(fireflyGlow(), x - 7, y - 7); g.globalAlpha = 1;
           g.fillStyle = `rgba(255,255,220,${blink})`; g.fillRect(Math.round(x) - 0.5, Math.round(y) - 0.5, 1.5, 1.5);
         }
       }
     }
+    return true;
   }
 
   // ── Farm life: idle characters walk to a spot and feed animals, water crops, fish or plant trees ──
@@ -4205,7 +4228,8 @@
     return '';
   }
   // ── Manager panels: the user only watches; the staff decide ──
-  const money = (n) => (n < 0 ? '−' : '') + Math.abs(Math.round(n)).toLocaleString('vi-VN');
+  const MONEY_FMT = new Intl.NumberFormat('vi-VN'); // one formatter (toLocaleString built a new one per call: ~20 ms/s)
+  const money = (n) => (n < 0 ? '−' : '') + MONEY_FMT.format(Math.abs(Math.round(n)));
   const staffName = (id) => { const w = mStaff().find((x) => x.id === id); return w ? `${ROLES[w.role].icon} ${w.name}` : 'Người cũ'; };
   const JOB_VI = { rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
   // ── The manager's spoken report (user 2026-11-10: "quản lý báo cáo với tôi mọi thứ giống kiểu kính thưa chủ nhân,
@@ -4392,7 +4416,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '16:11 10-11';
+    const build = '16:24 10-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -4893,24 +4917,10 @@
   function initCritters() {
     if (!CR || critters.length) return;
     const now = performance.now(), trees = CR.perches.filter((p) => p.kind === 'tree');
-    for (let i = 0; i < 3; i++) {
-      const p = CR.perches[(i * 23 + 5) % CR.perches.length];
-      critters.push({ kind: 'monkey', x: p.x, y: p.y, perch: p, path: [], next: now + rnd(2000, 8000), dir: 1, seed: Math.random() * 100 });
-    }
-    critters.push({ kind: 'duck', variant: 'mallard', x: rnd(20, 120), lane: 0, laneTo: 0, state: 'swim', trail: [], v: rnd(6, 8), next: now + 5000, family: true });
-    critters.push({ kind: 'duck', variant: 'white', x: rnd(280, 420), lane: 3, laneTo: 3, state: 'swim', trail: [], v: 5, dirX: -1, lo: 250, hi: 470, next: now + 7000 });
-    for (let i = 0; i < 2; i++) {
-      const t = trees[(i * 7 + 3) % trees.length];
-      critters.push({ kind: 'squirrel', x: t.bx, y: t.by - 12, tree: t, path: [], next: now + rnd(1500, 5000), dir: 1, onTrunk: true });
-    }
-    const m = CR.meadow;
-    critters.push({ kind: 'flock', birds: Array.from({ length: 5 }, () => ({ x: rnd(m.x0, m.x1), y: rnd(m.y0, m.y1), dir: Math.random() < 0.5 ? 1 : -1, hop: 0, pose: 'stand', next: now + rnd(300, 1500) })), state: 'ground', fly: null });
-    for (const fx of [70, 330]) critters.push({ kind: 'frog', x: fx, y: SY(fx) + SW(fx) / 2 + 6, path: [], next: now + rnd(2000, 6000), dir: Math.random() < 0.5 ? 1 : -1, puff: 0 });
-    critters.push({ kind: 'turtle', x: 360, dirX: 1, hide: 0, lo: 300, hi: 440 });
+    // user 2026-11-10: "bỏ bớt con vật không cần thiết ở bên ngoài chuồng (không phải vật nuôi) vì chúng chuyển động nhiều
+    // có thể gây lag" → no more monkeys, ducks, squirrels, sparrows, frogs, turtle, hedgehog, butterflies, bees; only the owl
+    // (it sits on its tree, moves a little at night)
     critters.push({ kind: 'owl', perch: trees[2 % trees.length], x: 0, y: 0, path: [], next: now + 30000, blink: 0, dir: 1 });
-    critters.push({ kind: 'hedgehog', x: (m.x0 + m.x1) / 2, y: m.y1, to: null, ball: 0, dir: 1 });
-    for (let i = 0; i < 6; i++) critters.push({ kind: 'butterfly', v: i % 2 ? 'b' : 'a', flower: CR.flowers[(i * 7 + 3) % Math.max(1, CR.flowers.length)], x: 0, y: 0, ph: Math.random() * 6, next: now + rnd(3000, 9000), dir: 1 });
-    for (let i = 0; i < 4; i++) critters.push({ kind: 'bee', flower: CR.flowers[(i * 5) % Math.max(1, CR.flowers.length)], x: 0, y: 0, ph: Math.random() * 6, next: now + rnd(6000, 14000) });
   }
 
   function monkeyPlan(c, now) {
@@ -5889,12 +5899,17 @@
       depthFlip(fg, now);
       drawUmbrellas(fg); drawRain(fg, now, fdt);
     } catch (e) { if (!frame.warned) { frame.warned = true; console.warn('[Claude Forest] farm life: ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' <- ') : e)); } }
-    g.drawImage(fx, v.x, v.y, W * v.z, H * v.z);
+    // perf (2026-11-10): scale only the part of the map-sized layers that is on screen (was 3 full-map blits a frame)
+    const blit = (img, mh) => {
+      const x0 = Math.max(0, Math.floor(-v.x / v.z)), y0 = Math.max(0, Math.floor(-v.y / v.z));
+      const x1 = Math.min(W, Math.ceil((o.width - v.x) / v.z)), y1 = Math.min(mh, Math.ceil((o.height - v.y) / v.z));
+      if (x1 > x0 && y1 > y0) g.drawImage(img, x0, y0, x1 - x0, y1 - y0, v.x + x0 * v.z, v.y + y0 * v.z, (x1 - x0) * v.z, (y1 - y0) * v.z);
+    };
+    blit(fx, H);
     if (ph.night >= 0.01 || ph.warm >= 0.01 || (h > 5.7 && h < 18.9)) {
       drawSky(h, now, ph);
-      drawShade(ph, now);
-      g.drawImage(shade, v.x, v.y, W * v.z, H * v.z);
-      g.drawImage(skyLayer, v.x, v.y, W * v.z, SKY_H * v.z);
+      if (drawShade(ph, now)) blit(shade, H); // nothing to shade at plain daytime
+      blit(skyLayer, SKY_H);
     }
     // lightning: two quick white flashes over the whole office
     const since = now - weather.flash;
@@ -6422,6 +6437,65 @@
         if (sy > y0) { if (x0 > 0) ctx.fillRect(0, y0, x0, sy - y0); if (x1 < cw) ctx.fillRect(x1, y0, cw - x1, sy - y0); } // beside its sky rows
       }
     } catch (e) { /* never break the engine's frame */ }
+  };
+
+  // ── PC: still floor cache (apply.js patchFloorCache; user 2026-11-10 "tối ưu ... cho không lag") ──
+  // The floor grid + the ~3,000 still ground tiles (forestStatic) are drawn once per zoom into 1024 px chunks (map
+  // space, origin = map top-left); each frame only the visible chunks are blitted, and those tiles leave the list the
+  // engine sorts and draws. Rebuilt when the zoom, the tile map/colours or the static tiles change. At most 16 chunks
+  // are kept (least recently used dropped) so a big zoom can't eat the RAM.
+  const FC = { z: 0, tmap: null, colors: null, list: null, statics: null, rest: null, sig: '', chunks: new Map(), CH: 1024, MAX: 16, builds: 0 };
+  window.__forestFloorStats = FC;
+  window.__forestFloor = (ctx, furn, ox, oy, z, tmap, colors, drawFloor, drawItem) => {
+    try {
+      if (furn !== FC.list) { // new furniture list: split it once, and check whether the still tiles changed
+        const statics = [], rest = [];
+        for (const q of furn) (q.forestStatic && !q.mirrored ? statics : rest).push(q);
+        let same = FC.statics && FC.statics.length === statics.length;
+        for (let k = 0; same && k < statics.length; k++) { const a = statics[k], b = FC.statics[k]; if (a.sprite !== b.sprite || a.x !== b.x || a.y !== b.y) same = false; }
+        if (!same) FC.chunks.clear();
+        FC.list = furn; FC.statics = statics; FC.rest = rest;
+      }
+      if (z !== FC.z || tmap !== FC.tmap || colors !== FC.colors) { FC.chunks.clear(); FC.z = z; FC.tmap = tmap; FC.colors = colors; }
+      const cw = ctx.canvas.width, ch = ctx.canvas.height, CH = FC.CH, mw = W * z, mh = H * z;
+      const c0 = Math.max(0, Math.floor(-ox / CH)), c1 = Math.min(Math.ceil(mw / CH) - 1, Math.floor((cw - ox) / CH));
+      const r0 = Math.max(0, Math.floor(-oy / CH)), r1 = Math.min(Math.ceil(mh / CH) - 1, Math.floor((ch - oy) / CH));
+      if (window.__forestBg) window.__forestBg(ctx, ox, oy, z);
+      let built = 0;
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        const key = c + ',' + r;
+        let cv = FC.chunks.get(key);
+        if (!cv && built < 6) { // spread a full rebuild over a few frames
+          built++; FC.builds++;
+          cv = document.createElement('canvas'); cv.width = Math.min(CH, mw - c * CH); cv.height = Math.min(CH, mh - r * CH);
+          const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+          const bx = -c * CH, by = -r * CH, pad = 48 * z;
+          const bg = window.__forestBg; window.__forestBg = null;
+          drawFloor(g, bx, by);
+          window.__forestBg = bg;
+          for (const q of FC.statics) {
+            const x = q.x * z + bx, y = q.y * z + by;
+            if (x > cv.width || y > cv.height || x < -pad || y < -pad) continue;
+            drawItem(g, q, bx, by);
+          }
+        }
+        if (cv) { FC.chunks.delete(key); FC.chunks.set(key, cv); ctx.drawImage(cv, ox + c * CH, oy + r * CH); }
+        else { // not built yet this frame: draw that area the old way
+          ctx.save(); ctx.beginPath(); ctx.rect(ox + c * CH, oy + r * CH, CH, CH); ctx.clip();
+          const bg = window.__forestBg; window.__forestBg = null; drawFloor(ctx, ox, oy); window.__forestBg = bg;
+          for (const q of FC.statics) drawItem(ctx, q, ox, oy);
+          ctx.restore();
+        }
+      }
+      while (FC.chunks.size > FC.MAX) FC.chunks.delete(FC.chunks.keys().next().value);
+      window.__forestView = { x: ox, y: oy, z, canvas: ctx.canvas };
+      return FC.rest;
+    } catch (e) {
+      if (!FC.warned) { FC.warned = true; console.warn('[Claude Forest] floor cache off: ' + e); }
+      window.__forestFloor = null;
+      drawFloor(ctx, ox, oy);
+      return furn;
+    }
   };
 
   // ── drawing the islets, the traveller, the seasons ──
