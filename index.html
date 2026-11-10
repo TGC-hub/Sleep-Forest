@@ -94,6 +94,7 @@
 (function () {
   const cv = document.getElementById('scene'), ctx = cv.getContext('2d');
   const DIR = { DOWN: 0, LEFT: 1, RIGHT: 2, UP: 3 };
+  let seaPat = null, seaImg = null; // the sea around the map (see draw)
   let S = null, atlas = null, floorImg = null, petsImg = null, petsHiImg = null, crewImg = null, ready = false;
   const office = { characters: new Map(), pets: [], walkableTiles: [] };
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -118,6 +119,7 @@
   async function load() {
     S = await (await fetch('scene.json')).json();
     [atlas, floorImg, petsImg, crewImg, petsHiImg] = await Promise.all([loadImg('atlas.png'), loadImg('floor.png'), loadImg('pets.png'), S.crew ? loadImg('forest-crew.png?v=' + S.ver) : null, S.petHi && Object.keys(S.petHi).length ? loadImg('pets-hi.png') : null]);
+    seaImg = await loadImg('forest-sea.png?v=' + S.ver).catch(() => null); // the sea around the map (build.js sea.png)
     for (let r = 0; r < S.walk.length; r++) for (let c = 0; c < S.walk[r].length; c++) if (S.walk[r][c] === '1') office.walkableTiles.push({ col: c, row: r });
     for (const p of S.pets) {
       const t = office.walkableTiles[Math.floor(Math.random() * office.walkableTiles.length)];
@@ -251,9 +253,15 @@
     const dpr = Math.min(2, window.devicePixelRatio || 1), cw = Math.round(innerWidth * dpr), ch = Math.round(innerHeight * dpr);
     if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = cam.free ? '#000' : '#0c1410'; ctx.fillRect(0, 0, cw, ch);
     let z, ox, oy;
-    if (cam.free) { ({ z, ox, oy } = cam.free); }
+    // user 2026-11-10: the free view stops at the map's edges (no zooming out past the whole map, no dragging off it)
+    if (cam.free) {
+      const zMin = Math.max(cw / S.w, ch / S.h);
+      z = Math.max(zMin, cam.free.z);
+      ox = Math.min(0, Math.max(cw - S.w * z, cam.free.ox));
+      oy = Math.min(0, Math.max(ch - S.h * z, cam.free.oy));
+      cam.free = { z, ox, oy };
+    }
     else if (cam.mode === 'close') {
       z = Math.max(ch / (S.h * 0.54), cw / S.w); const span = S.w * z - cw;
       if (span <= 0) { ox = (cw - S.w * z) / 2; }
@@ -267,17 +275,22 @@
     }
     cam.z = z;
     window.__forestView = { x: ox, y: oy, z, canvas: cv };
-    // whole-map view on a tall screen: continue the sky above and the forest floor below instead of bare bands
-    if (oy > 1 && !cam.free) {
-      const forced = /hour=([\d.]+)/.exec(location.hash); // same clock as the sky overlay (#hour=21 for testing)
-      const h = forced ? +forced[1] : new Date().getHours() + new Date().getMinutes() / 60, night = h < 5.5 || h >= 19.5, dusk = !night && (h < 7 || h >= 17.5);
-      const top = ctx.createLinearGradient(0, 0, 0, oy);
-      top.addColorStop(0, night ? '#05081a' : dusk ? '#3b3a78' : '#3f8fd8');
-      top.addColorStop(1, night ? '#101a3a' : dusk ? '#f0a070' : '#8cc8f0');
-      ctx.fillStyle = top; ctx.fillRect(0, 0, cw, Math.ceil(oy) + 1);
-      const bot = ctx.createLinearGradient(0, oy + S.h * z, 0, ch);
-      bot.addColorStop(0, night ? '#0d1d12' : '#2c6a2a'); bot.addColorStop(1, night ? '#050a07' : '#163d18');
-      ctx.fillStyle = bot; ctx.fillRect(0, Math.floor(oy + S.h * z) - 1, cw, ch);
+    // around the map (the whole-map view on a tall / wide screen): the sea goes on (the Cozy water tiles, 32x32,
+    // on the same grid), the sky above the sea line; never black (user 2026-11-10)
+    if (!seaPat && seaImg) seaPat = ctx.createPattern(seaImg, 'repeat');
+    if (ox > 0 || oy > 0 || ox + S.w * z < cw || oy + S.h * z < ch) {
+      ctx.save(); ctx.translate(ox, oy); ctx.scale(z, z);
+      ctx.fillStyle = seaPat || '#2a7fc0'; ctx.fillRect(-ox / z - 16, -oy / z - 16, cw / z + 32, ch / z + 32);
+      ctx.restore();
+      const skyY = oy + 96 * z; // the sky rows at the top of the map (SKY_TOP = 6 rows)
+      if (skyY > 0) {
+        const forced = /hour=([\d.]+)/.exec(location.hash); // same clock as the sky overlay (#hour=21 for testing)
+        const h = forced ? +forced[1] : new Date().getHours() + new Date().getMinutes() / 60, night = h < 5.5 || h >= 19.5, dusk = !night && (h < 7 || h >= 17.5);
+        const top = ctx.createLinearGradient(0, 0, 0, skyY);
+        top.addColorStop(0, night ? '#05081a' : dusk ? '#3b3a78' : '#3f8fd8');
+        top.addColorStop(1, night ? '#101a3a' : dusk ? '#f0a070' : '#8cc8f0');
+        ctx.fillStyle = top; ctx.fillRect(0, 0, cw, Math.ceil(skyY) + 1);
+      }
     }
     ctx.drawImage(floorImg, Math.round(ox), Math.round(oy), Math.round(S.w * z), Math.round(S.h * z));
     const tick = Math.floor(now / 200);
@@ -4379,7 +4392,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '14:27 10-11';
+    const build = '14:50 10-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -4650,8 +4663,8 @@
       callPets(office, PET.chicken, { tc: CLICK.coop.tc, tr: CLICK.coop.tr, col: -1, row: -1 }, 9);
       return;
     }
-    // stream: cast a line
-    if (WATER.has(Math.floor(m.x / 16) + ',' + Math.floor(m.y / 16))) { startFishing(m.x, m.y); ev.stopPropagation(); return; }
+    // (2026-11-10) the owner no longer fishes by tapping the water: on the phone every tap / swipe over the sea cast a
+    // line ("chạm vuốt hay bị câu"); the staff fish for the farm. startFishing / the old tally stay for the records.
     // trees: leaves (and sometimes an apple) come down
     const tree = CLICK.trees.filter((t) => m.x >= t.x + 2 && m.x < t.x + t.w - 2 && m.y >= t.y && m.y < t.y + t.h * 0.72).sort((a, b) => (b.y + b.h) - (a.y + a.h))[0];
     if (tree) {
