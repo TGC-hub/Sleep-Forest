@@ -2294,7 +2294,7 @@
   // books look exactly as if they had worked all along. Save keys: mgr/staff, mgr/last, mgr/day/<day>, mgr/log, mgr/away.
   const MSTEP = 5 * 60000, MCATCH = 7 * 864e5, MWORK = [6, 18], MLOG = 160, MMAX = 12; // shift 6-18 (user 2026-11-09); later = overtime, x2 pay
   const ROLES = {
-    boss: { name: 'Quản lý', icon: '🧑‍💼', ap: 6, wage: 0, hire: 0, jobs: ['rescue', 'dead', 'boss', 'harvest', 'orders', 'field', 'ranch', 'pond', 'cook', 'sell', 'water', 'wood', 'fish'] },
+    boss: { name: 'Quản lý', icon: '🧑‍💼', ap: 6, wage: 0, hire: 0, jobs: ['rescue', 'dead', 'boss', 'harvest', 'orders', 'field', 'ranch', 'pond', 'cook', 'mill', 'sell', 'water', 'wood', 'fish'] },
     farmer: { name: 'Trồng trọt', icon: '🧑‍🌾', ap: 9, wage: 30, hire: 120, jobs: ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'field', 'water'] },
     poultry: { name: 'Nuôi gia cầm', icon: '🐔', ap: 6, wage: 35, hire: 180, jobs: ['rescue', 'dead', 'ranch'] },
     cattle: { name: 'Nuôi gia súc', icon: '🐄', ap: 6, wage: 40, hire: 220, jobs: ['rescue', 'dead', 'ranch'] },
@@ -2347,7 +2347,7 @@
   const mLocalH = (t) => { const d = new Date(t); return d.getHours() + d.getMinutes() / 60; };
   const mWorking = (t) => { const h = mLocalH(t); return h >= MWORK[0] && h < MWORK[1]; };
   const mNextWork = (t) => { if (mWorking(t)) return t; const d = new Date(t); if (mLocalH(t) >= MWORK[1]) d.setDate(d.getDate() + 1); d.setHours(MWORK[0], 0, 0, 0); return d.getTime(); };
-  const mWages = (st = mStaff()) => st.reduce((s, w) => s + (ROLES[w.role] ? ROLES[w.role].wage : 0), 0);
+  const mWages = (st = mStaff()) => st.reduce((s, w) => s + (ROLES[w.role] ? wageOf(w) : 0), 0);
   // wages owed (user 2026-11-06: not enough money on payday -> a debt, not a firing): mgr/debt = { id: { name, amt } }
   // the ledger correction (user 2026-11-10 "lỗi tiền thì sửa đi"): 878 coins counted twice on 2026-11-09 (PC + phone
   // both catching up) minus 470 hire fees lost when hired staff vanished (roster bug) = 408 owed back, no interest,
@@ -2391,7 +2391,7 @@
       const d = mDayRec(t - k * 864e5); if (!d.acts) continue;
       const c = (d.cat || {}).in || {}, o = (d.cat || {}).out || {}, sum = (src, ns) => ns.reduce((a, n) => a + (src[n] || 0), 0);
       flow += sum(c, ['Bán cá câu', 'Vé tham quan farm', 'Vé sở thú', 'Tiền tip hướng dẫn', 'Vé cắm trại', 'Quầy bánh mì', 'Quán nước', 'Nhà hàng']);
-      prod += sum(c, ['Bán món ăn', 'Bán trứng, sữa, thịt', 'Bán cá nuôi', 'Bán mật ong, trái cây']);
+      prod += sum(c, ['Bán món ăn', 'Bán trứng, sữa, thịt', 'Bán cá nuôi', 'Bán mật ong, trái cây', 'Bán hàng xưởng']);
       cost += sum(o, FC_RUNCOST); nd++;
     }
     const left = Math.max(0, Math.min(1, (dayEnd - t) / ((MWORK[1] - MWORK[0]) * HOUR))), avg = (x) => (nd ? (x / nd) * left : 0);
@@ -2416,7 +2416,7 @@
   const mRisk = () => RISK[mRiskKey()];
   const mReserve = () => { const F = mForecast(), R = mRisk(); return Math.max(20 + Math.round(F.wages * R.floor), Math.round(F.outflow - F.inflow * R.inMul)); };
   // how diligent a worker is (fixed per person, from their id): 1 = never slacks; the head manager always 1
-  const dilOf = (w) => (w.role === 'boss' ? 1 : 0.62 + 0.45 * hash01(parseInt(w.id.slice(1), 36) || 7, 911, 3));
+  const dilOf = (w) => (w.role === 'boss' ? 1 : (0.62 + 0.45 * hash01(parseInt(w.id.slice(1), 36) || 7, 911, 3)) * lifeMood(w)); // 2026-11-12: presents / sadness
   const mSlackNow = {}; // live: who is slacking off this step (they rest instead of working)
   // investments are the owner's capital, not a worker's running cost
   const INVEST = new Set(['land', 'upgrade', 'hire', 'buyAnimal', 'zooBuy', 'zooOpen']);
@@ -2855,10 +2855,10 @@
       mBrokeNote(farmNow(), w.id);
       if (mStaff().some((x) => x.role === 'accountant')) { const L = mJobs({ ...w, role: 'boss!' }, t); return L; }
       return broke ? ['payroll', 'rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
-        : ['payroll', 'rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'sell', 'water', 'wood', 'fish'];
+        : ['payroll', 'rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'sell', 'water', 'wood', 'fish'];
     }
     if (w.role === 'boss!') { const broke = mBroke(); return (broke ? ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
-      : ['rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'sell', 'water', 'wood', 'fish']); } // the manager without payroll (the accountant has it)
+      : ['rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'sell', 'water', 'wood', 'fish']); } // the manager without payroll (the accountant has it)
     if (barTender(t) === w.id && (mLocalH(t) >= MWORK[1] || mLocalH(t) < MWORK[0])) return ['bar'];
     const j = HELP[w.role] ? ROLES[w.role].jobs.concat('help') : ROLES[w.role].jobs;
     return broke && !j.includes('fish') && w.role !== 'woodcutter' && !ROLES[w.role].shift ? j.concat('fish') : j; // shop sellers stay at their counter
@@ -3091,6 +3091,7 @@
       : !count('camphost') && xBuilt('camp', t) ? ['camphost', 'khu cắm trại có người đón thì khách đến đủ (không ai đón chỉ ~60%)']
       : !count('beekeeper') && xBuilt('bees', t) ? ['beekeeper', 'trại ong có người chuyên chăm: mật thêm 30%, nông dân đỡ phải ra đảo']
       : !count('gardener') && xBuilt('orchard', t) ? ['gardener', 'vườn quả có người chuyên chăm: quả thêm 30%, nông dân đỡ phải ra đảo']
+      : !count('artisan') && millLv() >= 2 ? ['artisan', 'xưởng chế biến đã có 4 thùng, cần thợ chuyên ủ và coi hầm']
       : late >= 4 && count('farmer') < Math.ceil(land() / 6) ? ['farmer', 'ruộng làm không xuể (cây chín quá/chết)']
       : count('poultry') === 1 && small >= 12 ? ['poultry', 'chuồng gia cầm quá đông']
       : null;
@@ -3107,6 +3108,7 @@
     const R = ROLES[role];
     if (!R || role === 'boss' || coins() < R.hire || mStaff().length >= mMax()) return;
     if (role === 'guide' && !guideAllowed()) return; // only once the zoo is open and has had visitors
+    if (role === 'artisan' && !millLv()) return;
     if (R.need && !xBuilt(R.need)) return; // islet trades: once their place is built
     const t = farmNow(), tape = mTaped(() => mHire(role, t)), w = tape.r;
     mCatBook(t, tape.moves, 'hire'); mBook(t, w.id, -R.hire, 0, 'hire', ROLE_LINE[role] || 'staff', `chủ trại thuê ${R.name}`);
@@ -3400,7 +3402,8 @@
       { const U = UPGRADES.kitchen, n = upg('kitchen'), cost = U.cost[n]; if (cost && level() >= U.lvl[n] && [...Array(kitchenSlots()).keys()].every((s) => simCook(s).status !== 'empty') && mCanInvest(cost, { line: 'kitchen', key: 'up:kitchen', what: 'xây thêm lò bếp' }) && mFund(cost, { line: 'kitchen', key: 'up:kitchen', what: 'xây thêm lò bếp' }) && farm.upgrade('kitchen')) return { kind: 'upgrade', line: 'kitchen', text: `bếp kín lò, xây thêm lò (${cost} xu)`, at: barnAt(), icon: '🔨', big: true }; }
       { const U = UPGRADES.barn, n = upg('barn'), cost = U.cost[n]; if (cost && level() >= U.lvl[n] && orderBook(dayNo(t)).every((o) => o.done) && mCanInvest(cost, { line: 'shop', key: 'up:barn', what: 'mở rộng kho' }) && mFund(cost, { line: 'shop', key: 'up:barn', what: 'mở rộng kho' }) && farm.upgrade('barn')) return { kind: 'upgrade', line: 'shop', text: `giao hết đơn trong ngày, mở rộng kho nhận thêm đơn (${cost} xu)`, at: barnAt(), icon: '🔨', big: true }; }
       { const xr = xInvest(t, w); if (xr) return xr; }
-      { const fr = facInvest(t, w); if (fr) return fr; } // a facility level (2026-11-12) // the islets (bee yard, orchard, campsite): cheaper than the zoo, steady income
+      { const fr = facInvest(t, w); if (fr) return fr; }
+      { const mr = millInvest(t); if (mr) return mr; } // the workshop (2026-11-12) // a facility level (2026-11-12) // the islets (bee yard, orchard, campsite): cheaper than the zoo, steady income
       // the zoo: opened once the purse holds 3x its price; then an animal at a time (best appeal for the money)
       if (!zooOpen() && level() >= ZOO_LVL && mCanInvest(ZOO_UNLOCK, { line: 'zoo', key: 'zooOpen', what: 'mở sở thú' }) && mFund(ZOO_UNLOCK, { line: 'zoo', key: 'zooOpen', what: 'mở sở thú' }) && zoo.open()) return { kind: 'zooOpen', line: 'zoo', text: `mở cửa sở thú (${money(ZOO_UNLOCK)} xu)`, at: zooGateAt(), icon: '🦁', big: true };
       if (zooOpen()) {
@@ -3448,6 +3451,7 @@
   function repNow(t = farmNow()) {
     const today = dayNo(t); let r = REP.start;
     for (const k of save.keys('rep/')) { const d = Number(k.slice(4)), e = save.get(k); if (d < today && d >= today - REP.days && e) r += REP.done * (e.done || 0) + REP.cancel * (e.cancel || 0) + REP.miss * (e.miss || 0); }
+    for (const k of save.keys('repx/')) { const d = Number(k.slice(5)); if (d <= today && d >= today - REP.days) r += save.get(k, 0) || 0; } // events (2026-11-12)
     return Math.max(0, Math.min(100, Math.round(r)));
   }
   const repMul = (r) => Math.round((0.7 + (0.6 * r) / 100) * 100) / 100;
@@ -3565,7 +3569,7 @@
     const r = JOBS.payroll(t, boss) || (mBroke() ? null : JOBS.boss(t, boss));
     if (r) { r.text = `${r.text} (duyệt lúc đang nghỉ tay)`; r.big = true; mRecord(boss.id, t, [r]); }
   }
-  const mOnShift = (w, t = farmNow()) => { const h = mLocalH(t); if ((ROLES[w.role] || {}).night) return h >= BAR_OPEN || h < BAR_CLOSE - 24; { const sh = (ROLES[w.role] || {}).shift; if (sh) return h >= sh[0] && h < sh[1]; } if (h >= MWORK[0] && h < MWORK[1]) return true; if (h < MWORK[0]) { const y = mOT(w.id, t - 864e5); return !!(y && y.until > 24 && h + 24 < y.until); } const o = h >= MWORK[1] && mOT(w.id, t); return !!(o && o.until > 0 && h < o.until); };
+  const mOnShift = (w, t = farmNow()) => { if (lifeOff(w, t)) return false; const h = mLocalH(t); if ((ROLES[w.role] || {}).night) return h >= BAR_OPEN || h < BAR_CLOSE - 24; { const sh = (ROLES[w.role] || {}).shift; if (sh) return h >= sh[0] && h < sh[1]; } if (h >= MWORK[0] && h < MWORK[1]) return true; if (h < MWORK[0]) { const y = mOT(w.id, t - 864e5); return !!(y && y.until > 24 && h + 24 < y.until); } const o = h >= MWORK[1] && mOT(w.id, t); return !!(o && o.until > 0 && h < o.until); };
   const otRate = (w) => ((ROLES[w.role] || {}).wage || 0) / (MWORK[1] - MWORK[0]) * 2; // coins per overtime hour
   const otCost = (w, until) => Math.round(otRate(w) * Math.max(0, until - MWORK[1]));
   function mSetOT(id, until, by, why, t = farmNow()) {
@@ -3710,7 +3714,7 @@
     let st = mStaff();
     const debt = mDebts(), d = mDayRec(t);
     for (const w of st) {
-      const wg = (ROLES[w.role] || {}).wage || 0;
+      const wg = wageOf(w);
       if (!wg) continue;
       (debt[w.id] || (debt[w.id] = { name: w.name, amt: 0 })).amt += wg;
       (d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 })).wage = wg;
@@ -3720,7 +3724,7 @@
     { const due = Object.values(debt).reduce((s, e) => s + e.amt, 0); if (due > 0 && coins() < due) mBorrow(due - coins() + 100, t, 'để trả lương'); }
     mPayDebts(t, debt);
     for (const w of st.slice()) {
-      const e = debt[w.id], wg = (ROLES[w.role] || {}).wage || 0;
+      const e = debt[w.id], wg = wageOf(w);
       if (!e || !wg || e.amt < wg * 5) continue;
       st = st.filter((x) => x !== w); mRemoveWorker(w.id, 'quit');
       mLog(t, w.id, `${w.name} (${ROLES[w.role].name}) bỏ việc vì bị nợ lương ${money(e.amt)} xu (vẫn còn nợ)`, 0);
@@ -3772,6 +3776,7 @@
     mDaily(t);
     mEvening(t); // 17:30: overtime for orders that can still be made, or cancel; cancel what is left when the shift ends
     barDecide(t); // 17:30, after the order crews: open the night bar tonight or not (2026-11-10)
+    try { lifeStep(t); evStep(t); } catch (e) { console.warn('[Claude Forest] stories: ' + e); } // 2026-11-12
     xStep(t); // campfire, campers, the traveller's story, finished islet buildings
     if (!mStaff().some((w) => mOnShift(w, t))) return;
     const st = mStaff().map((w) => ({ ...w })), stepH = MSTEP / HOUR;
@@ -3828,7 +3833,7 @@
     if (c > 0) {
       if (kind === 'order') return ['in', 'Giao đơn hàng'];
       const k = keys.find((x) => inv[x] < 0) || '';
-      return ['in', k === 'cui' ? 'Bán củi' : k.startsWith('d:') ? 'Bán món ăn' : k.startsWith('f:') ? 'Bán cá nuôi' : CATCH_GOODS[k] ? 'Bán cá câu' : PRODUCTS[k] ? 'Bán trứng, sữa, thịt' : CROPS[k] ? 'Bán nông sản' : XGOODS[k] ? 'Bán mật ong, trái cây' : 'Bán khác'];
+      return ['in', k === 'cui' ? 'Bán củi' : k.startsWith('m:') ? 'Bán hàng xưởng' : k.startsWith('d:') ? 'Bán món ăn' : k.startsWith('f:') ? 'Bán cá nuôi' : CATCH_GOODS[k] ? 'Bán cá câu' : PRODUCTS[k] ? 'Bán trứng, sữa, thịt' : CROPS[k] ? 'Bán nông sản' : XGOODS[k] ? 'Bán mật ong, trái cây' : 'Bán khác'];
     }
     const k = keys.find((x) => inv[x] > 0) || '';
     return ['out', k.startsWith('seed:') ? 'Hạt giống' : k.startsWith('fry:') ? 'Cá giống' : k ? 'Vật tư (cám, thuốc, củi)' : kind === 'hire' ? 'Thuê người' : ['land', 'upgrade'].includes(kind) ? 'Mở rộng, nâng cấp' : 'Con giống'];
@@ -3854,6 +3859,336 @@
     const log = save.get('mgr/log', []), hr = Math.floor(t / HOUR), top = log.find((e) => e.id === id && e.hr === hr);
     if (top) { top.items = (top.items || []).concat(small).slice(-30); save.set('mgr/log', log); }
     else { log.unshift({ t, hr, id, items: small }); save.set('mgr/log', log.slice(0, MLOG)); }
+  }
+  // ── Farm stories (user 2026-11-12 "triển luôn": ý tưởng 1 + 3 + 6) ────────────────────────────────────────────────
+  // 6. the workshop in the cellar under the barn: farm goods made into dearer goods; wine / cheese / rice wine / jam age
+  //    in their vat (fresh → "ủ vừa" → "thượng hạng"), the cook / the head manager / a craftsman decide when to open it.
+  // 1. something happens on most days (a trader, pests, a storm, VIP guests, a rare animal, an inspection...): the owner
+  //    picks A or B within 3 hours, otherwise the manager picks for them (in her report: what she chose and why).
+  // 3. the staff have lives: birthdays (a present → they work harder), sick days, two of them fall in love and marry,
+  //    a good worker asks for a raise (no → sad, and the farm across the water may lure them away).
+  // Everything is decided inside mStep (only the device holding the lease), deterministic per day + worker id.
+  // Save keys: mill/lv, mill/v/<i>; ev/<day>, repx/<day>; life/gift/<id>, life/sad/<id>, life/pay/<id>, life/raise/<id>,
+  // life/couple, life/married, life/day.
+  const MILL = {
+    phomai: { name: 'Phô mai ủ', icon: '🧀', need: { milk: 3 }, h: 6, price: 150, age: 3, top: 2 },
+    vang: { name: 'Rượu vang nho', icon: '🍷', need: { nho: 4 }, h: 12, price: 260, age: 5, top: 2.5 },
+    ruougao: { name: 'Rượu gạo', icon: '🍶', need: { lua: 5 }, h: 10, price: 120, age: 4, top: 2 },
+    mut: { name: 'Mứt đào táo', icon: '🫙', need: { qdao: 3, qtao: 2 }, h: 6, price: 120, age: 2, top: 1.4 },
+    nen: { name: 'Nến sáp ong', icon: '🕯️', need: { honey: 4 }, h: 4, price: 140 },
+    aolen: { name: 'Áo len', icon: '🧥', need: { wool: 3 }, h: 8, price: 220 },
+    khan: { name: 'Khăn len alpaca', icon: '🧣', need: { alpaca: 2 }, h: 8, price: 300 },
+    rang: { name: 'Cà phê rang xay', icon: '🫘', need: { caphe: 3 }, h: 6, price: 210 },
+    dauhd: { name: 'Dầu hướng dương', icon: '🫗', need: { huongduong: 3 }, h: 5, price: 180 },
+    duamuoi: { name: 'Dưa leo muối', icon: '🥒', need: { hanh: 6 }, h: 24, price: 80 },
+  };
+  const MILL_UP = [{ cost: 800, lvl: 3, name: 'Xưởng nhỏ' }, { cost: 2000, lvl: 5, name: 'Xưởng vừa' }, { cost: 5000, lvl: 7, name: 'Nhà máy chế biến' }];
+  const MILL_VATS = [0, 2, 4, 6], MILL_TIER = ['', '', ' (ủ vừa)', ' (thượng hạng)'];
+  const millPrice = (M, tier) => Math.round(M.price * (tier === 3 ? M.top : tier === 2 ? (1 + M.top) / 2 : 1));
+  for (const [k, M] of Object.entries(MILL)) for (let tr = 1; tr <= (M.age ? 3 : 1); tr++) GOODS['m:' + k + (tr > 1 ? ':' + tr : '')] = { name: M.name + MILL_TIER[tr], icon: M.icon, price: millPrice(M, tr) };
+  ROLES.artisan = { name: 'Thợ xưởng', icon: '🧑‍🏭', ap: 4, wage: 35, hire: 180, jobs: ['mill'] };
+  ROLES.cook.jobs = ROLES.cook.jobs.concat('mill');
+  LINES.mill = { name: '🏭 Xưởng chế biến', roles: ['artisan'] }; ROLE_LINE.artisan = 'mill';
+  Object.assign(KIND_LINE, { millIn: 'mill', millOut: 'mill' });
+  const millLv = () => Math.max(0, Math.min(3, save.get('mill/lv', 0)));
+  const millVats = () => MILL_VATS[millLv()];
+  const millKey = (k, tier) => 'm:' + k + (tier > 1 ? ':' + tier : '');
+  const millCost = (M) => Object.entries(M.need).reduce((s, [g, q]) => s + priceOf(g) * q, 0);
+  // coins a batch earns for each day it holds a vat, taken out at its best
+  const millGain = (M) => (millPrice(M, M.age ? 3 : 1) - millCost(M)) / (M.h / 24 + (M.age || 0));
+  function millState(i, t = farmNow()) {
+    const v = save.get('mill/v/' + i); if (!v || !MILL[v.k]) return { status: 'empty' };
+    const M = MILL[v.k], ready = v.t0 + M.h * HOUR;
+    if (t < ready) return { status: 'work', M, v, left: ready - t };
+    const aged = (t - ready) / 864e5, tier = !M.age ? 1 : aged >= M.age ? 3 : aged >= M.age / 2 ? 2 : 1;
+    return { status: 'ready', M, v, tier, aged, next: M.age && tier < 3 ? ready + (tier === 1 ? M.age / 2 : M.age) * 864e5 - t : 0 };
+  }
+  function millHeld(t) { const held = {}; for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) held[k] = (held[k] || 0) + q; return held; }
+  // recipes the barn can feed now, keeping what today's orders need; best coins per vat-day first
+  function millCanStart(t) {
+    const held = millHeld(t);
+    return Object.entries(MILL).filter(([, M]) => Object.entries(M.need).every(([g, q]) => have(g) - (held[g] || 0) >= q)).map(([k, M]) => ({ k, M, gain: millGain(M) })).filter((x) => x.gain > 0).sort((a, b) => b.gain - a.gain);
+  }
+  JOBS.mill = (t, w) => {
+    const n = millVats(); if (!n) return null;
+    const can = millCanStart(t), empty = [...Array(n).keys()].filter((i) => millState(i, t).status === 'empty');
+    for (let i = 0; i < n; i++) {
+      const s = millState(i, t); if (s.status !== 'ready' || !mFree('mill:' + i)) continue;
+      // open the vat at its best, or sooner when money is short, or when a better batch waits for the vat
+      let go = s.tier === 3 || !s.M.age || mBroke();
+      if (!go && !empty.length && can.length) { const more = millPrice(s.M, s.tier + 1) - millPrice(s.M, s.tier); go = can[0].gain > more / Math.max(0.1, s.next / 864e5); }
+      if (!go) continue;
+      const key = millKey(s.v.k, s.tier); save.set('mill/v/' + i, null); ledger(0, 4, { [key]: 1 });
+      return { kind: 'millOut', line: 'mill', text: `${s.M.age ? 'mở hầm lấy' : 'xong mẻ'} ${s.M.icon} ${GOODS[key].name}${s.M.age ? ` sau ${Math.round(s.aged * 10) / 10} ngày ủ` : ''} (${money(GOODS[key].price)} xu)`, at: barnAt(), icon: s.M.icon, value: GOODS[key].price - (s.v.cost || 0), big: s.tier === 3 };
+    }
+    if (empty.length && can.length) {
+      const { k, M } = can[0], i = empty[0], cost = millCost(M);
+      ledger(0, 2, Object.fromEntries(Object.entries(M.need).map(([g, q]) => [g, -q])));
+      save.set('mill/v/' + i, { k, t0: t, cost });
+      return { kind: 'millIn', line: 'mill', text: `cho ${Object.entries(M.need).map(([g, q]) => `${q} ${GOODS[g].icon}`).join(' + ')} vào ${M.age ? 'hầm ủ' : 'xưởng'}: ${M.icon} ${M.name}${M.age ? ` (ủ đủ ${M.age} ngày bán gấp ${String(M.top).replace('.', ',')})` : ''}`, at: barnAt(), icon: '🏭', value: 0 };
+    }
+    return null;
+  };
+  const millNext = () => { const L = millLv(); return L >= 3 ? null : { to: L + 1, ...MILL_UP[L] }; };
+  // recipes the farm can make at all (inputs in the barn, a crop it may sow, or an animal that gives them)
+  const millFeasible = () => Object.values(MILL).filter((M) => Object.keys(M.need).every((g) => have(g) > 0 || (CROPS[g] && CROPS[g].lvl <= level()) || animalIds().some((id) => (ANIMALS[(save.get('animal/' + id) || {}).kind] || {}).product === g)));
+  function millPayback(nx) {
+    const F = millFeasible(); if (F.length < 2) return 0;
+    const n = millVats(), busy = n && [...Array(n).keys()].every((i) => millState(i).status !== 'empty');
+    const per = F.reduce((s, M) => s + Math.min(200, millPrice(M, M.age ? 3 : 1) - millCost(M)), 0) / F.length;
+    const perDay = (MILL_VATS[nx.to] - n) * per * (busy ? 1 : 0.6);
+    return perDay > 0 ? nx.cost / perDay : 0;
+  }
+  function millInvest(t) {
+    const nx = millNext(); if (!nx || level() < nx.lvl) return null;
+    const n = millVats(); if (n && [...Array(n).keys()].some((i) => millState(i, t).status === 'empty')) return null; // vats standing idle: no more
+    const pb = millPayback(nx); if (!pb || pb > 10) return null;
+    const o = { line: 'mill', key: 'mill', what: millLv() ? `nâng xưởng lên ${nx.name}` : 'xây xưởng chế biến (hầm ủ dưới nhà kho)', payback: pb };
+    if (!mCanInvest(nx.cost, o) || !mFund(nx.cost, o)) return null;
+    ledger(-nx.cost, 0, {}); save.set('mill/lv', nx.to);
+    return { kind: 'upgrade', line: 'mill', text: `${o.what}: ${MILL_VATS[nx.to]} thùng (${money(nx.cost)} xu, hoàn vốn ~${Math.ceil(pb)} ngày)`, at: barnAt(), icon: '🏭', big: true };
+  }
+  function millOwnerUp() {
+    const nx = millNext(), t = farmNow(); if (!nx || level() < nx.lvl || coins() < nx.cost) return false;
+    if (!confirm(`${millLv() ? 'Nâng xưởng lên' : 'Xây'} ${nx.name} (${MILL_VATS[nx.to]} thùng) với ${money(nx.cost)} xu?`)) return false;
+    ledger(-nx.cost, 0, {}); save.set('mill/lv', nx.to);
+    evBook(t, -nx.cost, 'Mở rộng, nâng cấp', true);
+    mLog(t, bossId(), `🏭 Chủ trại ${nx.to > 1 ? 'nâng xưởng lên' : 'xây'} ${nx.name}: ${MILL_VATS[nx.to]} thùng (${money(nx.cost)} xu)`, 0);
+    return true;
+  }
+  function millPanelHtml(head) {
+    const t = farmNow(), L = millLv(), nx = millNext(), n = millVats(), fmtH = (ms) => (ms >= 864e5 ? `${Math.round(ms / 864e5 * 10) / 10} ngày` : `${Math.max(1, Math.round(ms / HOUR))} giờ`);
+    let x = `<div style="font-size:13px;opacity:.85;margin-bottom:6px">Hầm dưới nhà kho: biến nông sản thành hàng đắt hơn. Rượu, phô mai, mứt <b>càng ủ lâu càng đắt</b> (vừa ra lò → ủ vừa → thượng hạng). Đầu bếp, quản lý${mStaff().some((w) => w.role === 'artisan') ? ', thợ xưởng' : ''} tự cho vào và tự tính lúc mở hầm bán.</div>`;
+    x += row(`🏭 ${L ? MILL_UP[L - 1].name : 'Chưa xây'}`, L ? `${n} thùng` : '');
+    if (nx) x += row(`${L ? 'Nâng lên' : 'Xây'} ${nx.name} (${MILL_VATS[nx.to]} thùng)`, level() < nx.lvl ? `<span style="opacity:.6">🔒 Cấp ${nx.lvl}</span>` : B('millup', `${money(nx.cost)} xu`, coins() >= nx.cost));
+    for (let i = 0; i < n; i++) {
+      const s = millState(i, t);
+      x += row(`Thùng ${i + 1}`, s.status === 'empty' ? '<span style="opacity:.6">trống</span>' : s.status === 'work' ? `${s.M.icon} ${s.M.name} · xong sau ${fmtH(s.left)}`
+        : `${s.M.icon} ${GOODS[millKey(s.v.k, s.tier)].name} · ${money(GOODS[millKey(s.v.k, s.tier)].price)} xu${s.next ? ` · lên hạng sau ${fmtH(s.next)}` : ''}`);
+    }
+    x += '<div style="margin-top:8px;border-top:2px solid #44445a;padding-top:6px"><b>📜 Công thức</b></div>';
+    x += Object.values(MILL).map((M) => row(`${M.icon} ${M.name} <span style="opacity:.65">${M.h} giờ${M.age ? ` + ủ ${M.age} ngày` : ''}</span><br><span style="font-size:12px">${Object.entries(M.need).map(([g, q]) => `<span style="color:${have(g) >= q ? '#9fe070' : '#ffb08a'}">${GOODS[g].icon}${have(g)}/${q}</span>`).join(' ')}</span>`,
+      `${money(M.price)}${M.age ? ` → ${money(millPrice(M, 3))}` : ''} xu`)).join('');
+    return head('🏭 Xưởng chế biến') + x;
+  }
+
+  // ── 1. something happens today ──
+  const evRnd = (day, salt) => hash01(day * 1000, salt, 1);
+  // money moved by an event / a present: the purse, the day's books, the source list
+  function evBook(t, amt, cat, noLedger) {
+    if (!amt) return;
+    if (!noLedger) ledger(amt, 0, {});
+    const d = mDayRec(t); if (amt > 0) d.in += amt; else d.out -= amt; save.set(`mgr/day/${dayNo(t)}`, d);
+    mCatAdd(t, amt > 0 ? 'in' : 'out', cat, Math.abs(amt));
+  }
+  const repAdd = (t, n) => save.set('repx/' + dayNo(t), save.get('repx/' + dayNo(t), 0) + n);
+  const growing = (t) => [...Array(land()).keys()].filter((i) => simPlot(i, t).status === 'grow');
+  const MASCOTS = [['🦚', 'Một con công'], ['🦌', 'Một chú hươu sao'], ['🦢', 'Một con thiên nga trắng'], ['🦩', 'Một con hồng hạc']];
+  const EV = {
+    trader: { icon: '🧑‍💼',
+      ok: (t) => !!evTraderGood(t),
+      make: (t, day) => { const g = evTraderGood(t), q = Math.min(have(g), 4 + Math.floor(evRnd(day, 21) * 7)); return { g, q, offer: Math.round(priceOf(g) * q * 1.6) }; },
+      text: (e) => `Thương lái ghé hỏi mua ${e.q} ${GOODS[e.g].icon} ${GOODS[e.g].name} giá ${money(e.offer)} xu, gấp 1,6 giá chợ`,
+      a: (e) => `Bán cho thương lái (+${money(e.offer)} xu)`, b: () => 'Giữ lại hàng',
+      auto: () => 'a', why: { a: 'giá hời, hàng này không nằm trong đơn nào', b: '' },
+      apply: (e, p, t) => { if (p === 'b') return 'Thương lái hẹn dịp khác.'; const n = Math.min(e.q, have(e.g)); if (n <= 0) return 'Nhưng hàng đã bán hết, thương lái về tay không.'; const amt = Math.round((e.offer * n) / e.q); ledger(0, 0, { [e.g]: -n }); evBook(t, amt, 'Thương lái'); return `Bán ${n} ${GOODS[e.g].icon}, thu ${money(amt)} xu.`; } },
+    pests: { icon: '🐛',
+      ok: (t) => growing(t).length >= 3,
+      make: (t) => ({ n: growing(t).length, cost: 10 * growing(t).length }),
+      text: (e) => `Sâu từ ruộng hàng xóm đang lan sang, ${e.n} ô đang lớn có thể bị ăn`,
+      a: (e) => `Phun thuốc cả ruộng (${money(e.cost)} xu)`, b: () => 'Kệ, để nông dân bắt tay',
+      auto: (e) => (mSpare() >= e.cost ? 'a' : 'b'), why: { a: 'tiền thuốc rẻ hơn mất cả ô', b: 'két đang mỏng, em để anh chị em bắt sâu tay' },
+      apply: (e, p, t) => { if (p === 'a') { evBook(t, -e.cost, 'Vật tư (cám, thuốc, củi)'); return 'Ruộng sạch sâu.'; } const g = growing(t), hit = g.filter((i) => hash01(dayNo(t) * 1000, 300 + i, 1) < 0.34).slice(0, Math.ceil(g.length / 3)); for (const i of hit) editPlot(i, (q, _s, now) => { q.pest = now; }); return hit.length ? `Sâu bám ${hit.length} ô, anh chị em đang phun cứu (không kịp 12 giờ là mất).` : 'May quá, sâu không sang.'; } },
+    storm: { icon: '🌪️',
+      ok: () => animalIds().length >= 2,
+      make: () => ({ cost: 120 }),
+      text: () => 'Gió lớn đêm qua làm gãy một đoạn hàng rào chuồng',
+      a: (e) => `Sửa ngay (${money(e.cost)} xu)`, b: () => 'Để mai rồi sửa',
+      auto: (e) => (mSpare() >= e.cost ? 'a' : 'b'), why: { a: 'để hở chuồng thì thú xổng mất', b: 'két đang mỏng, em liều để mai' },
+      apply: (e, p, t) => { if (p === 'a') { evBook(t, -e.cost, 'Mở rộng, nâng cấp'); return 'Hàng rào chắc chắn lại rồi.'; } const ids = animalIds(); if (evRnd(dayNo(t), 31) < 0.5 && ids.length) { const id = ids[Math.floor(evRnd(dayNo(t), 32) * ids.length)], A = ANIMALS[save.get('animal/' + id).kind]; save.set('animal/' + id, null); return `Đêm đó 1 ${A.icon} ${A.name} xổng chuồng chạy mất.`; } return 'May quá, không con nào xổng.'; } },
+    vip: { icon: '🎩',
+      ok: () => level() >= 3,
+      make: (t, day) => ({ cost: 150, gain: 250 + Math.round(repNow(t) * 4 + evRnd(day, 41) * 200) }),
+      text: () => 'Một đoàn khách VIP từ thành phố muốn ghé trại chiều nay',
+      a: (e) => `Đón tiếp chu đáo (chi ${money(e.cost)} xu)`, b: () => 'Từ chối khéo',
+      auto: (e) => (mSpare() >= e.cost ? 'a' : 'b'), why: { a: 'khách sang thường để lại nhiều tiền và tiếng tốt', b: 'két đang mỏng, chưa lo nổi tiệc' },
+      apply: (e, p, t) => { if (p === 'b') { repAdd(t, -1); return 'Đoàn hơi buồn (−1 uy tín).'; } evBook(t, -e.cost, 'Đón khách VIP'); evBook(t, e.gain, 'Khách VIP'); repAdd(t, 2); return `Đoàn vui lắm, để lại ${money(e.gain)} xu và khen trại (+2 uy tín).`; } },
+    mascot: { icon: '🦚',
+      ok: () => true,
+      make: (t, day) => { const m = MASCOTS[Math.floor(evRnd(day, 51) * MASCOTS.length)]; return { m, offer: 200 + Math.round(evRnd(day, 52) * 150) }; },
+      text: (e) => `${e.m[1]} ${e.m[0]} lạc vào trại, không ai đến nhận`,
+      a: () => 'Giữ làm linh vật (+3 uy tín)', b: (e) => `Bán cho vườn thú tỉnh (+${money(e.offer)} xu)`,
+      auto: () => (mBroke() || !zooOpen() ? 'b' : 'a'), why: { a: 'trại có sở thú, khách thích ngắm', b: 'tiền mặt lúc này có ích hơn' },
+      apply: (e, p, t) => { if (p === 'b') { evBook(t, e.offer, 'Bán khác'); return `Vườn thú tỉnh trả ${money(e.offer)} xu.`; } repAdd(t, 3); save.set('ev/mascots', [...save.get('ev/mascots', []), { icon: e.m[0], name: e.m[1].replace(/^Một (con |chú )?/, ''), t }].slice(-12)); return 'Trại có thêm linh vật, du khách thích lắm (+3 uy tín).'; } },
+    inspect: { icon: '🧑‍⚖️',
+      ok: () => mStaff().length >= 3,
+      make: () => ({ cost: 100, fine: 250 }),
+      text: () => 'Đoàn kiểm tra vệ sinh báo sẽ ghé trại trong ngày',
+      a: (e) => `Thuê người dọn dẹp (${money(e.cost)} xu)`, b: () => 'Cứ để vậy',
+      auto: (e) => (mSpare() >= e.cost ? 'a' : 'b'), why: { a: 'bị phạt thì mất nhiều hơn', b: 'két đang mỏng, em cho cả đội tự dọn' },
+      apply: (e, p, t) => { if (p === 'a') { evBook(t, -e.cost, 'Dọn dẹp, kiểm tra'); repAdd(t, 1); return 'Đoàn khen trại sạch sẽ (+1 uy tín).'; } if (evRnd(dayNo(t), 61) < 0.5) { evBook(t, -e.fine, 'Phạt vệ sinh'); repAdd(t, -3); return `Bị phạt ${money(e.fine)} xu (−3 uy tín).`; } return 'Đoàn chỉ nhắc nhở, không phạt.'; } },
+    fishman: { icon: '🛶',
+      ok: () => true,
+      make: () => ({ q: 8, cost: 50 }),
+      text: (e) => `Ngư dân đi ngang bán rẻ ${e.q} 🐟 cá chép (giá chợ ${money(e.q * priceOf('fish'))} xu)`,
+      a: (e) => `Mua (${money(e.cost)} xu)`, b: () => 'Thôi',
+      auto: (e) => (mSpare() >= e.cost ? 'a' : 'b'), why: { a: 'mua về nướng bán được giá hơn', b: 'két đang mỏng' },
+      apply: (e, p, t) => { if (p === 'b') return 'Ngư dân chèo đi.'; ledger(0, 0, { fish: e.q }); evBook(t, -e.cost, 'Mua hàng ngoài'); return `Kho có thêm ${e.q} 🐟.`; } },
+    gift: { icon: '🎁', free: true,
+      ok: () => true,
+      make: (t, day) => { const C = Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level()), g = C[Math.floor(evRnd(day, 71) * C.length)]; return { g, q: 4 + Math.floor(evRnd(day, 72) * 5) }; },
+      text: (e) => `Bà con trong làng mang sang ${e.q} ${GOODS[e.g].icon} ${GOODS[e.g].name} cảm ơn trại`,
+      a: () => 'Nhận quà', b: () => '', auto: () => 'a', why: { a: '', b: '' },
+      apply: (e, p, t) => { ledger(0, 0, { [e.g]: e.q }); return 'Em đã cất vào kho.'; } },
+  };
+  function evTraderGood(t) {
+    const held = millHeld(t);
+    return Object.keys(GOODS).filter((k) => k !== 'cui' && !k.startsWith('seed:') && have(k) - (held[k] || 0) >= 4 && priceOf(k) >= 8).sort((a, b) => have(b) * priceOf(b) - have(a) * priceOf(a))[0] || null;
+  }
+  const evToday = (t = farmNow()) => { const e = save.get('ev/' + dayNo(t)); return e && !e.none && EV[e.k] ? e : null; };
+  function evStep(t) {
+    const day = dayNo(t), h = mLocalH(t), k0 = 'ev/' + day;
+    let e = save.get(k0);
+    if (!e) {
+      const at = 7 + Math.floor(evRnd(day, 11) * 9); // 7h-15h
+      if (h < at || h >= MWORK[1]) return;
+      const types = Object.keys(EV).filter((k) => EV[k].ok(t));
+      if (evRnd(day, 12) > 0.8 || !types.length) { save.set(k0, { none: true }); return; }
+      const k = types[Math.floor(evRnd(day, 13) * types.length)], E = EV[k];
+      e = { k, t, until: t + 3 * HOUR, state: 'open', ...E.make(t, day) };
+      save.set(k0, e);
+      mLog(t, bossId(), `${E.icon} ${E.text(e)}`, 0);
+      if (E.free) { evResolve(e, 'a', t); return; }
+      if (mRun && mRun.live) evToast(e);
+      return;
+    }
+    if (e.none || e.state !== 'open' || !EV[e.k]) return;
+    if (!e.pick && t < e.until) return;
+    evResolve(e, e.pick || EV[e.k].auto(e, t), t);
+  }
+  function evResolve(e, pick, t) {
+    const E = EV[e.k], by = e.pick ? 'owner' : 'boss', res = E.apply(e, pick, t);
+    save.set('ev/' + dayNo(e.t), { ...e, pick, by, state: 'done', res, at: t });
+    if (!E.free) mLog(t, bossId(), `${E.icon} ${by === 'owner' ? 'Chủ trại chọn' : 'Quản lý chọn'}: ${E[pick](e)}. ${res}`, 0);
+  }
+  function evToast(e) {
+    const E = EV[e.k], boss = (mStaff().find((w) => w.role === 'boss') || { name: 'Lan' }).name, pick = (p) => () => { const k = 'ev/' + dayNo(e.t), x = save.get(k); if (x && x.state === 'open') save.set(k, { ...x, pick: p }); };
+    xNotify(`${boss}: ${E.text(e)}`);
+    xToast(`${E.icon} <b>${boss} hỏi:</b> ${E.text(e)}. Chủ nhân chọn trong 3 giờ, không thì em tự quyết ạ.`, [[E.a(e), pick('a')], [E.b(e), pick('b')]]);
+  }
+  // her words in the report
+  function evLines(t) {
+    const e = evToday(t), out = [];
+    if (!e) return out;
+    const E = EV[e.k];
+    if (e.state === 'open') {
+      const auto = E.auto(e, t), left = Math.max(1, Math.round((e.until - t) / 60000));
+      out.push(`${E.icon} <b>Chuyện hôm nay:</b> ${E.text(e)}. Chủ nhân chọn giúp em ạ (${e.pick ? `đã chọn "${E[e.pick](e)}", em làm ngay` : `còn ${left >= 60 ? Math.round(left / 60) + ' giờ' : left + ' phút'}, không thì em chọn "${E[auto](e)}" vì ${E.why[auto]}`}): ${B('evpick:a', E.a(e))}${B('evpick:b', E.b(e))}`);
+    } else if (E.free) out.push(`${E.icon} Hôm nay ${E.text(e).replace(/^./, (c) => c.toLowerCase())}. ${e.res}`);
+    else out.push(`${E.icon} Hôm nay ${E.text(e).replace(/^./, (c) => c.toLowerCase())}. ${e.by === 'owner' ? 'Chủ nhân đã chọn' : `Chủ nhân bận nên em chọn (vì ${E.why[e.pick]})`} "${E[e.pick](e)}": ${e.res}`);
+    return out;
+  }
+
+  // ── 3. the staff's lives ──
+  const wNum = (w) => (parseInt(String(w.id).slice(1), 36) || 7) % 100003;
+  const doyOf = (t) => { const d = new Date(t); return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 1)) / 864e5); };
+  const bdayOf = (w) => Math.floor(hash01(0, wNum(w), 6060) * 365);
+  const isBday = (w, t = farmNow()) => bdayOf(w) === doyOf(t);
+  const bdayText = (w) => { const d = new Date(2026, 0, 1 + bdayOf(w)); return `${d.getDate()}/${d.getMonth() + 1}`; };
+  // off today: ill (about 1 day in 30, paid) or their wedding day
+  function lifeOff(w, t = farmNow()) {
+    if (!w || w.role === 'boss') return null;
+    const day = dayNo(t), c = save.get('life/couple');
+    if (c && c.wedDay === day && (c.a === w.id || c.b === w.id)) return 'wed';
+    if (t - (w.hired || t) >= 864e5 && hash01(day * 1000, wNum(w), 6161) < 0.035) return 'sick';
+    return null;
+  }
+  // how much harder (gift) or slower (sad) someone works for a while
+  function lifeMood(w, t = farmNow()) {
+    let m = 1; const g = save.get('life/gift/' + w.id), s = save.get('life/sad/' + w.id);
+    if (g && g.until > t) m *= g.mul; if (s && s.until > t) m *= 0.85;
+    return m;
+  }
+  const wageOf = (w) => ((ROLES[w.role] || {}).wage || 0) + (save.get('life/pay/' + w.id, 0) || 0);
+  function lifeGift(w, mul, days, amt, t, by) {
+    save.set('life/gift/' + w.id, { until: t + days * 864e5, mul, by, day: dayNo(t), amt });
+    if (amt) evBook(t, -amt, 'Quà nhân viên');
+  }
+  function lifeStep(t) {
+    const day = dayNo(t), h = mLocalH(t), st = mStaff(), staff = st.filter((w) => w.role !== 'boss'), boss = bossId();
+    // once a day, at 8:00: who is ill, birthdays, a couple, a raise
+    if (h >= 8 && save.get('life/day', 0) < day) {
+      save.set('life/day', day);
+      for (const w of staff) { const off = lifeOff(w, t); if (off === 'sick') mLog(t, w.id, `🤒 ${w.name} bị ốm, xin nghỉ hôm nay (vẫn hưởng lương)`, 0); }
+      for (const w of staff) if (isBday(w, t)) mLog(t, w.id, `🎂 Hôm nay sinh nhật ${w.name} (${ROLES[w.role].name.toLowerCase()})`, 0);
+      let c = save.get('life/couple');
+      if (c && !c.done) {
+        const a = st.find((w) => w.id === c.a), b = st.find((w) => w.id === c.b);
+        if (!a || !b) { save.set('life/couple', { ...c, done: true, broke: true }); mLog(t, boss, `💔 Chuyện của ${c.na} và ${c.nb} dang dở vì một người đã nghỉ`, 0); c = null; }
+        else if (day === c.wedDay) mLog(t, boss, `💍 Hôm nay ${a.name} và ${b.name} cưới nhau! Cả hai nghỉ một ngày`, 0);
+        else if (day > c.wedDay) { save.set('life/couple', { ...c, done: true }); save.set('life/married', [...save.get('life/married', []), c.a, c.b]); c = null; }
+      }
+      if ((!c || c.done) && evRnd(day, 81) < 0.15) {
+        const married = new Set(save.get('life/married', [])), free = staff.filter((w) => t - (w.hired || t) >= 4 * 864e5 && !married.has(w.id));
+        if (free.length >= 2) {
+          const i = Math.floor(evRnd(day, 82) * free.length), j = (i + 1 + Math.floor(evRnd(day, 83) * (free.length - 1))) % free.length, a = free[i], b = free[j];
+          save.set('life/couple', { a: a.id, b: b.id, na: a.name, nb: b.name, since: t, wedDay: day + 6 });
+          mLog(t, boss, `💕 Dạo này ${a.name} (${ROLES[a.role].name.toLowerCase()}) và ${b.name} (${ROLES[b.role].name.toLowerCase()}) hay đi cùng nhau lắm, nghe nói 6 ngày nữa cưới`, 0);
+        }
+      }
+      if (!save.keys('life/raise/').some((k) => (save.get(k) || {}).state === 'wait')) {
+        for (const w of staff) {
+          const R = ROLES[w.role], r = save.get('life/raise/' + w.id); if (!R || !R.wage || t - (w.hired || t) < 7 * 864e5 || (r && t - r.t < 10 * 864e5)) continue;
+          const net = [1, 2, 3, 4, 5].reduce((s, k) => s + mStaffDay(w, t - k * 864e5).net, 0);
+          if (net < 3 * wageOf(w) || hash01(day * 1000, wNum(w), 6262) > 0.3) continue;
+          save.set('life/raise/' + w.id, { t, amt: Math.max(5, Math.round(wageOf(w) * 0.2)), net, state: 'wait', name: w.name });
+          mLog(t, w.id, `🙋 ${w.name} xin tăng lương ${Math.max(5, Math.round(wageOf(w) * 0.2))} xu/ngày (5 ngày qua làm ra ${money(net)} xu sau lương)`, 0);
+          break;
+        }
+      }
+    }
+    // a raise: the owner has a day; then the manager answers (yes if the worker earns 5x their wage over 5 days)
+    for (const k of save.keys('life/raise/')) {
+      const r = save.get(k), id = k.slice(11), w = st.find((x) => x.id === id); if (!r) continue;
+      if (!w) { if (r.state === 'wait' || r.quitAt) save.set(k, { ...r, state: 'gone', quitAt: 0 }); continue; }
+      if (r.state === 'wait' && t - r.t >= 864e5) r.state = r.net >= 5 * wageOf(w) ? 'ok' : 'no', r.by = 'boss';
+      if ((r.state === 'ok' || r.state === 'no') && !r.done) {
+        r.done = t;
+        if (r.state === 'ok') { save.set('life/pay/' + id, (save.get('life/pay/' + id, 0) || 0) + r.amt); mLog(t, r.by === 'owner' ? id : boss, `💰 ${r.by === 'owner' ? 'Chủ trại' : 'Quản lý'} tăng lương ${w.name} thêm ${r.amt} xu/ngày (giờ ${wageOf(w)} xu)`, 0); }
+        else { save.set('life/sad/' + id, { until: t + 5 * 864e5 }); if (hash01(dayNo(t) * 1000, wNum(w), 6363) < 0.4) r.quitAt = t + 2 * 864e5; mLog(t, r.by === 'owner' ? id : boss, `😔 ${r.by === 'owner' ? 'Chủ trại' : 'Quản lý'} chưa tăng lương ${w.name}; ${w.name} buồn, làm chậm hẳn`, 0); }
+        save.set(k, r);
+      }
+      if (r.quitAt && t >= r.quitAt) { r.quitAt = 0; save.set(k, r); if (!mKept(id, t)) { mRemoveWorker(id, 'poached'); mLog(t, boss, `🚤 ${w.name} bị trại bên kia sông dụ sang (trả lương cao hơn), đã nghỉ việc`, 0); if (mRun && mRun.sum) mRun.sum.left.push(w.name); } }
+    }
+    // presents the owner did not give: the manager gives a small one (a cake at 16:00, an envelope at the wedding at 12:00)
+    if (h >= 16) for (const w of staff) { const g = save.get('life/gift/' + w.id); if (isBday(w, t) && !(g && g.day === day) && mSpare() >= 30) { lifeGift(w, 1.05, 3, 30, t, 'boss'); mLog(t, boss, `🎂 Quản lý mua bánh kem mừng sinh nhật ${w.name} (30 xu)`, 0); } }
+    { const c = save.get('life/couple'); if (c && !c.done && c.wedDay === day && h >= 12 && !c.gift) { const a = st.find((w) => w.id === c.a), b = st.find((w) => w.id === c.b); if (a && b && mSpare() >= 60) { lifeGift(a, 1.08, 5, 30, t, 'boss'); lifeGift(b, 1.08, 5, 30, t, 'boss'); save.set('life/couple', { ...c, gift: 'boss' }); mLog(t, boss, `💌 Quản lý gửi phong bì mừng cưới ${a.name} và ${b.name} (60 xu)`, 0); } } }
+  }
+  // owner's buttons (from the report): presents right away from the purse, the raise answer for the next step
+  function lifeAct(act, a1) {
+    const t = farmNow(), st = mStaff(), w = st.find((x) => x.id === a1);
+    if (act === 'lgift' && w) { const amt = wageOf(w) || 30; if (coins() < amt) return; lifeGift(w, 1.15, 7, amt, t, 'owner'); mLog(t, a1, `🎁 Chủ trại tặng quà sinh nhật ${w.name} (${amt} xu): ${w.name} cảm động, hứa làm chăm hơn`, 0); return; }
+    if (act === 'lwed') { const c = save.get('life/couple'), a = c && st.find((x) => x.id === c.a), b = c && st.find((x) => x.id === c.b); if (!a || !b || c.gift === 'owner' || coins() < 200) return; lifeGift(a, 1.15, 10, 100, t, 'owner'); lifeGift(b, 1.15, 10, 100, t, 'owner'); save.set('life/couple', { ...c, gift: 'owner' }); mLog(t, bossId(), `💌 Chủ trại mừng cưới ${a.name} và ${b.name} 200 xu: cả hai cảm ơn rối rít`, 0); return; }
+    if (act === 'lraiseok' && w) { const r = save.get('life/raise/' + a1); if (r && r.state === 'no' && r.quitAt) { save.set('life/pay/' + a1, (save.get('life/pay/' + a1, 0) || 0) + r.amt); save.set('life/sad/' + a1, null); save.set('life/raise/' + a1, { ...r, state: 'ok', by: 'owner', quitAt: 0 }); mLog(t, a1, `💰 Chủ trại đổi ý, tăng lương ${w.name} thêm ${r.amt} xu/ngày: ${w.name} ở lại`, 0); return; } }
+    if ((act === 'lraiseok' || act === 'lraiseno') && w) { const r = save.get('life/raise/' + a1); if (r && r.state === 'wait') save.set('life/raise/' + a1, { ...r, state: act === 'lraiseok' ? 'ok' : 'no', by: 'owner' }); }
+  }
+  function lifeLines(t) {
+    const st = mStaff(), staff = st.filter((w) => w.role !== 'boss'), out = [], day = dayNo(t);
+    const sick = staff.filter((w) => lifeOff(w, t) === 'sick');
+    if (sick.length) out.push(`🤒 Hôm nay ${sick.map((w) => `<b>${w.name}</b>`).join(', ')} ốm nên nghỉ, em vẫn tính lương; việc của ${sick.length > 1 ? 'các bạn ấy' : 'bạn ấy'} em chia cho người khác.`);
+    for (const w of staff.filter((x) => isBday(x, t))) { const g = save.get('life/gift/' + w.id), given = g && g.day === day; out.push(`🎂 Hôm nay sinh nhật <b>${w.name}</b>! ${given ? (g.by === 'owner' ? `Chủ nhân đã tặng quà, ${w.name} vui lắm, làm hăng hẳn.` : 'Em đã mua bánh kem mừng rồi ạ.') : `Chủ nhân có muốn tặng quà không ạ (được tặng thì 7 ngày tới làm chăm hơn)? ${B('lgift:' + w.id, `🎁 Tặng ${wageOf(w) || 30} xu`, coins() >= (wageOf(w) || 30))} Không thì 16h em mua cái bánh kem nhỏ.`}`); }
+    const c = save.get('life/couple');
+    if (c && !c.done && !c.broke) {
+      const left = c.wedDay - day;
+      if (left > 0) out.push(`💕 ${c.na} và ${c.nb} đang yêu nhau, ${left} ngày nữa cưới ạ.`);
+      else if (left === 0) out.push(`💍 Hôm nay <b>${c.na}</b> và <b>${c.nb}</b> cưới nhau, cả hai nghỉ một ngày. ${c.gift === 'owner' ? 'Chủ nhân đã mừng cưới, hai bạn cảm ơn lắm ạ.' : c.gift ? 'Em đã gửi phong bì mừng ạ.' : `Chủ nhân mừng cưới không ạ? ${B('lwed', '💌 Mừng 200 xu', coins() >= 200)} Không thì trưa nay em gửi phong bì nhỏ.`}`);
+    }
+    for (const k of save.keys('life/raise/')) {
+      const r = save.get(k), id = k.slice(11), w = st.find((x) => x.id === id); if (!r || !w) continue;
+      if (r.state === 'wait') out.push(`🙋 <b>${w.name}</b> xin tăng lương thêm ${r.amt} xu/ngày (5 ngày qua làm ra ${money(r.net)} xu sau lương). Em thấy ${r.net >= 5 * wageOf(w) ? 'nên tăng, bạn ấy làm ra nhiều' : 'chưa nên, nhưng không tăng thì bạn ấy buồn và có thể bị trại bên kia dụ đi'}. Mai em tự trả lời nếu chủ nhân chưa chọn: ${B('lraiseok:' + id, '✅ Tăng lương')}${B('lraiseno:' + id, '❌ Chưa tăng')}`);
+      else if (r.quitAt && r.quitAt > t) out.push(`😔 ${w.name} chưa được tăng lương nên buồn, em nghe nói trại bên kia sông đang dụ. Chủ nhân muốn giữ thì ${B('lraiseok:' + id, '💰 Đổi ý: tăng lương')}${mKept(id, t) ? '' : B('ckeep:' + id, '🤝 Giữ ' + w.name)}`);
+    }
+    return out;
   }
   JOBS.xfarm = (t, w) => xFarmJob(t, w); // honey, orchard fruit (2026-11-09)
   JOBS.shop = (t, w) => shopJob(t, w); // the town's food street (2026-11-12)
@@ -4008,6 +4343,7 @@
   }
   window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
+  window.__forestStory = { MILL, millState, millLv, millCanStart, millInvest, millPayback, millNext, evStep, evToday, evLines, EV, lifeStep, lifeOff, lifeMood, lifeLines, lifeAct, isBday, bdayOf, doyOf, wageOf, repNow: () => repNow(), millPanel: () => millPanelHtml((x) => x), brief: () => mBriefHtml((x) => x) };
   farm.debug = { simCook, specialOf, priceOf, RECIPES, workReward, fuelOf };
 
   // ── Drawing the field (map pixel space, on the farm layer) ──
@@ -4513,13 +4849,14 @@
     if (v.kind === 'morning') return xMorningPanel(head);
     if (v.kind === 'brief') return mBriefHtml(head);
     if (v.kind === 'week') return mWeekHtml(head);
+    if (v.kind === 'mill') return millPanelHtml(head);
     return '';
   }
   // ── Manager panels: the user only watches; the staff decide ──
   const MONEY_FMT = new Intl.NumberFormat('vi-VN'); // one formatter (toLocaleString built a new one per call: ~20 ms/s)
   const money = (n) => (n < 0 ? '−' : '') + MONEY_FMT.format(Math.abs(Math.round(n)));
   const staffName = (id) => { const w = mStaff().find((x) => x.id === id); return w ? `${ROLES[w.role].icon} ${w.name}` : 'Người cũ'; };
-  const JOB_VI = { shop: 'bán hàng ở quầy 6h–22h', acct: 'ghi sổ quỹ, đối chiếu thu chi', bees: 'lấy mật, chăm tổ ong', orchard: 'hái quả, chăm vườn', camp: 'dọn lều, xếp củi đón khách cắm trại', bar: 'pha chế, phục vụ quán bar đêm', rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
+  const JOB_VI = { mill: 'xưởng chế biến, hầm ủ', shop: 'bán hàng ở quầy 6h–22h', acct: 'ghi sổ quỹ, đối chiếu thu chi', bees: 'lấy mật, chăm tổ ong', orchard: 'hái quả, chăm vườn', camp: 'dọn lều, xếp củi đón khách cắm trại', bar: 'pha chế, phục vụ quán bar đêm', rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
   // ── The manager's spoken report (user 2026-11-10: "quản lý báo cáo với tôi mọi thứ giống kiểu kính thưa chủ nhân,
   // doanh thu, ai lười ai chăm, có nên sa thải ai, kế hoạch sắp tới… chứ không phải quăng cho tôi cái bảng thông số";
   // her portrait: hand-drawn in portrait.js, face_boss in forest-extra.png). She speaks as "em", the owner is "chủ nhân".
@@ -4573,6 +4910,8 @@
       if (days.length >= 2 && ((red >= 3 && sum < 0) || att < 0.75)) watchW.push(w), watch.push(`<b>${w.name}</b>${mKept(w.id, t) ? ' <i>(chủ nhân dặn giữ)</i>' : ''} (${ROLES[w.role].name.toLowerCase()}: ${red >= 3 && sum < 0 ? `lỗ ${red}/${days.length} ngày, tổng ${money(sum)} xu` : `chỉ làm ${Math.round(att * 100)}% giờ ca`})`);
     }
     say((fired.length ? `Em xin báo: em đã cho ${fired.join('; ')}. ` : '') + (watch.length ? `Em đang để ý ${watch.slice(0, 3).join(', ')}. Nếu vài ngày tới không khá lên em xin phép cho nghỉ; chủ nhân muốn giữ ai thì cứ dặn em ạ.` : 'Cả đội đang làm ổn, em chưa thấy ai cần cho nghỉ.'));
+    // 4b. today's event, the staff's lives (2026-11-12)
+    for (const x of evLines(t).concat(lifeLines(t))) say(x);
     // 5. last night, the weather
     const nk = nightKey(t - 8 * HOUR), n = save.get(`night/${nk}`, null), bar = save.get(`bar/${dayNo(t - 864e5)}`, null), dd = xWx && xWx.daily;
     const night = [];
@@ -4589,7 +4928,7 @@
     if (asks.length) html += `<p style="margin:8px 0 4px">Có ${asks.length} việc em cần chủ nhân duyệt ạ:</p>` + asks.map((a) => `<div style="margin:4px 0">${a.what} (${money(a.cost)} xu) ${B('mok:' + a.k, '✅ Duyệt')}${B('mno:' + a.k, '❌ Không')}</div>`).join('');
     html += mCmdHtml(t, watchW);
     html += `<p style="margin:9px 0 0;line-height:1.55">Chủ nhân cứ nghỉ ngơi, có gì em báo ngay ạ 🌿</p></div></div>`
-      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}</div>`;
+      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}${B('open:mill', '🏭 Xưởng')}</div>`;
     return head(`💬 ${boss.name} báo cáo`) + html;
   }
   // ── The weekly report (2026-11-12): on Mondays the morning report opens with it; any day from the button. Lan speaks:
@@ -4818,11 +5157,11 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '17:14 12-11';
+    const build = '18:02 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
-    net: 'vớt cá', feed: 'cho thú ăn', sweep: 'quét chuồng', fish: 'câu cá', fishMiss: 'câu cá', feedFish: 'rắc cám cho cá', cook: 'nấu bếp', serve: 'bày món', count: 'đếm tiền', sell: 'bán hàng', order: 'giao đơn', inspect: 'kiểm tra ruộng', cure: 'chữa bệnh', stock: 'thả cá giống' };
+    net: 'vớt cá', feed: 'cho thú ăn', sweep: 'quét chuồng', fish: 'câu cá', fishMiss: 'câu cá', millIn: 'đổ hàng vào hầm ủ', millOut: 'mở hầm lấy hàng', feedFish: 'rắc cám cho cá', cook: 'nấu bếp', serve: 'bày món', count: 'đếm tiền', sell: 'bán hàng', order: 'giao đơn', inspect: 'kiểm tra ruộng', cure: 'chữa bệnh', stock: 'thả cá giống' };
   function workerPanelHtml(v, head) {
     const w = mStaff().find((x) => x.id === v.id);
     if (!w) return head('Nhân viên') + '<div>Người này đã nghỉ việc.</div>';
@@ -4854,11 +5193,12 @@
         + (p.full ? `Đã đủ ${mMax()} người.` : p.hiredToday ? 'Hôm nay đã thuê 1 người, mai thuê tiếp.'
           : !p.cash ? `Chờ két đủ ~${money(p.need)} xu (phí thuê + 1 ngày lương, sau khi tính đủ lương mai).`
           : !p.paid ? `Chờ lãi mỗi ngày vượt lương ${p.R.wage} xu (hiện ~${money(p.prof)}).` : 'Sẽ thuê ngay trong ca làm.');
-    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter'];
+    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter', 'artisan'];
     return `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>🤝 Tuyển thêm</b> <span style="opacity:.7">(${st.length}/${mMax()} người)</span></div>`
       + `<div style="font-size:12px;margin:4px 0">${status}</div>`
       + roles.map((r) => { const R = ROLES[r], n = st.filter((x) => x.role === r).length;
         const lock = r === 'guide' && !guideAllowed() ? `<br><span style="font-size:11px;color:#ffb08a">Cần mở sở thú và có trên 3 khách ghé (hiện ${zooVisitorsRecent()} trong 2 ngày)</span>`
+          : r === 'artisan' && !millLv() ? '<br><span style="font-size:11px;color:#ffb08a">Cần xây Xưởng chế biến trước (👔 › 💬 › 🏭)</span>'
           : R.need && !xBuilt(R.need) ? `<br><span style="font-size:11px;color:#ffb08a">Cần xây ${FAC[R.need].names[0]} trước</span>` : '';
         return row(`${R.icon} ${R.name} <span style="opacity:.65">${n ? `đang có ${n} · ` : ''}lương ${R.wage}/ngày</span>${lock}`, B('hire:' + r, `Thuê · ${R.hire} xu`, c >= R.hire && st.length < mMax() && !lock)); }).join('')
       + '<div style="font-size:11px;opacity:.6;margin-top:4px">Bạn không cần bấm: Lan tự thuê khi có việc và đủ tiền. Nút này để bạn tự quyết nếu muốn.</div>';
@@ -4992,6 +5332,9 @@
     if (act === 'mrisk' && RISK[a1]) { save.set('cfg/risk', a1); if (a1 !== 'bold') save.set('mgr/brake', null); mLog(farmNow(), '', `Chủ trại đặt tính cách quản lý: ${RISK[a1].name}`, 0); save.set('mgr/plan', null); }
     if (act === 'mapprove') save.set('cfg/approve', Number(a1) || 0);
     if ((act === 'mok' || act === 'mno') && a1 && a1.startsWith('mgr/ask/')) { const a = save.get(a1); if (a) { save.set(a1, { ...a, state: act === 'mok' ? 'ok' : 'no', at: farmNow() }); mLog(farmNow(), '', `${act === 'mok' ? '✅ Chủ trại duyệt' : '❌ Chủ trại không duyệt'}: ${a.what} (${money(a.cost)} xu)`, 0); } }
+    if (act === 'evpick' && (a1 === 'a' || a1 === 'b')) { const k = 'ev/' + dayNo(), e = save.get(k); if (e && e.state === 'open') save.set(k, { ...e, pick: a1 }); }
+    if (act === 'millup') millOwnerUp();
+    if (['lgift', 'lwed', 'lraiseok', 'lraiseno'].includes(act)) lifeAct(act, a1);
     if (act[0] === 'c' && act !== 'cook' && act !== 'close' && mCmdAct(act, a1)) return renderPanel();
     if (act === 'hustle') mHustle(a1, Number(a2));
     if (act === 'lakego') mLakeGo(a1);
@@ -5967,7 +6310,7 @@
   }
   // how long each motion takes (ms)
   const MDUR = { guide: 3000, zooFeed: 5000, rest: 9000, chop: 7000, replant: 7000, incubate: 4000, hatch: 4000, buyAnimal: 3500, land: 3500, upgrade: 5000, hire: 3500, sow: 3000, hoe: 6000, plant: 6000, clear: 4000, water: 5000, weed: 4500, spray: 4500, harvest: 4500, collect: 4500, net: 5000, feed: 5000, feedFish: 4500,
-    fish: 12000, fishMiss: 7000, cook: 7000, serve: 4000, count: 5000, sell: 4500, order: 4500, sweep: 5000, inspect: 3500, cure: 4500, stock: 4500 };
+    fish: 12000, fishMiss: 7000, millIn: 6000, millOut: 5000, cook: 7000, serve: 4000, count: 5000, sell: 4500, order: 4500, sweep: 5000, inspect: 3500, cure: 4500, stock: 4500 };
   function staffTick(v, now) {
     const q = mVis[v.staff];
     if (v.step === 'going' && !v.path.length) {
