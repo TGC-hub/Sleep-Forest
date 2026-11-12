@@ -1832,16 +1832,16 @@
   };
   // animals: producers give `product` every `every` hours once grown; meat animals go to market once grown
   const ANIMALS = {
-    chicken: { name: 'Gà', icon: '🐔', price: 40, life: 5, grow: 12, every: 8, product: 'egg', yield: 2, pen: 'small', feed: 1, lvl: 1 },
-    duck: { name: 'Vịt', icon: '🦆', price: 60, life: 6, grow: 16, every: 10, product: 'duckegg', yield: 2, pen: 'small', feed: 1, lvl: 2 },
-    rabbit: { name: 'Thỏ', icon: '🐇', price: 45, life: 6, grow: 20, meat: 'rabbitmeat', yield: 2, pen: 'small', feed: 1, lvl: 2 },
-    goat: { name: 'Dê', icon: '🐐', price: 120, life: 9, grow: 30, every: 16, product: 'goatmilk', yield: 2, pen: 'big', feed: 2, lvl: 3 },
-    pig: { name: 'Heo', icon: '🐖', price: 120, life: 8, grow: 48, meat: 'pork', yield: 4, pen: 'big', feed: 2, lvl: 3 },
-    sheep: { name: 'Cừu', icon: '🐑', price: 150, life: 10, grow: 36, every: 24, product: 'wool', yield: 2, pen: 'big', feed: 2, lvl: 4 },
-    cow: { name: 'Bò sữa', icon: '🐄', price: 250, life: 12, grow: 48, every: 12, product: 'milk', yield: 2, pen: 'big', feed: 2, lvl: 5 },
-    llama: { name: 'Lạc đà alpaca', icon: '🦙', price: 300, life: 14, grow: 48, every: 36, product: 'alpaca', yield: 2, pen: 'big', feed: 2, lvl: 6 },
-    ostrich: { name: 'Đà điểu', icon: '🪶', price: 280, life: 12, grow: 40, every: 30, product: 'ostrichegg', yield: 1, pen: 'big', feed: 2, lvl: 6 },
-    horse: { name: 'Ngựa', icon: '🐎', price: 400, life: 16, grow: 60, every: 24, product: 'horsehair', yield: 2, pen: 'big', feed: 3, lvl: 7 },
+    chicken: { name: 'Gà', icon: '🐔', price: 40, life: 4, grow: 12, every: 8, product: 'egg', yield: 2, pen: 'small', feed: 1, lvl: 1 },
+    duck: { name: 'Vịt', icon: '🦆', price: 60, life: 5, grow: 16, every: 10, product: 'duckegg', yield: 2, pen: 'small', feed: 1, lvl: 2 },
+    rabbit: { name: 'Thỏ', icon: '🐇', price: 45, life: 5, grow: 20, meat: 'rabbitmeat', yield: 2, pen: 'small', feed: 1, lvl: 2 },
+    goat: { name: 'Dê', icon: '🐐', price: 120, life: 6, grow: 30, every: 16, product: 'goatmilk', yield: 2, pen: 'big', feed: 2, lvl: 3 },
+    pig: { name: 'Heo', icon: '🐖', price: 120, life: 6, grow: 48, meat: 'pork', yield: 4, pen: 'big', feed: 2, lvl: 3 },
+    sheep: { name: 'Cừu', icon: '🐑', price: 150, life: 7, grow: 36, every: 24, product: 'wool', yield: 2, pen: 'big', feed: 2, lvl: 4 },
+    cow: { name: 'Bò sữa', icon: '🐄', price: 250, life: 8, grow: 48, every: 12, product: 'milk', yield: 2, pen: 'big', feed: 2, lvl: 5 },
+    llama: { name: 'Lạc đà alpaca', icon: '🦙', price: 300, life: 9, grow: 48, every: 36, product: 'alpaca', yield: 2, pen: 'big', feed: 2, lvl: 6 },
+    ostrich: { name: 'Đà điểu', icon: '🪶', price: 280, life: 8, grow: 40, every: 30, product: 'ostrichegg', yield: 1, pen: 'big', feed: 2, lvl: 6 },
+    horse: { name: 'Ngựa', icon: '🐎', price: 400, life: 9, grow: 60, every: 24, product: 'horsehair', yield: 2, pen: 'big', feed: 3, lvl: 7 },
   };
   const PRODUCTS = {
     egg: { name: 'Trứng gà', icon: '🥚', price: 8 }, duckegg: { name: 'Trứng vịt', icon: '🪺', price: 11 }, goatmilk: { name: 'Sữa dê', icon: '🍼', price: 28 },
@@ -1963,7 +1963,7 @@
   // Animals bought before this rule count as half-way through their life on that day (not all dying at once).
   const OLD_MEAT = { chicken: ['chickenmeat', 2], duck: ['duckmeat', 2], rabbit: ['rabbitmeat', 2], goat: ['goatmeat', 3], pig: ['pork', 4], sheep: ['mutton', 3], cow: ['beef', 5], ostrich: ['ostrichmeat', 4] };
   const LIFE_FROM = new Date(2026, 10, 12, 18, 0, 0).getTime();
-  const lifeOf = (a, A) => { const L = (A.life || 30) * 864e5; return { born: Math.max(a.t0, LIFE_FROM - L * 0.5), L, win: Math.max(864e5, L * 0.2) }; };
+  const lifeOf = (a, A) => { const L = Math.min(9, A.life || 9) * 864e5; return { born: Math.max(a.t0, LIFE_FROM - L * 0.5), L, win: Math.max(864e5, L * 0.2) }; };
   const SICK_KILL = 24 * HOUR, FEED_FOR = 24 * HOUR, KEEP_GOLD = 24 * HOUR, KEEP_DECAY = 24 * HOUR, HATCH = 24 * HOUR;
   // upgrades (save key upg/<id> = how many bought): bigger pens, more daily orders from the barn
   const UPGRADES = {
@@ -4818,7 +4818,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '17:09 12-11';
+    const build = '17:14 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
