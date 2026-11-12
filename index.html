@@ -4306,7 +4306,10 @@
           + '<div style="opacity:.8;margin-top:6px">Thức ăn và thuốc</div>' + ['feed', 'med', 'fishfeed', 'fishmed'].map((k) => [k, TOOLS[k]]).map(([k, T]) => row(`${T.icon} ${T.name} <span style="opacity:.7">${T.price} xu · ${T.note}</span>`, B(`buy:${k}:1`, '+1', c >= T.price) + B(`buy:${k}:5`, '+5', c >= T.price * 5))).join('');
       } else if (tab === 'sell') {
         const goods = Object.entries(GOODS).filter(([k]) => have(k) > 0);
-        body = goods.length ? goods.map(([k, G]) => row(`${G.icon} ${G.name} <span style="opacity:.7">${have(k)} × ${priceOf(k)} xu${priceOf(k) > G.price ? ' ⭐' : ''}</span>`, B(`sell:${k}:1`, 'Bán 1') + B(`sell:${k}:all`, `Bán hết · ${sellValue(k, have(k))}`))).join('') : '<div style="margin-top:6px;opacity:.7">Kho chưa có gì để bán.</div>';
+        // show the price the shop pays NOW (after today's 3%/unit drop) so "have × price" isn't read as the "Bán hết" total
+        body = goods.length ? '<div style="font-size:12px;opacity:.75;margin:4px 0">Chợ làng: mỗi món cùng loại bán trong ngày làm giá giảm 3% (thấp nhất 50%), sang ngày mới về giá gốc. "Bán hết" đã tính giảm dần.</div>'
+          + goods.map(([k, G]) => { const n = have(k), p = priceOf(k), now = sellValue(k, 1), all = sellValue(k, n), sold = marketSold(k);
+            return row(`${G.icon} ${G.name} <span style="opacity:.7">còn ${n} · giờ ${now} xu/món${now < p ? ` (gốc ${p}, hôm nay đã bán ${sold})` : ''}${p > G.price ? ' ⭐' : ''}${n > 1 && all < now * n ? ` · bán hết TB ${(all / n).toFixed(1)} xu/món` : ''}</span>`, B(`sell:${k}:1`, `Bán 1 · ${now}`) + B(`sell:${k}:all`, `Bán hết · ${all}`)); }).join('') : '<div style="margin-top:6px;opacity:.7">Kho chưa có gì để bán.</div>';
       } else {
         body = `<div style="margin-top:6px">Ruộng: <b>${land()}/${FARM.plots.length}</b> ô.</div>` + (land() < FARM.plots.length ? B('land', `Mua thêm 1 ô · ${landPrice()} xu`, c >= landPrice()) : '<div>Đã mở hết đất!</div>')
           + '<div style="opacity:.8;margin-top:8px">Nâng cấp</div>' + Object.entries(UPGRADES).map(([id, U]) => {
@@ -4603,7 +4606,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '11:48 12-11';
+    const build = '14:14 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
