@@ -60,6 +60,21 @@
   #hint { position: fixed; top: calc(54px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); white-space: nowrap; z-index: 40; font-size: 0.75rem; color: var(--mist-dim); background: rgba(12, 20, 16, 0.6); padding: 6px 10px; border-radius: 4px; transition: opacity 0.6s ease; }
   #hint.hide { opacity: 0; }
   @media (prefers-reduced-motion: reduce) { #dim, #bar, #hint { transition: none; } }
+  /* 2026-11-12 game look ("gỗ & mật ong"): the same wooden boards and chunky buttons as the farm panels */
+  .card { background: linear-gradient(180deg, #4b3121, #33211a); border: 3px solid #8a5a2b; border-radius: 18px; padding: 22px 18px;
+    box-shadow: 0 6px 0 #24160c, 0 14px 30px rgba(0,0,0,.5), inset 0 0 0 2px rgba(240,194,90,.35); color: #fff4dd; }
+  .card h1 { color: #ffd77a; text-shadow: 0 3px 0 #5a2a0a; }
+  .card p, #status, .credits { color: #e8d4b0; }
+  #go { color: #143306; background: linear-gradient(180deg, #a8ec74, #5fb83a); border: 2px solid #3f7d22; border-radius: 14px; box-shadow: 0 4px 0 #2f6418; font-weight: 700; }
+  #go:active { box-shadow: 0 1px 0 #2f6418; }
+  #gear { background: radial-gradient(circle at 50% 35%, #b57a44, #6f4220); border: 2px solid #f0c25a; border-radius: 14px; color: #fff4dd; box-shadow: 0 3px 0 #3a2210, 0 5px 10px rgba(0,0,0,.35); }
+  #gear:active { transform: translateY(2px); }
+  #bar { background: linear-gradient(180deg, #4b3121, #33211a); border: 3px solid #8a5a2b; border-radius: 14px; box-shadow: 0 4px 0 #24160c, 0 10px 22px rgba(0,0,0,.45), inset 0 0 0 2px rgba(240,194,90,.3); }
+  #bar .ttl { color: #ffd77a; font-weight: 700; }
+  #bar button { color: #4a2a10; background: linear-gradient(180deg, #ffe08c, #f0b347); border: 2px solid #a8661e; border-radius: 11px; box-shadow: 0 3px 0 #7a4a14; font-weight: 600; }
+  #bar button:active { transform: translateY(2px); box-shadow: 0 1px 0 #7a4a14; }
+  #bar button[aria-pressed="true"] { color: #143306; background: linear-gradient(180deg, #a8ec74, #5fb83a); border-color: #3f7d22; box-shadow: 0 3px 0 #2f6418; }
+  #hint { background: rgba(58, 38, 25, 0.92); color: #ffe8c0; border: 1px solid #8a5a2b; border-radius: 999px; }
 </style>
 
 <canvas id="scene" aria-label="Khu rừng pixel: suối, nhà gỗ, thú vật, ngày đêm theo giờ điện thoại"></canvas>
@@ -4254,14 +4269,51 @@
       + 'body,button,input,select,textarea,:is(div,span,b,i,p,label,small,strong):not(.xterm,.xterm *){font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif!important;}'; // divs too (the engine's pixel font reached the panel text), but never the terminal (.xterm): it needs its monospace font (user 2026-11-09: prompt text got hard to read)
     (document.head || document.documentElement).append(s);
   })();
+  // ── Game look (user 2026-11-12: "thiết kế lại các UI cho dễ nhìn giống game"): wooden boards with honey-gold trim, a
+  // ribbon title, chunky pressable buttons (green = do it, red = careful, honey = the rest), pill tabs, rows as cards.
+  // Classes only (fz-*), so nothing else on the page (the PC app's terminal) is touched.
+  (function gameLook() {
+    const st = document.createElement('style'); st.id = 'fz-look';
+    st.textContent = `
+.fz-panel{background:linear-gradient(180deg,#4b3121 0%,#3a2619 60%,#33211a 100%)!important;color:#fff4dd!important;border:3px solid #8a5a2b!important;border-radius:16px!important;
+  box-shadow:0 5px 0 #24160c,0 12px 26px rgba(0,0,0,.45),inset 0 0 0 2px rgba(240,194,90,.35)!important;padding:0 12px 12px!important;scrollbar-width:thin;scrollbar-color:#c8902f #2a1a10}
+.fz-panel b{color:#ffd77a}
+.fz-panel>:first-child:not(.fz-head){margin-top:12px}
+.fz-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 -12px 8px;padding:9px 10px 9px 14px;
+  background:linear-gradient(180deg,#d9853a,#a9561c);border-bottom:3px solid #6b3510;border-radius:12px 12px 0 0;box-shadow:inset 0 2px 0 rgba(255,220,160,.45)}
+.fz-head .fz-title{color:#fffaf0;font-weight:800;font-size:16px;letter-spacing:.2px;text-shadow:0 2px 0 #5a2a0a}
+.fz-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;margin:4px 5px 2px 0;min-height:34px;padding:4px 12px;border-radius:11px;cursor:pointer;
+  font:600 14px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#4a2a10;background:linear-gradient(180deg,#ffe08c,#f0b347);border:2px solid #a8661e;
+  box-shadow:0 3px 0 #7a4a14,inset 0 1px 0 rgba(255,255,255,.55);transition:transform .06s, box-shadow .06s, filter .1s;-webkit-tap-highlight-color:transparent}
+.fz-btn:hover{filter:brightness(1.07)}
+.fz-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #7a4a14,inset 0 1px 0 rgba(255,255,255,.4)}
+.fz-btn.go{color:#143306;background:linear-gradient(180deg,#a8ec74,#5fb83a);border-color:#3f7d22;box-shadow:0 3px 0 #2f6418,inset 0 1px 0 rgba(255,255,255,.55)}
+.fz-btn.go:active{box-shadow:0 1px 0 #2f6418}
+.fz-btn.warn{color:#fff;background:linear-gradient(180deg,#ff8f7c,#de4b37);border-color:#9a2a1c;box-shadow:0 3px 0 #7a1c12,inset 0 1px 0 rgba(255,255,255,.4);text-shadow:0 1px 0 #7a1c12}
+.fz-btn.warn:active{box-shadow:0 1px 0 #7a1c12}
+.fz-btn.tab{min-height:30px;padding:3px 12px;border-radius:999px;color:#fff1d6;background:#5a3a24;border-color:#8a5a2b;box-shadow:0 2px 0 #2a1a10}
+.fz-btn.tab.on{color:#4a2a10;background:linear-gradient(180deg,#ffe08c,#f0b347);border-color:#a8661e;box-shadow:0 2px 0 #7a4a14}
+.fz-btn.x{min-height:30px;width:30px;padding:0;border-radius:50%;margin:0;color:#fff;font-weight:800;background:linear-gradient(180deg,#ff8f7c,#d4412e);border-color:#7a1c12;box-shadow:0 2px 0 #5a140c}
+.fz-btn:disabled{cursor:default;filter:grayscale(.85) brightness(.85);opacity:.6;box-shadow:0 2px 0 rgba(0,0,0,.35);transform:none}
+.fz-row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;padding:7px 9px;border-radius:11px;
+  background:rgba(255,236,200,.07);border:1px solid rgba(240,194,90,.2);box-shadow:inset 0 -2px 0 rgba(0,0,0,.15)}
+.fz-row>span:last-child{white-space:nowrap}
+.fz-hud{border-radius:14px!important;background:radial-gradient(circle at 50% 35%,#b57a44,#6f4220)!important;border:2px solid #f0c25a!important;color:#fff4dd!important;
+  box-shadow:0 3px 0 #3a2210,0 5px 10px rgba(0,0,0,.35)!important;transition:transform .06s}
+.fz-hud:active{transform:translateY(2px)}
+.fz-coin{background:linear-gradient(180deg,#ffe28a,#f0b347)!important;color:#4a2a10!important;border:2px solid #a8661e!important;border-radius:999px!important;box-shadow:0 3px 0 #7a4a14,0 5px 10px rgba(0,0,0,.3)!important;font-weight:800!important}
+.fz-pop{background:linear-gradient(180deg,#4b3121,#33211a)!important;color:#fff4dd!important;border:3px solid #8a5a2b!important;border-radius:14px!important;box-shadow:0 4px 0 #24160c,0 10px 22px rgba(0,0,0,.45),inset 0 0 0 2px rgba(240,194,90,.3)!important}
+`;
+    (document.head || document.documentElement).append(st);
+  })();
   function ensureFarmHud() {
     if (farmHud && farmHud.isConnected) return;
     farmHud = document.createElement('div');
     farmHud.style.cssText = HUD.farm + 'z-index:40;display:flex;gap:6px;align-items:' + (HUD.phone ? 'center;' : 'flex-start;flex-direction:column;');
-    const btn = (icon, title, view) => { const b = document.createElement('button'); b.textContent = icon; b.title = title; b.style.cssText = HUD.size + 'cursor:pointer;padding:0;font-size:18px;' + PIX; b.addEventListener('click', (e) => { e.stopPropagation(); openPanel(panelView && panelView.kind === view ? null : { kind: view }); }); return b; };
+    const btn = (icon, title, view) => { const b = document.createElement('button'); b.textContent = icon; b.title = title; b.style.cssText = HUD.size + 'cursor:pointer;padding:0;font-size:18px;' + PIX; b.className = 'fz-hud'; b.addEventListener('click', (e) => { e.stopPropagation(); openPanel(panelView && panelView.kind === view ? null : { kind: view }); }); return b; };
     const pill = document.createElement('div');
     pill.style.cssText = (HUD.phone ? HUD.size.replace(/width:[^;]+;/, '') + 'padding:0 8px;font-size:14px;font-weight:600;display:flex;align-items:center;' : 'padding:3px 4px;font-size:12px;line-height:1.15;') + 'white-space:nowrap;cursor:pointer;' + PIX;
-    pill.title = 'Sổ sách nông trại';
+    pill.title = 'Sổ sách nông trại'; pill.className = 'fz-coin';
     pill.addEventListener('click', (e) => { e.stopPropagation(); openPanel(panelView && panelView.kind === 'mgr' ? null : { kind: 'mgr', tab: 'money' }); });
     const ord = btn('📋', 'Đơn hàng hôm nay', 'orders');
     ord.style.position = 'relative';
@@ -4281,7 +4333,7 @@
     const cam = window.__forestCam; // phone page only: jump between the forest and the field
     if (cam) {
       const b = document.createElement('button');
-      b.textContent = '🌾'; b.title = 'Ra ruộng / về rừng'; b.style.cssText = HUD.size + 'cursor:pointer;padding:0;font-size:18px;' + PIX;
+      b.textContent = '🌾'; b.title = 'Ra ruộng / về rừng'; b.style.cssText = HUD.size + 'cursor:pointer;padding:0;font-size:18px;' + PIX; b.className = 'fz-hud';
       b.addEventListener('click', (e) => { e.stopPropagation(); cam.free = null; cam.mode = 'close'; const toFarm = cam.panY < 0.5; cam.panY = toFarm ? 1 : 0; cam.pan = toFarm ? 0.1 : 0.5; cam.manualUntil = performance.now() + 60000; b.textContent = toFarm ? '🌲' : '🌾'; });
       farmHud.append(b);
     }
@@ -4292,7 +4344,7 @@
     farmPanel = document.createElement('div');
     farmPanel.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:45;display:none;width:min(360px, calc(100vw - 32px));max-height:min(70vh, 560px);overflow:auto;box-sizing:border-box;padding:10px 12px;line-height:1.45;-webkit-overflow-scrolling:touch;' + PIX + 'font-size:15px;';
     ['pointerdown', 'touchstart', 'wheel'].forEach((t) => farmPanel.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
-    farmPanel.addEventListener('click', onPanelClick);
+    farmPanel.addEventListener('click', onPanelClick); farmPanel.className = 'fz-panel';
     document.body.append(farmPanel);
   }
   function openPanel(view) {
@@ -4301,11 +4353,18 @@
     if (farmPanel) farmPanel.style.display = view ? 'block' : 'none';
     if (view) { farmPanel.scrollTop = 0; renderPanel(); }
   }
-  const B = (act, label, on = true, extra = '') => `<button data-act="${act}" ${on ? '' : 'disabled'} style="margin:3px 4px 0 0;min-height:30px;padding:2px 8px;cursor:${on ? 'pointer' : 'default'};opacity:${on ? 1 : 0.45};${PIX}font-size:14px;${extra}">${label}</button>`;
-  const row = (left, right) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0;border-top:1px solid #33334a;padding-top:4px;"><span>${left}</span><span style="white-space:nowrap">${right}</span></div>`;
+  // what kind of button: tab / close / careful (red) / do it (green) / the rest (honey)
+  const BTN_GO = new Set(['buy', 'plant', 'plantAll', 'harvest', 'harvestAll', 'collect', 'collectAll', 'land', 'upgrade', 'hire', 'fill', 'xbuild', 'mok', 'cook', 'serve', 'sell', 'crepay', 'repay', 'cure', 'feed', 'water', 'waterAll', 'fert', 'spray', 'hatch', 'incubate', 'stock', 'net', 'netAll', 'sellold', 'buyAnimal', 'facup', 'xfac', 'chustle', 'ckeep', 'cot', 'xpomo']);
+  const BTN_WARN = new Set(['fire', 'cfire', 'ocancel', 'remove', 'mno', 'clear', 'clearPond', 'removeAnimal']);
+  const B = (act, label, on = true, extra = '') => {
+    const k = String(act).split(':')[0], active = /border-color:#7fd65a/.test(extra), ex = extra.replace(/border-color:#7fd65a;?/g, '');
+    const cls = k === 'close' ? 'x' : /tab$/i.test(k) || k === 'open' || active ? 'tab' + (active ? ' on' : '') : BTN_WARN.has(k) || /:shut$|:off$/.test(act) ? 'warn' : BTN_GO.has(k) || /:open$/.test(act) ? 'go' : '';
+    return `<button data-act="${act}" ${on ? '' : 'disabled'} class="fz-btn ${cls}" style="${ex}">${label}</button>`;
+  };
+  const row = (left, right) => `<div class="fz-row"><span>${left}</span><span>${right}</span></div>`;
   function panelHtml() {
     const v = panelView, L = level(), c = coins();
-    const head = (title) => `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b>${title}</b>${B('close', '✕')}</div>`;
+    const head = (title) => `<div class="fz-head"><span class="fz-title">${title}</span>${B('close', '✕')}</div>`;
     if (v.kind === 'plot') {
       const i = v.i, s = simPlot(i), num = `Ô ${i + 1}`;
       if (s.status === 'locked') return head(`${num} · Đất hoang`) + `<div>Mở thêm ô đất này để trồng (${land()}/${FARM.plots.length} ô).</div>` + B('land', `Mua ô đất · ${landPrice()} xu`, c >= landPrice()) + (c < landPrice() ? `<div style="opacity:.7;font-size:12px">Còn thiếu ${landPrice() - c} xu</div>` : '');
@@ -4732,7 +4791,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '16:56 12-11';
+    const build = '17:03 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -5602,9 +5661,9 @@
   function ensureSoundButton() {
     if (soundBtn && soundBtn.isConnected) return;
     soundBtn = document.createElement('button');
-    soundBtn.style.cssText = HUD.sound + HUD.size + 'z-index:40;cursor:pointer;padding:0;font-size:18px;' + PIX;
+    soundBtn.style.cssText = HUD.sound + HUD.size + 'z-index:40;cursor:pointer;padding:0;font-size:18px;' + PIX; soundBtn.className = 'fz-hud';
     soundPanel = document.createElement('div');
-    soundPanel.style.cssText = HUD.soundPanel + 'z-index:41;padding:8px 10px;display:none;min-width:230px;' + PIX;
+    soundPanel.style.cssText = HUD.soundPanel + 'z-index:41;padding:8px 10px;display:none;min-width:230px;' + PIX; soundPanel.className = 'fz-pop';
     const row = (label, key, volKey, max) => {
       const r = document.createElement('div');
       r.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;';
@@ -5654,7 +5713,7 @@
   function ensureSyncButton() {
     if (syncBtn && syncBtn.isConnected) return;
     syncBtn = document.createElement('button');
-    syncBtn.style.cssText = HUD.sync + HUD.size + 'z-index:40;cursor:pointer;padding:0;font-size:18px;' + PIX;
+    syncBtn.style.cssText = HUD.sync + HUD.size + 'z-index:40;cursor:pointer;padding:0;font-size:18px;' + PIX; syncBtn.className = 'fz-hud';
     const panel = document.createElement('div');
     panel.style.cssText = HUD.syncPanel + 'z-index:41;padding:8px 10px;display:none;width:250px;max-width:calc(100vw - 70px);box-sizing:border-box;line-height:1.4;' + PIX;
     const el = (tag, css, text) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (text) e.textContent = text; return e; };
