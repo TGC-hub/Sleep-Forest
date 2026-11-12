@@ -967,7 +967,7 @@
     }
     if (shooting) {
       const k = (now - shooting.t) / shooting.life;
-      if (k >= 1) { shooting = null; nextShoot = now + 15000 + Math.random() * 35000; }
+      if (k >= 1) { shooting = null; nextShoot = now + (15000 + Math.random() * 35000) / astroShootMul(); }
       else {
         const x = shooting.x + (shooting.vx * (now - shooting.t)) / 1000, y = shooting.y + (shooting.vy * (now - shooting.t)) / 1000;
         const a = Math.sin(Math.PI * k);
@@ -979,6 +979,7 @@
         g.beginPath(); g.moveTo(x, y); g.lineTo(x - shooting.vx * 0.12, y - shooting.vy * 0.12); g.stroke();
       }
     } else if (ph.night <= 0.7) nextShoot = Math.max(nextShoot, now + 5000);
+    try { festFireworks(g, now, ph); } catch (e) {} // festival fireworks (2026-11-12)
     g.globalAlpha = 1;
     // keep only the open sky
     g.globalCompositeOperation = 'destination-in';
@@ -1896,7 +1897,9 @@
   const xp = () => banks().reduce((s, b) => s + (b.xp || 0), START.xp);
   const have = (k) => banks().reduce((s, b) => s + ((b.inv || {})[k] || 0), START.inv[k] || 0);
   let mTape = null; // manager bookkeeping: while a worker acts, every money move is noted to file it by source
+  let colHook = null; // collections (2026-11-12): notes the first time anything lands in the barn
   function ledger(dCoins, dXp, dInv) {
+    if (colHook && dInv) try { colHook(dInv); } catch (e) {}
     if (mTape && dXp) dXp = Math.ceil(dXp / 2); // staff work gives the farm half the experience you would get yourself
     if (mTape && dCoins) mTape.push([dCoins, dXp, dInv || {}]);
     const b = save.get(MY_BANK, {}), inv = { ...(b.inv || {}) };
@@ -2095,7 +2098,7 @@
   const anyCooking = () => { for (let i = 0; i < kitchenSlots(); i++) if (simCook(i).status === 'cooking') return true; return false; };
   const cooksDone = () => { let n = 0; for (let i = 0; i < kitchenSlots(); i++) if (simCook(i).status === 'done') n++; return n; };
   const specialOf = (day = dayNo()) => { const L = level(), list = Object.keys(RECIPES).filter((k) => RECIPES[k].lvl <= L && !RECIPES[k].base); return list.length ? list[Math.floor(hash01(day * 864e5, 4242, 0) * list.length)] : null; };
-  const priceOf = (k) => { const G = GOODS[k]; if (!G) return 0; const p = k === 'd:' + specialOf() ? Math.round(G.price * 1.5) : G.price; return CROPS[k] ? Math.round(p * xSeasonMul(k)) : p; }; // in-season crops +20%
+  const priceOf = (k) => { const G = GOODS[k]; if (!G) return 0; const p = k === 'd:' + specialOf() ? Math.round(G.price * 1.5) : G.price; return CROPS[k] ? Math.round(p * xSeasonMul(k) * rivalMul(k)) : p; }; // in-season crops +20%
   const fuelOf = (R) => Math.max(1, Math.ceil(R.min / 30)); // firewood per batch (x3 burns the same fire)
   const canCook = (r, n = 1) => { const R = RECIPES[r]; return !!R && R.lvl <= level() && have('cui') >= fuelOf(R) && Object.entries(R.need).every(([k, q]) => have(k) >= q * n); };
   const WORK_CAP = { cui: 80, catch: 30 };
@@ -2294,7 +2297,7 @@
   // books look exactly as if they had worked all along. Save keys: mgr/staff, mgr/last, mgr/day/<day>, mgr/log, mgr/away.
   const MSTEP = 5 * 60000, MCATCH = 7 * 864e5, MWORK = [6, 18], MLOG = 160, MMAX = 12; // shift 6-18 (user 2026-11-09); later = overtime, x2 pay
   const ROLES = {
-    boss: { name: 'Quản lý', icon: '🧑‍💼', ap: 6, wage: 0, hire: 0, jobs: ['rescue', 'dead', 'boss', 'harvest', 'orders', 'field', 'ranch', 'pond', 'cook', 'mill', 'sell', 'water', 'wood', 'fish'] },
+    boss: { name: 'Quản lý', icon: '🧑‍💼', ap: 6, wage: 0, hire: 0, jobs: ['rescue', 'dead', 'boss', 'harvest', 'orders', 'field', 'ranch', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish'] },
     farmer: { name: 'Trồng trọt', icon: '🧑‍🌾', ap: 9, wage: 30, hire: 120, jobs: ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'field', 'water'] },
     poultry: { name: 'Nuôi gia cầm', icon: '🐔', ap: 6, wage: 35, hire: 180, jobs: ['rescue', 'dead', 'ranch'] },
     cattle: { name: 'Nuôi gia súc', icon: '🐄', ap: 6, wage: 40, hire: 220, jobs: ['rescue', 'dead', 'ranch'] },
@@ -2390,8 +2393,8 @@
     for (let k = 1; k <= 3; k++) {
       const d = mDayRec(t - k * 864e5); if (!d.acts) continue;
       const c = (d.cat || {}).in || {}, o = (d.cat || {}).out || {}, sum = (src, ns) => ns.reduce((a, n) => a + (src[n] || 0), 0);
-      flow += sum(c, ['Bán cá câu', 'Vé tham quan farm', 'Vé sở thú', 'Tiền tip hướng dẫn', 'Vé cắm trại', 'Quầy bánh mì', 'Quán nước', 'Nhà hàng']);
-      prod += sum(c, ['Bán món ăn', 'Bán trứng, sữa, thịt', 'Bán cá nuôi', 'Bán mật ong, trái cây', 'Bán hàng xưởng']);
+      flow += sum(c, ['Homestay', 'Khách lưu trú ăn uống', 'Lễ hội', 'Bán cá câu', 'Vé tham quan farm', 'Vé sở thú', 'Tiền tip hướng dẫn', 'Vé cắm trại', 'Quầy bánh mì', 'Quán nước', 'Nhà hàng']);
+      prod += sum(c, ['Bán món ăn', 'Bán trứng, sữa, thịt', 'Bán cá nuôi', 'Bán mật ong, trái cây', 'Bán hàng xưởng', 'Chợ phiên cuối tuần']);
       cost += sum(o, FC_RUNCOST); nd++;
     }
     const left = Math.max(0, Math.min(1, (dayEnd - t) / ((MWORK[1] - MWORK[0]) * HOUR))), avg = (x) => (nd ? (x / nd) * left : 0);
@@ -2854,11 +2857,11 @@
     if (w.role === 'boss') {
       mBrokeNote(farmNow(), w.id);
       if (mStaff().some((x) => x.role === 'accountant')) { const L = mJobs({ ...w, role: 'boss!' }, t); return L; }
-      return broke ? ['payroll', 'rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
-        : ['payroll', 'rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'sell', 'water', 'wood', 'fish'];
+      return broke ? ['payroll', 'rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'market', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
+        : ['payroll', 'rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish'];
     }
-    if (w.role === 'boss!') { const broke = mBroke(); return (broke ? ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
-      : ['rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'sell', 'water', 'wood', 'fish']); } // the manager without payroll (the accountant has it)
+    if (w.role === 'boss!') { const broke = mBroke(); return (broke ? ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'market', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
+      : ['rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish']); } // the manager without payroll (the accountant has it)
     if (barTender(t) === w.id && (mLocalH(t) >= MWORK[1] || mLocalH(t) < MWORK[0])) return ['bar'];
     const j = HELP[w.role] ? ROLES[w.role].jobs.concat('help') : ROLES[w.role].jobs;
     return broke && !j.includes('fish') && w.role !== 'woodcutter' && !ROLES[w.role].shift ? j.concat('fish') : j; // shop sellers stay at their counter
@@ -3091,6 +3094,7 @@
       : !count('camphost') && xBuilt('camp', t) ? ['camphost', 'khu cắm trại có người đón thì khách đến đủ (không ai đón chỉ ~60%)']
       : !count('beekeeper') && xBuilt('bees', t) ? ['beekeeper', 'trại ong có người chuyên chăm: mật thêm 30%, nông dân đỡ phải ra đảo']
       : !count('gardener') && xBuilt('orchard', t) ? ['gardener', 'vườn quả có người chuyên chăm: quả thêm 30%, nông dân đỡ phải ra đảo']
+      : !count('host') && innLv() >= 1 ? ['host', 'homestay có lễ tân thì khách đến đủ (không có chỉ một nửa)']
       : !count('artisan') && millLv() >= 2 ? ['artisan', 'xưởng chế biến đã có 4 thùng, cần thợ chuyên ủ và coi hầm']
       : late >= 4 && count('farmer') < Math.ceil(land() / 6) ? ['farmer', 'ruộng làm không xuể (cây chín quá/chết)']
       : count('poultry') === 1 && small >= 12 ? ['poultry', 'chuồng gia cầm quá đông']
@@ -3109,6 +3113,7 @@
     if (!R || role === 'boss' || coins() < R.hire || mStaff().length >= mMax()) return;
     if (role === 'guide' && !guideAllowed()) return; // only once the zoo is open and has had visitors
     if (role === 'artisan' && !millLv()) return;
+    if (role === 'host' && !innLv()) return;
     if (R.need && !xBuilt(R.need)) return; // islet trades: once their place is built
     const t = farmNow(), tape = mTaped(() => mHire(role, t)), w = tape.r;
     mCatBook(t, tape.moves, 'hire'); mBook(t, w.id, -R.hire, 0, 'hire', ROLE_LINE[role] || 'staff', `chủ trại thuê ${R.name}`);
@@ -3403,7 +3408,7 @@
       { const U = UPGRADES.barn, n = upg('barn'), cost = U.cost[n]; if (cost && level() >= U.lvl[n] && orderBook(dayNo(t)).every((o) => o.done) && mCanInvest(cost, { line: 'shop', key: 'up:barn', what: 'mở rộng kho' }) && mFund(cost, { line: 'shop', key: 'up:barn', what: 'mở rộng kho' }) && farm.upgrade('barn')) return { kind: 'upgrade', line: 'shop', text: `giao hết đơn trong ngày, mở rộng kho nhận thêm đơn (${cost} xu)`, at: barnAt(), icon: '🔨', big: true }; }
       { const xr = xInvest(t, w); if (xr) return xr; }
       { const fr = facInvest(t, w); if (fr) return fr; }
-      { const mr = millInvest(t); if (mr) return mr; } // the workshop (2026-11-12) // a facility level (2026-11-12) // the islets (bee yard, orchard, campsite): cheaper than the zoo, steady income
+      { const mr = millInvest(t) || innInvest(t) || boatInvest(t); if (mr) return mr; } // workshop, homestay, boat (2026-11-12) // a facility level (2026-11-12) // the islets (bee yard, orchard, campsite): cheaper than the zoo, steady income
       // the zoo: opened once the purse holds 3x its price; then an animal at a time (best appeal for the money)
       if (!zooOpen() && level() >= ZOO_LVL && mCanInvest(ZOO_UNLOCK, { line: 'zoo', key: 'zooOpen', what: 'mở sở thú' }) && mFund(ZOO_UNLOCK, { line: 'zoo', key: 'zooOpen', what: 'mở sở thú' }) && zoo.open()) return { kind: 'zooOpen', line: 'zoo', text: `mở cửa sở thú (${money(ZOO_UNLOCK)} xu)`, at: zooGateAt(), icon: '🦁', big: true };
       if (zooOpen()) {
@@ -3776,7 +3781,7 @@
     mDaily(t);
     mEvening(t); // 17:30: overtime for orders that can still be made, or cancel; cancel what is left when the shift ends
     barDecide(t); // 17:30, after the order crews: open the night bar tonight or not (2026-11-10)
-    try { lifeStep(t); evStep(t); } catch (e) { console.warn('[Claude Forest] stories: ' + e); } // 2026-11-12
+    try { lifeStep(t); evStep(t); bizStep(t); } catch (e) { console.warn('[Claude Forest] stories: ' + e); } // 2026-11-12
     xStep(t); // campfire, campers, the traveller's story, finished islet buildings
     if (!mStaff().some((w) => mOnShift(w, t))) return;
     const st = mStaff().map((w) => ({ ...w })), stepH = MSTEP / HOUR;
@@ -3829,6 +3834,7 @@
     if (c < 0 && kind === 'zooBuy') return ['out', 'Thú sở thú'];
     if (c < 0 && kind === 'zooOpen') return ['out', 'Mở rộng, nâng cấp'];
     if (c > 0 && kind === 'bar') return ['in', 'Quầy bar đêm'];
+    if (c > 0 && kind === 'market') return ['in', 'Chợ phiên cuối tuần'];
     if (c > 0 && SHOP_CAT[kind]) return ['in', SHOP_CAT[kind]];
     if (c > 0) {
       if (kind === 'order') return ['in', 'Giao đơn hàng'];
@@ -4100,6 +4106,7 @@
     if (!w || w.role === 'boss') return null;
     const day = dayNo(t), c = save.get('life/couple');
     if (c && c.wedDay === day && (c.a === w.id || c.b === w.id)) return 'wed';
+    if (seaAway(w, t)) return 'sea';
     if (t - (w.hired || t) >= 864e5 && hash01(day * 1000, wNum(w), 6161) < 0.035) return 'sick';
     return null;
   }
@@ -4189,6 +4196,352 @@
       else if (r.quitAt && r.quitAt > t) out.push(`😔 ${w.name} chưa được tăng lương nên buồn, em nghe nói trại bên kia sông đang dụ. Chủ nhân muốn giữ thì ${B('lraiseok:' + id, '💰 Đổi ý: tăng lương')}${mKept(id, t) ? '' : B('ckeep:' + id, '🤝 Giữ ' + w.name)}`);
     }
     return out;
+  }
+  // ── More of the farm's life (user 2026-11-12 "làm tiếp hết đi": the other 9 ideas) ─────────────────────────────────
+  // weekend market · homestay · a fishing boat · the rival farm · visitors' star reviews · collections + badges ·
+  // milestones + weekly photos · festivals the staff hold · real sky events (meteor showers, eclipses, full moon).
+  // Decided in mStep (bizStep, lease holder), deterministic per day. Keys: mk/<day>, inn/lv, inn/<day>, boat/own,
+  // sea/<day>, rival/ad/<day>, rv/<day>, col/<item>, col/badge/<set>, ms/<id>, fest/<day>, fest/no/<day>, biz/day.
+  const lineAdd = (t, line, v, c) => { const d = mDayRec(t), L = (d.ln || (d.ln = {}))[line] || (d.ln[line] = { v: 0, c: 0, inv: 0 }); L.v += v || 0; L.c += c || 0; save.set(`mgr/day/${dayNo(t)}`, d); };
+  const wkDay = (t) => new Date(t).getDay(); // 0 = Sunday
+  const heldNow = (t) => millHeld(t);
+  const sellable = (k) => k !== 'cui' && !k.startsWith('seed:') && !k.startsWith('fry:') && !TOOLS[k] && GOODS[k];
+
+  // ── weekend market (Sat + Sun 7h-16h): the seller / manager takes a cart to the pier, up to 30 goods a day at x1.35
+  const MARKET = { mul: 1.35, cap: 30, trip: 10 };
+  const marketOpen = (t) => level() >= 3 && [0, 6].includes(wkDay(t)) && mLocalH(t) >= 7 && mLocalH(t) < 16;
+  JOBS.market = (t, w) => {
+    if (!marketOpen(t) || mOff('sell')) return null;
+    const day = dayNo(t), done = save.get('mk/' + day, 0); if (done >= MARKET.cap) return null;
+    const held = heldNow(t), keep = new Set(mOftenWanted());
+    const g = Object.keys(GOODS).filter((k) => sellable(k) && priceOf(k) >= 8).map((k) => ({ k, n: have(k) - (held[k] || 0) - (keep.has(k) ? 2 : 0), p: priceOf(k) })).filter((x) => x.n > 0).sort((a, b) => b.p - a.p);
+    const load = []; let left = Math.min(MARKET.trip, MARKET.cap - done);
+    for (const x of g) { if (left <= 0) break; const n = Math.min(x.n, left); load.push([x.k, n, x.p]); left -= n; }
+    const total = load.reduce((s, [, n, p]) => s + Math.round(n * p * MARKET.mul), 0); if (total < 60) return null;
+    ledger(total, 3, Object.fromEntries(load.map(([k, n]) => [k, -n])));
+    save.set('mk/' + day, done + load.reduce((s, [, n]) => s + n, 0));
+    return { kind: 'market', line: 'shop', text: `đẩy xe ra chợ phiên cuối tuần bán ${load.map(([k, n]) => `${n} ${GOODS[k].icon}`).join(' ')} (+${money(total)} xu, giá x${String(MARKET.mul).replace('.', ',')})`, at: shopAt(), icon: '🛒', value: total - load.reduce((s, [, n, p]) => s + n * p, 0), big: total >= 300 };
+  };
+  ROLES.seller.jobs = ['market'].concat(ROLES.seller.jobs);
+  KIND_LINE.market = 'shop';
+
+  // ── homestay → guest house → TJ hotel: rooms filled each night (reputation, stars, a receptionist), booked at 21:00
+  const INN = { names: ['Homestay', 'Nhà nghỉ ven hồ', 'Khách sạn TJ'], cost: [3000, 7000, 15000], lvl: [5, 7, 9], rooms: [4, 8, 12], price: [60, 90, 140] };
+  ROLES.host = { name: 'Lễ tân', icon: '🛎️', ap: 3, wage: 35, hire: 180, jobs: ['inn'] };
+  LINES.inn = { name: '🏨 Homestay, khách sạn', roles: ['host'] }; ROLE_LINE.host = 'inn';
+  const innLv = () => Math.max(0, Math.min(3, save.get('inn/lv', 0)));
+  const innOcc = (t) => { const L = innLv(); if (!L) return 0; const host = mStaff().some((w) => w.role === 'host'); return Math.max(0.1, Math.min(0.95, (0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12) * (host ? 1 : 0.5))); };
+  const innExpect = (L, t = farmNow()) => { const occ = Math.max(0.1, Math.min(0.95, 0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12)); return INN.rooms[L - 1] * occ * (INN.price[L - 1] + 12); };
+  JOBS.inn = (t, w) => { // the receptionist: make the beds, greet guests (an action every 2 hours, for the books and the map)
+    if (!innLv()) return null;
+    const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 }); if (t - (b.innAt || 0) < 2 * HOUR) return null;
+    b.innAt = t; save.set(`mgr/day/${dayNo(t)}`, d);
+    return { kind: 'sweep', line: 'inn', text: mLocalH(t) < 12 ? 'dọn phòng, thay ga gối' : 'đón khách nhận phòng', at: barnAt(), icon: '🛎️', value: 0 };
+  };
+  function innNight(t) {
+    const L = innLv(), day = dayNo(t); if (!L || mLocalH(t) < 21 || save.get('inn/' + day)) return;
+    const rooms = INN.rooms[L - 1], g = Math.max(0, Math.min(rooms, Math.round(rooms * innOcc(t) + (evRnd(day, 401) - 0.5) * 2)));
+    const rent = g * INN.price[L - 1], spend = g * 20, clean = g * 8;
+    save.set('inn/' + day, { g, rooms, rent, spend, L });
+    if (g) { evBook(t, rent, 'Homestay'); evBook(t, spend, 'Khách lưu trú ăn uống'); evBook(t, -clean, 'Vật tư (cám, thuốc, củi)'); lineAdd(t, 'inn', rent + spend, clean); }
+    mLog(t, bossId(), `🏨 ${INN.names[L - 1]} đêm nay ${g}/${rooms} phòng có khách: +${money(rent + spend - clean)} xu`, 0);
+  }
+  function innInvest(t) {
+    const L = innLv(); if (L >= 3 || level() < INN.lvl[L]) return null;
+    if (L && (save.get('inn/' + (dayNo(t) - 1)) || {}).g < INN.rooms[L - 1] * 0.7) return null; // grow only when nearly full
+    const cost = INN.cost[L], perDay = innExpect(L + 1, t) - (L ? innExpect(L, t) : 0) - (L ? 0 : 35), pb = perDay > 0 ? cost / perDay : 0; if (!pb || pb > 10) return null;
+    const o = { line: 'inn', key: 'inn', what: L ? `nâng ${INN.names[L - 1]} lên ${INN.names[L]}` : `xây ${INN.names[0]} cho du khách ngủ lại`, payback: pb };
+    if (!mCanInvest(cost, o) || !mFund(cost, o)) return null;
+    ledger(-cost, 0, {}); save.set('inn/lv', L + 1);
+    return { kind: 'upgrade', line: 'inn', text: `${o.what}: ${INN.rooms[L]} phòng (${money(cost)} xu, hoàn vốn ~${Math.ceil(pb)} ngày)`, at: barnAt(), icon: '🏨', big: true };
+  }
+
+  // ── a fishing boat: one angler goes out to sea 6h-18h (fuel 40 xu); storms keep it in; rare fish are possible
+  const BOAT = { cost: 1500, lvl: 4, fuel: 40 };
+  const SEA_FISH = [['fish', 30], ['perch', 25], ['loc', 15], ['catfish', 12], ['crab', 8], ['koi', 5], ['sturgeon', 3], ['arowana', 1.5], ['gold', 0.5]];
+  const seaToday = (t = farmNow()) => save.get('sea/' + dayNo(t));
+  const seaFishers = (t) => mStaff().filter((w) => ['angler', 'fisher', 'pondkeeper'].includes(w.role) && !lifeOff(w, t));
+  function seaStep(t) {
+    if (!save.get('boat/own')) return;
+    const day = dayNo(t), h = mLocalH(t), s = save.get('sea/' + day);
+    if (!s && h >= 6 && h < 7) {
+      if (xRealWeather() === 'storm' || evRnd(day, 501) < 0.08) { save.set('sea/' + day, { state: 'storm' }); mLog(t, bossId(), '🌊 Biển động, thuyền nằm bờ hôm nay', 0); return; }
+      const w = seaFishers(t).sort((a, b) => (a.role === 'angler' ? 0 : 1) - (b.role === 'angler' ? 0 : 1))[0];
+      if (!w || mSpare() < BOAT.fuel) return;
+      evBook(t, -BOAT.fuel, 'Dầu thuyền'); lineAdd(t, 'fishing', 0, BOAT.fuel);
+      save.set('sea/' + day, { state: 'out', who: w.id, name: w.name, at: t });
+      mLog(t, w.id, `⛵ ${w.name} lái thuyền ra khơi đánh cá (dầu ${BOAT.fuel} xu), 18h về`, 0);
+      return;
+    }
+    if (s && s.state === 'out' && h >= 18) {
+      const n = 6 + Math.floor(evRnd(day, 502) * 10), tot = SEA_FISH.reduce((a, [, p]) => a + p, 0), got = {};
+      for (let i = 0; i < n; i++) { let r = evRnd(day, 510 + i) * tot; for (const [k, p] of SEA_FISH) { if ((r -= p) < 0) { got[k] = (got[k] || 0) + 1; break; } } }
+      ledger(0, 6, got);
+      const v = Object.entries(got).reduce((a, [k, q]) => a + priceOf(k) * q, 0); lineAdd(t, 'fishing', v, 0);
+      const rare = Object.keys(got).filter((k) => ['sturgeon', 'arowana', 'gold', 'koi'].includes(k));
+      save.set('sea/' + day, { ...s, state: 'back', got, v });
+      mLog(t, s.who, `⛵ Thuyền về bến: ${Object.entries(got).map(([k, q]) => `${q} ${GOODS[k].icon}`).join(' ')} (~${money(v)} xu)${rare.length ? ` — có cả ${rare.map((k) => GOODS[k].name).join(', ')}!` : ''}`, 0);
+    }
+  }
+  const seaAway = (w, t) => { const s = seaToday(t); return !!(s && s.state === 'out' && s.who === w.id && mLocalH(t) < 18); };
+  function boatInvest(t) {
+    if (save.get('boat/own') || level() < BOAT.lvl || !mStaff().some((w) => w.role === 'angler')) return null;
+    const avg = SEA_FISH.reduce((a, [k, p]) => a + priceOf(k) * p, 0) / SEA_FISH.reduce((a, [, p]) => a + p, 0), perDay = 10.5 * avg * 0.9 - BOAT.fuel - 60, pb = perDay > 0 ? BOAT.cost / perDay : 0;
+    if (!pb || pb > 10) return null;
+    const o = { line: 'fishing', key: 'boat', what: 'mua thuyền đánh cá ra khơi', payback: pb };
+    if (!mCanInvest(BOAT.cost, o) || !mFund(BOAT.cost, o)) return null;
+    ledger(-BOAT.cost, 0, {}); save.set('boat/own', farmNow());
+    return { kind: 'upgrade', line: 'fishing', text: `mua thuyền đánh cá ra khơi (${money(BOAT.cost)} xu, hoàn vốn ~${Math.ceil(pb)} ngày)`, at: shopAt(), icon: '⛵', big: true };
+  }
+
+  // ── the rival farm across the river: some days it undercuts one crop (−15% at the shop); every 3 days a letter
+  const RIVAL = 'Trại Phát Tài';
+  const TAUNTS = ['Nghe nói bên đó nuôi gà mà gà còn gầy hơn que củi?', 'Tuần này trại tôi lại bán đắt hàng hơn đấy, cố lên nhé!', 'Khách bên tôi bảo trại các anh đi lạc mới tới được.', 'Nhân viên giỏi thì về trại tôi, lương cao hơn hẳn.', 'Hẹn gặp ở chợ phiên, xem ai bán hết hàng trước.', 'Trại tôi vừa mua thêm 3 con bò, các anh thì sao?'];
+  function rivalWar(day) {
+    if (hash01(day * 1000, 601, 1) > 0.35) return null;
+    const C = Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level()); return C.length ? C[Math.floor(hash01(day * 1000, 602, 1) * C.length)] : null;
+  }
+  function rivalMul(k) { try { const d = dayNo(); return rivalWar(d) === k && !save.get('rival/ad/' + d) ? 0.85 : 1; } catch (e) { return 1; } }
+  function rivalWeek(t) { const our = [1, 2, 3, 4, 5, 6, 7].reduce((a, k) => a + mOpNet(mDayRec(t - k * 864e5)), 0); return { our, them: Math.round(Math.max(800, Math.abs(our)) * (0.8 + hash01(Math.floor(dayNo(t) / 7) * 1000, 603, 1) * 0.5)) }; }
+  function rivalAd(t, by) {
+    const d = dayNo(t); if (save.get('rival/ad/' + d) || coins() < 300) return false;
+    save.set('rival/ad/' + d, by); evBook(t, -300, 'Quảng cáo'); repAdd(t, 2);
+    mLog(t, bossId(), `📣 ${by === 'owner' ? 'Chủ trại' : 'Quản lý'} chạy quảng cáo đáp trả ${RIVAL} (300 xu): giá ${GOODS[rivalWar(d)].name} về bình thường, +2 uy tín`, 0);
+    return true;
+  }
+  function rivalStep(t) { // the manager answers back when the crop under attack is a big part of the field
+    const d = dayNo(t), k = rivalWar(d); if (!k || save.get('rival/ad/' + d) || mLocalH(t) < 9) return;
+    const n = [...Array(land()).keys()].filter((i) => simPlot(i, t).crop === k).length + Math.floor(have(k) / 6);
+    if (n >= 5 && mSpare() >= 300 && !mPaused(t)) rivalAd(t, 'boss');
+  }
+
+  // ── visitors' star reviews: 1-3 a day at 20:00; the week's average fills the homestay, festivals
+  const RV_NAMES = ['Chị Hoa (Hà Nội)', 'Anh Tuấn', 'Gia đình bé Na', 'Cô Mai giáo viên', 'Nhóm sinh viên Bách Khoa', 'Bác Sáu', 'Cặp đôi Minh & Ly', 'Anh Kevin (Úc)', 'Chú Bảy', 'Em Thư'];
+  const RV_TEXT = { 5: ['Tuyệt vời! Trại đẹp như tranh, nhân viên dễ thương lắm.', 'Sẽ quay lại! Đồ ăn ngon, không khí trong lành.', 'Đi một lần nhớ mãi, con tôi mê sở thú lắm.'], 4: ['Rất đáng đi, chỉ hơi đông khách.', 'Cảnh đẹp, giá hợp lý, lần sau ở lại qua đêm.', 'Vui, nhưng đường ra đảo hơi xa.'], 3: ['Tạm ổn, cần thêm chỗ ngồi nghỉ.', 'Bình thường, đồ ăn hơi lâu.', 'Được, nhưng chưa có gì đặc biệt.'], 2: ['Nhân viên ít, chờ lâu quá.', 'Hơi bẩn, cần dọn dẹp hơn.'], 1: ['Thất vọng, không như quảng cáo.', 'Không quay lại nữa.'] };
+  const rvScore = (t) => 2.6 + repNow(t) / 50 + (innLv() ? 0.15 : 0) + Math.min(0.3, save.get('ev/mascots', []).length * 0.1) + (zooOpen() ? 0.2 : 0) - mStaff().filter((w) => lifeOff(w, t) === 'sick').length * 0.1;
+  function rvStep(t) {
+    const day = dayNo(t); if (mLocalH(t) < 20 || save.get('rv/' + day) || level() < 2) return;
+    const n = 1 + Math.floor(evRnd(day, 701) * (innLv() || zooOpen() ? 3 : 2)), base = rvScore(t), list = [];
+    for (let i = 0; i < n; i++) {
+      const s = Math.max(1, Math.min(5, Math.round(base + (evRnd(day, 710 + i) - 0.5) * 1.8))), T = RV_TEXT[s];
+      list.push({ who: RV_NAMES[Math.floor(evRnd(day, 720 + i) * RV_NAMES.length)], s, text: T[Math.floor(evRnd(day, 730 + i) * T.length)] });
+    }
+    save.set('rv/' + day, list);
+  }
+  function starsAvg(t = farmNow()) {
+    let s = 0, n = 0; for (let k = 0; k < 7; k++) for (const r of save.get('rv/' + (dayNo(t) - k), []) || []) { s += r.s; n++; }
+    return n ? s / n : 3.5;
+  }
+  const starStr = (s) => '★'.repeat(s) + '☆'.repeat(5 - s);
+
+  // ── collections: everything ever caught / cooked / made / grown; a full set gives a badge (+2 uy tín, +50 kn)
+  const COLL = {
+    fish: { name: '🎣 Cá câu, cá biển', items: Object.keys(CATCH_GOODS).filter((k) => k !== 'boot'), badge: 'Cần thủ huyền thoại' },
+    crops: { name: '🌱 Cây trồng', items: Object.keys(CROPS), badge: 'Nhà nông chính hiệu' },
+    farm: { name: '🥚 Sản phẩm chăn nuôi', items: Object.keys(PRODUCTS), badge: 'Chủ trang trại' },
+    dishes: { name: '🍳 Món bếp', items: Object.keys(RECIPES).map((k) => 'd:' + k), badge: 'Vua đầu bếp' },
+    mill: { name: '🏭 Hàng xưởng (hạng cao nhất)', items: Object.entries(MILL).map(([k, M]) => millKey(k, M.age ? 3 : 1)), badge: 'Nghệ nhân' },
+  };
+  const COLL_ALL = new Set(Object.values(COLL).flatMap((c) => c.items));
+  let colCache = null;
+  const colSeen = () => colCache || (colCache = new Set(save.keys('col/').filter((k) => !k.startsWith('col/badge/')).map((k) => k.slice(4))));
+  save.onChange((ks) => { if (!ks || ks.some((k) => k.startsWith('col/'))) colCache = null; });
+  function colNote(dInv) {
+    let fresh = false;
+    for (const [k, n] of Object.entries(dInv || {})) if (n > 0 && COLL_ALL.has(k) && !colSeen().has(k)) { save.set('col/' + k, Date.now()); colCache = null; fresh = true; }
+    if (fresh) colBadges(farmNow());
+  }
+  function colBadges(t) {
+    const seen = colSeen();
+    for (const [id, C] of Object.entries(COLL)) {
+      if (save.get('col/badge/' + id) || !C.items.every((k) => seen.has(k))) continue;
+      save.set('col/badge/' + id, t); repAdd(t, 2); ledger(0, 50, {});
+      mLog(t, bossId(), `🏅 Trại nhận huy hiệu "${C.badge}": đủ bộ ${C.name} (+2 uy tín)`, 0);
+    }
+  }
+  colHook = colNote;
+  function colScan() { const inv = {}; for (const k of COLL_ALL) if (have(k) > 0) inv[k] = 1; colNote(inv); }
+
+  // ── milestones (checked hourly) + weekly photos of the farm (this device only: too big for the synced save)
+  const MS = [
+    ['c1k', '💰 Két trại lần đầu có 1.000 xu', () => coins() >= 1000], ['c5k', '💰 Két trại chạm 5.000 xu', () => coins() >= 5000], ['c20k', '💰 Két trại chạm 20.000 xu', () => coins() >= 20000], ['c100k', '💎 Két trại chạm 100.000 xu', () => coins() >= 100000],
+    ['p500', '📈 Lần đầu lãi 500 xu một ngày', () => mOpNet(mDayRec(farmNow() - 864e5)) >= 500], ['p2k', '📈 Lần đầu lãi 2.000 xu một ngày', () => mOpNet(mDayRec(farmNow() - 864e5)) >= 2000], ['p10k', '🚀 Lần đầu lãi 10.000 xu một ngày', () => mOpNet(mDayRec(farmNow() - 864e5)) >= 10000],
+    ['s5', '👥 Đội đủ 5 người', () => mStaff().length >= 5], ['s10', '👥 Đội 10 người', () => mStaff().length >= 10], ['s20', '👥 Đội 20 người', () => mStaff().length >= 20],
+    ['l5', '⭐ Trại lên cấp 5', () => level() >= 5], ['l10', '⭐ Trại lên cấp 10', () => level() >= 10],
+    ['zoo', '🦁 Mở sở thú', () => zooOpen()], ['mill', '🏭 Xây xưởng chế biến', () => millLv() > 0], ['inn', '🏨 Có homestay cho khách ngủ lại', () => innLv() > 0], ['boat', '⛵ Có thuyền ra khơi', () => !!save.get('boat/own')],
+    ['wed', '💍 Đám cưới đầu tiên trong trại', () => save.get('life/married', []).length > 0], ['badge', '🏅 Huy hiệu sưu tập đầu tiên', () => save.keys('col/badge/').length > 0], ['fest', '🎆 Lễ hội đầu tiên', () => save.keys('fest/').some((k) => (save.get(k) || {}).state === 'held')],
+    ['rep80', '🌟 Uy tín đạt 80', () => repNow() >= 80], ['nodebt', '🏦 Trả sạch nợ TJBank', () => save.get('ms/hadloan') && !(mLoan().owed > 0)],
+  ];
+  function msStep(t) {
+    const hr = Math.floor(t / HOUR); if (save.get('ms/hr') === hr) return; save.set('ms/hr', hr);
+    if (mLoan().owed > 0 && !save.get('ms/hadloan')) save.set('ms/hadloan', 1);
+    for (const [id, text, ok] of MS) { if (save.get('ms/' + id)) continue; let y = false; try { y = ok(); } catch (e) {} if (y) { save.set('ms/' + id, { t, text }); mLog(t, bossId(), `🏆 Cột mốc mới: ${text}`, 0); } }
+  }
+  const PHOTO_KEY = 'forest.photos';
+  const photos = () => { try { return JSON.parse(localStorage.getItem(PHOTO_KEY) || '[]'); } catch (e) { return []; } };
+  function photoTake(note) {
+    try {
+      const cv = [...document.querySelectorAll('canvas')].filter((c) => c.width > 200 && c.height > 200).sort((a, b) => b.width * b.height - a.width * a.height)[0]; if (!cv) return false;
+      const k = 360 / cv.width, o = document.createElement('canvas'); o.width = 360; o.height = Math.round(cv.height * k);
+      const g = o.getContext('2d'); g.fillStyle = '#2a3a5a'; g.fillRect(0, 0, o.width, o.height); g.drawImage(cv, 0, 0, o.width, o.height);
+      const list = [{ t: Date.now(), url: o.toDataURL('image/jpeg', 0.6), note: note || '' }, ...photos()].slice(0, 12);
+      localStorage.setItem(PHOTO_KEY, JSON.stringify(list)); return true;
+    } catch (e) { return false; }
+  }
+  let photoBoot = Date.now();
+  function photoTick(now) { // once a week (the first time the app is open on a new week), after the map has drawn
+    if (now - photoBoot < 20000 || document.visibilityState !== 'visible') return;
+    const wk = Math.floor((dayNo(now) + 3) / 7); let last = -1; try { last = Number(localStorage.getItem('forest.photoWeek') || -1); } catch (e) {}
+    if (last === wk) return;
+    try { localStorage.setItem('forest.photoWeek', String(wk)); } catch (e) {}
+    photoTake(`Tuần ${new Date(now).toLocaleDateString('vi-VN')}: ${mStaff().length} người, két ${money(coins())} xu, uy tín ${repNow()}`);
+  }
+
+  // ── festivals the staff hold: harvest fair (last Saturday of the month), fireworks night (1st + 3rd Saturday),
+  // fishing contest (2nd + 4th Sunday). The manager holds one when the purse allows; the owner may call it off.
+  const FEST = {
+    fair: { name: 'Hội chợ mùa gặt', icon: '🎪', cost: 400, from: 8, to: 17, per: 14, base: 40 },
+    fireworks: { name: 'Đêm pháo hoa', icon: '🎆', cost: 600, from: 20, to: 21.5, per: 16, base: 55 },
+    contest: { name: 'Hội thi câu cá', icon: '🎣', cost: 300, from: 7, to: 16, per: 20, base: 25, prize: 200 },
+  };
+  function festOf(t) {
+    const d = new Date(t), wd = d.getDay(), nth = Math.floor((d.getDate() - 1) / 7) + 1, last = d.getDate() + 7 > new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    if (wd === 6 && last) return 'fair';
+    if (wd === 6 && (nth === 1 || nth === 3)) return 'fireworks';
+    if (wd === 0 && (nth === 2 || nth === 4)) return 'contest';
+    return null;
+  }
+  const festGuests = (F, t) => Math.round(F.base * (0.6 + repNow(t) / 100) * (0.7 + (starsAvg(t) - 3) * 0.2) * (zooOpen() ? 1.2 : 1));
+  function festStep(t) {
+    if (level() < 3) return;
+    const day = dayNo(t), k = festOf(t), h = mLocalH(t); if (!k) return;
+    const F = FEST[k], rec = save.get('fest/' + day);
+    if (!rec && h >= 7) {
+      const exp = festGuests(F, t) * F.per - F.cost - (F.prize || 0);
+      if (save.get('fest/no/' + day)) { save.set('fest/' + day, { k, state: 'skip', why: 'chủ trại dặn không tổ chức' }); return; }
+      if (exp <= 0 || mSpare() < F.cost || mPaused(t)) { save.set('fest/' + day, { k, state: 'skip', why: exp <= 0 ? 'tính ra lỗ' : 'két chưa đủ' }); mLog(t, bossId(), `${F.icon} Hôm nay lẽ ra có ${F.name} nhưng em hoãn (${exp <= 0 ? 'tính ra lỗ' : 'két chưa đủ'})`, 0); return; }
+      evBook(t, -F.cost, 'Lễ hội'); lineAdd(t, 'visit', 0, F.cost);
+      save.set('fest/' + day, { k, state: 'plan', cost: F.cost });
+      mLog(t, bossId(), `${F.icon} Cả đội dựng ${F.name} (${money(F.cost)} xu), ${F.from}h–${Math.floor(F.to)}h mời bà con và du khách`, 0);
+      return;
+    }
+    if (rec && rec.state === 'plan' && h >= F.to) {
+      const g = Math.max(5, festGuests(F, t) + Math.round((evRnd(day, 801) - 0.5) * 10)), take = g * F.per;
+      evBook(t, take, 'Lễ hội'); if (F.prize) evBook(t, -F.prize, 'Lễ hội'); lineAdd(t, 'visit', take, F.prize || 0); repAdd(t, 2);
+      let extra = '';
+      if (k === 'fair') { const held = heldNow(t), sold = Object.keys(CROPS).map((c) => [c, Math.min(4, have(c) - (held[c] || 0))]).filter(([, n]) => n > 0).slice(0, 6); const v = sold.reduce((a, [c, n]) => a + Math.round(priceOf(c) * n * 1.2), 0); if (v) { ledger(v, 0, Object.fromEntries(sold.map(([c, n]) => [c, -n]))); evBook(t, v, 'Lễ hội', true); extra = `, bán thêm nông sản ${money(v)} xu`; } }
+      if (k === 'contest') { const champ = RV_NAMES[Math.floor(evRnd(day, 802) * RV_NAMES.length)]; extra = `, giải nhất về tay ${champ}`; }
+      save.set('fest/' + day, { ...rec, state: 'held', g, take });
+      mLog(t, bossId(), `${F.icon} ${F.name} xong: ${g} khách, thu ${money(take)} xu${extra} (+2 uy tín)`, 0);
+    }
+  }
+  const festTonight = (now = Date.now()) => { const k = festOf(now), r = save.get('fest/' + dayNo(now)); return k === 'fireworks' && r && r.state !== 'skip' ? r : null; };
+  // fireworks over the sky layer, 20:00-21:30 on a fireworks night
+  const FW_COL = ['#ff5a5a', '#ffd84a', '#7fd0ff', '#9fe070', '#ff9af0', '#ffffff'];
+  function festFireworks(g, now, ph) {
+    const real = Date.now(), h = mLocalH(real); if (ph.night < 0.5 || h < 20 || h >= 21.5 || !festTonight(real)) return; // `now` is the frame clock, not the date
+    const slot = 1300, k0 = Math.floor(now / slot);
+    for (let k = k0 - 2; k <= k0; k++) {
+      const age = (now - k * slot) / 2600; if (age < 0 || age > 1) continue;
+      const x = 30 + hash01(k * 1000, 901, 1) * (W - 60), y = 12 + hash01(k * 1000, 902, 1) * Math.max(20, SKY_H * 0.55), col = FW_COL[Math.floor(hash01(k * 1000, 903, 1) * FW_COL.length)], r = 6 + 26 * Math.sqrt(age);
+      g.globalAlpha = Math.max(0, 1 - age); g.fillStyle = col;
+      const sz = age < 0.35 ? 3 : 2, drop = age * age * 8;
+      for (let i = 0; i < 24; i++) { const a = (i / 24) * Math.PI * 2; g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r + drop), sz, sz); }
+      g.fillStyle = '#fff6c8'; for (let i = 0; i < 12; i++) { const a = (i / 12 + 0.04) * Math.PI * 2; g.fillRect(Math.round(x + Math.cos(a) * r * 0.55), Math.round(y + Math.sin(a) * r * 0.55 + drop), 2, 2); }
+    }
+    g.globalAlpha = 1;
+  }
+
+  // ── the real sky: meteor showers (peak ±1 night: shooting stars ~4x as often), eclipses, the full moon
+  const SHOWERS = [[1, 3, 'Quadrantids'], [4, 22, 'Lyrids'], [5, 6, 'Eta Aquariids'], [8, 12, 'Perseids'], [10, 21, 'Orionids'], [11, 17, 'Leonids'], [12, 14, 'Geminids']];
+  const ECLIPSES = [['2026-08-28', '🌘 Nguyệt thực một phần'], ['2027-02-06', '🌞 Nhật thực hình khuyên'], ['2027-08-02', '🌑 Nhật thực toàn phần (thấy rõ ở Bắc Phi, Trung Đông)'], ['2028-01-12', '🌘 Nguyệt thực một phần'], ['2028-01-26', '🌞 Nhật thực hình khuyên'], ['2028-07-06', '🌘 Nguyệt thực một phần'], ['2028-07-22', '🌑 Nhật thực toàn phần (thấy rõ ở Úc)'], ['2028-12-31', '🌕 Nguyệt thực toàn phần']];
+  function astroEvents(t = Date.now(), ahead = 3) {
+    const out = [], d0 = new Date(t); d0.setHours(0, 0, 0, 0);
+    for (let k = -1; k <= ahead; k++) {
+      const d = new Date(d0.getTime() + k * 864e5), m = d.getMonth() + 1, dd = d.getDate(), iso = `${d.getFullYear()}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+      for (const [sm, sd, name] of SHOWERS) if (sm === m && sd === dd) out.push({ k, kind: 'meteor', text: `☄️ Mưa sao băng ${name} (cực đại đêm ${dd}/${m})` });
+      for (const [e, name] of ECLIPSES) if (e === iso) out.push({ k, kind: 'eclipse', text: `${name} ngày ${dd}/${m} (giờ và nơi thấy được nên tra lại)` });
+      const age = moonAge(d.getTime() + 20 * HOUR); if (age >= 14.3 && age < 15.3) out.push({ k, kind: 'full', text: `🌕 Trăng tròn đêm ${dd}/${m}` });
+    }
+    return out;
+  }
+  function astroShootMul(now = Date.now()) { return astroEvents(now, 0).some((e) => e.kind === 'meteor' && Math.abs(e.k) <= 1) ? 4 : 1; }
+  function astroNote(now = Date.now()) { const e = astroEvents(now, 0).filter((x) => x.k === 0); return e.length ? ' Đêm nay: ' + e.map((x) => x.text).join(', ') + ', ra ngắm trời nhé.' : ''; }
+
+  // ── once a step ──
+  function bizStep(t) {
+    seaStep(t); innNight(t); rivalStep(t); rvStep(t); festStep(t); msStep(t);
+    const day = dayNo(t); if (save.get('biz/day', 0) < day && mLocalH(t) >= 7) { save.set('biz/day', day); colScan(); }
+  }
+  // ── her words in the report ──
+  function bizLines(t) {
+    const out = [], day = dayNo(t), h = mLocalH(t);
+    const s = seaToday(t), ys = save.get('sea/' + (day - 1));
+    if (s && s.state === 'out') out.push(`⛵ ${s.name} đang ra khơi đánh cá, 18h về ạ.`);
+    else if (s && s.state === 'back') out.push(`⛵ Thuyền hôm nay về với ${Object.entries(s.got).map(([k, q]) => `${q} ${GOODS[k].icon}`).join(' ')} (~${money(s.v)} xu).`);
+    else if (s && s.state === 'storm') out.push('🌊 Hôm nay biển động, thuyền nằm bờ ạ.');
+    else if (ys && ys.state === 'back' && h < 12) out.push(`⛵ Hôm qua thuyền đánh được ~${money(ys.v)} xu cá.`);
+    const inn = save.get('inn/' + (day - 1)); if (inn && innLv()) out.push(`🏨 Đêm qua ${INN.names[innLv() - 1]} có ${inn.g}/${inn.rooms} phòng khách ở (+${money(inn.rent + inn.spend)} xu)${!mStaff().some((w) => w.role === 'host') ? ', chưa có lễ tân nên khách mới đến một nửa' : ''}.`);
+    if (marketOpen(t) || ([0, 6].includes(wkDay(t)) && level() >= 3)) out.push(`🛒 Hôm nay có chợ phiên cuối tuần ở bến (7h–16h, giá x1,35): đã mang ra bán ${save.get('mk/' + day, 0)}/${MARKET.cap} món.`);
+    const war = rivalWar(day);
+    if (war) out.push(`😤 ${RIVAL} bên kia sông hôm nay phá giá ${GOODS[war].icon} ${GOODS[war].name}, chợ chỉ trả 85%. ${save.get('rival/ad/' + day) ? `${save.get('rival/ad/' + day) === 'owner' ? 'Chủ nhân' : 'Em'} đã chạy quảng cáo đáp trả, giá về bình thường rồi ạ.` : `Mình có thể quảng cáo đáp trả: ${B('rivalad', '📣 Quảng cáo 300 xu (+2 uy tín)', coins() >= 300)}`}`);
+    if (day % 3 === 0) { const R = rivalWeek(t); out.push(`📨 Thư của ${RIVAL}: "${TAUNTS[Math.floor(hash01(day * 1000, 604, 1) * TAUNTS.length)]}" (Tuần qua họ lãi ~${money(R.them)} xu, mình ${R.our >= 0 ? 'lãi' : 'lỗ'} ${money(Math.abs(R.our))} xu${R.our > R.them ? ', mình hơn họ ạ 😎' : ', mình đang thua, em sẽ cố'}.)`); }
+    const rv = save.get('rv/' + (day - 1), []) || [];
+    if (rv.length) out.push(`⭐ Khách hôm qua chấm ${rv.map((r) => `<b>${r.s}★</b> (${r.who}: "${r.text}")`).join('; ')}. Trung bình 7 ngày ${String(Math.round(starsAvg(t) * 10) / 10).replace('.', ',')}★.`);
+    for (let k = 0; k <= 6; k++) {
+      const tt = t + k * 864e5, f = festOf(tt); if (!f || level() < 3) continue;
+      const F = FEST[f], r = save.get('fest/' + (day + k));
+      if (k === 0 && r) { out.push(r.state === 'held' ? `${F.icon} ${F.name} hôm nay xong rồi: ${r.g} khách, thu ${money(r.take)} xu.` : r.state === 'plan' ? `${F.icon} Hôm nay cả đội tổ chức ${F.name} (${F.from}h–${Math.floor(F.to)}h)${f === 'fireworks' ? ', tối nay nhớ nhìn lên trời nhé chủ nhân' : ''}!` : `${F.icon} ${F.name} hôm nay hoãn (${r.why}).`); break; }
+      const no = save.get('fest/no/' + (day + k));
+      out.push(`${F.icon} ${k === 0 ? 'Hôm nay' : k === 1 ? 'Ngày mai' : `${new Date(tt).getDate()}/${new Date(tt).getMonth() + 1}`} có ${F.name}: em dự tính ~${festGuests(F, t)} khách, chi ${money(F.cost)} xu${F.prize ? ` + giải ${money(F.prize)}` : ''}. ${no ? `Chủ nhân dặn không tổ chức. ${B('festno:' + (day + k) + ':0', '↩️ Vẫn tổ chức')}` : B('festno:' + (day + k) + ':1', '❌ Đừng tổ chức')}`);
+      break;
+    }
+    const ms = save.keys('ms/').map((k) => save.get(k)).filter((m) => m && m.text && t - m.t < 24 * HOUR);
+    if (ms.length) out.push(`🏆 Trại vừa đạt cột mốc: ${ms.map((m) => m.text).join('; ')}!`);
+    const bd = save.keys('col/badge/').filter((k) => t - save.get(k, 0) < 24 * HOUR).map((k) => COLL[k.slice(10)]).filter(Boolean);
+    if (bd.length) out.push(`🏅 Huy hiệu mới: ${bd.map((c) => `"${c.badge}"`).join(', ')}.`);
+    const sky = astroEvents(Date.now(), 3);
+    if (sky.length) out.push(sky.map((e) => (e.k <= 0 ? 'Đêm nay ' : e.k === 1 ? 'Mai ' : 'Sắp có ') + e.text.replace(/^(\S+) /, '$1 ')).join('. ') + '.');
+    return out;
+  }
+  function bizAct(act, a1, a2) {
+    const t = farmNow();
+    if (act === 'rivalad') return rivalAd(t, 'owner');
+    if (act === 'festno') { save.set('fest/no/' + a1, a2 === '1' ? 1 : null); return true; }
+    if (act === 'innup') { const L = innLv(); if (L >= 3 || level() < INN.lvl[L] || coins() < INN.cost[L] || !confirm(`${L ? 'Nâng lên' : 'Xây'} ${INN.names[L]} (${INN.rooms[L]} phòng) với ${money(INN.cost[L])} xu?`)) return false; ledger(-INN.cost[L], 0, {}); evBook(t, -INN.cost[L], 'Mở rộng, nâng cấp', true); save.set('inn/lv', L + 1); mLog(t, bossId(), `🏨 Chủ trại ${L ? 'nâng lên' : 'xây'} ${INN.names[L]} (${money(INN.cost[L])} xu)`, 0); return true; }
+    if (act === 'boatbuy') { if (save.get('boat/own') || level() < BOAT.lvl || coins() < BOAT.cost || !confirm(`Mua thuyền đánh cá ra khơi với ${money(BOAT.cost)} xu?`)) return false; ledger(-BOAT.cost, 0, {}); evBook(t, -BOAT.cost, 'Mở rộng, nâng cấp', true); save.set('boat/own', t); mLog(t, bossId(), `⛵ Chủ trại mua thuyền đánh cá ra khơi (${money(BOAT.cost)} xu)`, 0); return true; }
+    if (act === 'photo') return photoTake('Chủ trại chụp');
+    return false;
+  }
+  // ── panels: 🏨 new business (homestay, boat, market, festivals, reviews), 🏅 collections, 📸 milestones + photos
+  function bizPanelHtml(head) {
+    const t = farmNow(), L = innLv(); let x = '';
+    x += '<div><b>🏨 Homestay, khách sạn</b></div>' + row(L ? `${INN.names[L - 1]} · ${INN.rooms[L - 1]} phòng · ${INN.price[L - 1]} xu/đêm` : 'Chưa xây', L ? `lấp ~${Math.round(innOcc(t) * 100)}% phòng` : '');
+    if (L < 3) x += row(`${L ? 'Nâng lên' : 'Xây'} ${INN.names[L]} (${INN.rooms[L]} phòng)`, level() < INN.lvl[L] ? `<span style="opacity:.6">🔒 Cấp ${INN.lvl[L]}</span>` : B('innup', `${money(INN.cost[L])} xu`, coins() >= INN.cost[L]));
+    x += '<div style="font-size:12px;opacity:.75;margin:-2px 0 6px">Khách đến nhiều hay ít theo uy tín và số sao khách chấm; có Lễ tân 🛎️ thì đủ khách, không có chỉ một nửa. Tiền phòng tính lúc 21h.</div>';
+    x += '<div style="margin-top:8px"><b>⛵ Thuyền ra khơi</b></div>' + (save.get('boat/own') ? row('Đã có thuyền', (() => { const s = seaToday(t); return s ? (s.state === 'out' ? `${s.name} đang ngoài khơi` : s.state === 'back' ? `hôm nay ~${money(s.v)} xu cá` : 'biển động, nằm bờ') : 'chờ 6h sáng'; })())
+      : row(`Mua thuyền <span style="opacity:.65">(1 người câu cá ra khơi 6h–18h, dầu ${BOAT.fuel} xu, có cá hiếm)</span>`, level() < BOAT.lvl ? `<span style="opacity:.6">🔒 Cấp ${BOAT.lvl}</span>` : B('boatbuy', `${money(BOAT.cost)} xu`, coins() >= BOAT.cost)));
+    x += '<div style="margin-top:8px"><b>🎉 Lễ hội & chợ phiên</b></div><div style="font-size:13px;line-height:1.5">🛒 Chợ phiên thứ 7, chủ nhật 7h–16h (giá x1,35, tối đa 30 món/ngày)<br>🎪 Hội chợ mùa gặt: thứ 7 cuối tháng · 🎆 Đêm pháo hoa: thứ 7 tuần 1 và 3 (20h–21h30) · 🎣 Hội thi câu cá: chủ nhật tuần 2 và 4</div>';
+    const rv = []; for (let k = 0; k < 7; k++) for (const r of save.get('rv/' + (dayNo(t) - k), []) || []) rv.push(r);
+    x += `<div style="margin-top:8px"><b>⭐ Khách chấm sao</b> <span style="opacity:.7">trung bình 7 ngày ${String(Math.round(starsAvg(t) * 10) / 10).replace('.', ',')}★</span></div>` + (rv.length ? rv.slice(0, 8).map((r) => `<div style="font-size:13px;margin:3px 0"><span style="color:#ffd84a">${starStr(r.s)}</span> <b>${r.who}</b>: ${r.text}</div>`).join('') : '<div style="font-size:13px;opacity:.7">Chưa có khách chấm.</div>');
+    return head('🏨 Kinh doanh mới') + x;
+  }
+  function colPanelHtml(head) {
+    colScan(); // what the barn holds right now counts too
+    const seen = colSeen();
+    const x = Object.entries(COLL).map(([id, C]) => { const n = C.items.filter((k) => seen.has(k)).length, got = save.get('col/badge/' + id);
+      return `<div style="margin:8px 0 3px"><b>${C.name}</b> <span style="opacity:.7">${n}/${C.items.length}</span>${got ? ` · 🏅 <b style="color:#ffd84a">${C.badge}</b>` : ''}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${C.items.map((k) => `<span title="${GOODS[k] ? GOODS[k].name : k}" style="width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:rgba(255,255,255,${seen.has(k) ? '0.12' : '0.04'});font-size:18px;${seen.has(k) ? '' : 'filter:grayscale(1) brightness(.35);'}">${GOODS[k] ? GOODS[k].icon : '❔'}</span>`).join('')}</div>`; }).join('');
+    return head('🏅 Bộ sưu tập') + '<div style="font-size:12px;opacity:.75">Mọi thứ trại từng câu được, nấu, làm ra, trồng được. Đủ một bộ thì trại nhận huy hiệu (+2 uy tín).</div>' + x;
+  }
+  function storyPanelHtml(head) {
+    const ms = MS.map(([id, text]) => [save.get('ms/' + id), text]).filter(([m]) => m).sort((a, b) => b[0].t - a[0].t), todo = MS.filter(([id]) => !save.get('ms/' + id)).map(([, text]) => text);
+    const dt = (t) => new Date(t).toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric', year: 'numeric' });
+    let x = '<div><b>🏆 Cột mốc của trại</b></div>' + (ms.length ? ms.map(([m]) => `<div style="font-size:13px;margin:3px 0"><span style="opacity:.65">${dt(m.t)}</span> · ${m.text}</div>`).join('') : '<div style="font-size:13px;opacity:.7">Chưa có cột mốc nào.</div>');
+    if (todo.length) x += `<details style="margin-top:4px"><summary style="cursor:pointer;opacity:.85">Còn ${todo.length} cột mốc chưa đạt</summary><div style="font-size:12px;opacity:.75">${todo.join(' · ')}</div></details>`;
+    const ph = photos();
+    x += `<div style="margin-top:10px"><b>📸 Ảnh trại theo tuần</b> ${B('photo', '📷 Chụp ngay')}</div><div style="font-size:12px;opacity:.7;margin-bottom:4px">Mỗi tuần tự chụp một tấm lúc mở app (lưu riêng trên máy này, giữ 12 tấm gần nhất).</div>`
+      + (ph.length ? ph.map((p) => `<div style="margin:6px 0"><img src="${p.url}" alt="" style="width:100%;border-radius:8px;border:2px solid #44445a"><div style="font-size:12px;opacity:.8">${dt(p.t)}${p.note ? ' · ' + p.note : ''}</div></div>`).join('') : '<div style="font-size:13px;opacity:.7">Chưa có ảnh.</div>');
+    return head('📸 Cột mốc & ảnh trại') + x;
   }
   JOBS.xfarm = (t, w) => xFarmJob(t, w); // honey, orchard fruit (2026-11-09)
   JOBS.shop = (t, w) => shopJob(t, w); // the town's food street (2026-11-12)
@@ -4332,6 +4685,7 @@
     if (now < mNextCheck) return;
     mNextCheck = now + 4000;
     try { mUrgentTick(now); } catch (e) { console.warn('[Claude Forest] urgent: ' + e); }
+    try { photoTick(now); } catch (e) {}
     try { mCatchUp(); } catch (e) { console.warn('[Claude Forest] manager: ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' <- ') : e)); }
     // user 2026-11-10: when the owner opens the app the manager reports in her own words (not a table of numbers):
     // after being away (30 min+) or the first time in 3 hours; the old tables stay behind buttons
@@ -4343,7 +4697,7 @@
   }
   window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
-  window.__forestStory = { MILL, millState, millLv, millCanStart, millInvest, millPayback, millNext, evStep, evToday, evLines, EV, lifeStep, lifeOff, lifeMood, lifeLines, lifeAct, isBday, bdayOf, doyOf, wageOf, repNow: () => repNow(), millPanel: () => millPanelHtml((x) => x), brief: () => mBriefHtml((x) => x) };
+  window.__forestStory = { MILL, millState, millLv, millCanStart, millInvest, millPayback, millNext, evStep, evToday, evLines, EV, lifeStep, lifeOff, lifeMood, lifeLines, lifeAct, isBday, bdayOf, doyOf, wageOf, repNow: () => repNow(), millPanel: () => millPanelHtml((x) => x), bizStep, seaStep, innNight, rvStep, festStep, festOf, msStep, astroEvents, astroShootMul, rivalWar, rivalMul, colScan, colSeen, starsAvg, photoTake, bizLines, bizAct, JOBS, bizPanel: () => bizPanelHtml((x) => x), colPanel: () => colPanelHtml((x) => x), storyPanel: () => storyPanelHtml((x) => x), brief: () => mBriefHtml((x) => x) };
   farm.debug = { simCook, specialOf, priceOf, RECIPES, workReward, fuelOf };
 
   // ── Drawing the field (map pixel space, on the farm layer) ──
@@ -4850,13 +5204,16 @@
     if (v.kind === 'brief') return mBriefHtml(head);
     if (v.kind === 'week') return mWeekHtml(head);
     if (v.kind === 'mill') return millPanelHtml(head);
+    if (v.kind === 'biz') return bizPanelHtml(head);
+    if (v.kind === 'col') return colPanelHtml(head);
+    if (v.kind === 'story') return storyPanelHtml(head);
     return '';
   }
   // ── Manager panels: the user only watches; the staff decide ──
   const MONEY_FMT = new Intl.NumberFormat('vi-VN'); // one formatter (toLocaleString built a new one per call: ~20 ms/s)
   const money = (n) => (n < 0 ? '−' : '') + MONEY_FMT.format(Math.abs(Math.round(n)));
   const staffName = (id) => { const w = mStaff().find((x) => x.id === id); return w ? `${ROLES[w.role].icon} ${w.name}` : 'Người cũ'; };
-  const JOB_VI = { mill: 'xưởng chế biến, hầm ủ', shop: 'bán hàng ở quầy 6h–22h', acct: 'ghi sổ quỹ, đối chiếu thu chi', bees: 'lấy mật, chăm tổ ong', orchard: 'hái quả, chăm vườn', camp: 'dọn lều, xếp củi đón khách cắm trại', bar: 'pha chế, phục vụ quán bar đêm', rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
+  const JOB_VI = { market: 'chợ phiên cuối tuần', inn: 'lễ tân homestay', mill: 'xưởng chế biến, hầm ủ', shop: 'bán hàng ở quầy 6h–22h', acct: 'ghi sổ quỹ, đối chiếu thu chi', bees: 'lấy mật, chăm tổ ong', orchard: 'hái quả, chăm vườn', camp: 'dọn lều, xếp củi đón khách cắm trại', bar: 'pha chế, phục vụ quán bar đêm', rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
   // ── The manager's spoken report (user 2026-11-10: "quản lý báo cáo với tôi mọi thứ giống kiểu kính thưa chủ nhân,
   // doanh thu, ai lười ai chăm, có nên sa thải ai, kế hoạch sắp tới… chứ không phải quăng cho tôi cái bảng thông số";
   // her portrait: hand-drawn in portrait.js, face_boss in forest-extra.png). She speaks as "em", the owner is "chủ nhân".
@@ -4911,7 +5268,7 @@
     }
     say((fired.length ? `Em xin báo: em đã cho ${fired.join('; ')}. ` : '') + (watch.length ? `Em đang để ý ${watch.slice(0, 3).join(', ')}. Nếu vài ngày tới không khá lên em xin phép cho nghỉ; chủ nhân muốn giữ ai thì cứ dặn em ạ.` : 'Cả đội đang làm ổn, em chưa thấy ai cần cho nghỉ.'));
     // 4b. today's event, the staff's lives (2026-11-12)
-    for (const x of evLines(t).concat(lifeLines(t))) say(x);
+    for (const x of evLines(t).concat(lifeLines(t), bizLines(t))) say(x);
     // 5. last night, the weather
     const nk = nightKey(t - 8 * HOUR), n = save.get(`night/${nk}`, null), bar = save.get(`bar/${dayNo(t - 864e5)}`, null), dd = xWx && xWx.daily;
     const night = [];
@@ -4928,7 +5285,7 @@
     if (asks.length) html += `<p style="margin:8px 0 4px">Có ${asks.length} việc em cần chủ nhân duyệt ạ:</p>` + asks.map((a) => `<div style="margin:4px 0">${a.what} (${money(a.cost)} xu) ${B('mok:' + a.k, '✅ Duyệt')}${B('mno:' + a.k, '❌ Không')}</div>`).join('');
     html += mCmdHtml(t, watchW);
     html += `<p style="margin:9px 0 0;line-height:1.55">Chủ nhân cứ nghỉ ngơi, có gì em báo ngay ạ 🌿</p></div></div>`
-      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}${B('open:mill', '🏭 Xưởng')}</div>`;
+      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}${B('open:mill', '🏭 Xưởng')}${B('open:biz', '🏨 Homestay, thuyền, lễ hội')}${B('open:col', '🏅 Sưu tập')}${B('open:story', '📸 Cột mốc')}</div>`;
     return head(`💬 ${boss.name} báo cáo`) + html;
   }
   // ── The weekly report (2026-11-12): on Mondays the morning report opens with it; any day from the button. Lan speaks:
@@ -5157,11 +5514,11 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '18:02 12-11';
+    const build = '18:16 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
-    net: 'vớt cá', feed: 'cho thú ăn', sweep: 'quét chuồng', fish: 'câu cá', fishMiss: 'câu cá', millIn: 'đổ hàng vào hầm ủ', millOut: 'mở hầm lấy hàng', feedFish: 'rắc cám cho cá', cook: 'nấu bếp', serve: 'bày món', count: 'đếm tiền', sell: 'bán hàng', order: 'giao đơn', inspect: 'kiểm tra ruộng', cure: 'chữa bệnh', stock: 'thả cá giống' };
+    net: 'vớt cá', feed: 'cho thú ăn', sweep: 'quét chuồng', fish: 'câu cá', fishMiss: 'câu cá', market: 'bán ở chợ phiên', millIn: 'đổ hàng vào hầm ủ', millOut: 'mở hầm lấy hàng', feedFish: 'rắc cám cho cá', cook: 'nấu bếp', serve: 'bày món', count: 'đếm tiền', sell: 'bán hàng', order: 'giao đơn', inspect: 'kiểm tra ruộng', cure: 'chữa bệnh', stock: 'thả cá giống' };
   function workerPanelHtml(v, head) {
     const w = mStaff().find((x) => x.id === v.id);
     if (!w) return head('Nhân viên') + '<div>Người này đã nghỉ việc.</div>';
@@ -5193,11 +5550,12 @@
         + (p.full ? `Đã đủ ${mMax()} người.` : p.hiredToday ? 'Hôm nay đã thuê 1 người, mai thuê tiếp.'
           : !p.cash ? `Chờ két đủ ~${money(p.need)} xu (phí thuê + 1 ngày lương, sau khi tính đủ lương mai).`
           : !p.paid ? `Chờ lãi mỗi ngày vượt lương ${p.R.wage} xu (hiện ~${money(p.prof)}).` : 'Sẽ thuê ngay trong ca làm.');
-    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter', 'artisan'];
+    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter', 'artisan', 'host'];
     return `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>🤝 Tuyển thêm</b> <span style="opacity:.7">(${st.length}/${mMax()} người)</span></div>`
       + `<div style="font-size:12px;margin:4px 0">${status}</div>`
       + roles.map((r) => { const R = ROLES[r], n = st.filter((x) => x.role === r).length;
         const lock = r === 'guide' && !guideAllowed() ? `<br><span style="font-size:11px;color:#ffb08a">Cần mở sở thú và có trên 3 khách ghé (hiện ${zooVisitorsRecent()} trong 2 ngày)</span>`
+          : r === 'host' && !innLv() ? '<br><span style="font-size:11px;color:#ffb08a">Cần xây Homestay trước (💬 › 🏨)</span>'
           : r === 'artisan' && !millLv() ? '<br><span style="font-size:11px;color:#ffb08a">Cần xây Xưởng chế biến trước (👔 › 💬 › 🏭)</span>'
           : R.need && !xBuilt(R.need) ? `<br><span style="font-size:11px;color:#ffb08a">Cần xây ${FAC[R.need].names[0]} trước</span>` : '';
         return row(`${R.icon} ${R.name} <span style="opacity:.65">${n ? `đang có ${n} · ` : ''}lương ${R.wage}/ngày</span>${lock}`, B('hire:' + r, `Thuê · ${R.hire} xu`, c >= R.hire && st.length < mMax() && !lock)); }).join('')
@@ -5334,6 +5692,7 @@
     if ((act === 'mok' || act === 'mno') && a1 && a1.startsWith('mgr/ask/')) { const a = save.get(a1); if (a) { save.set(a1, { ...a, state: act === 'mok' ? 'ok' : 'no', at: farmNow() }); mLog(farmNow(), '', `${act === 'mok' ? '✅ Chủ trại duyệt' : '❌ Chủ trại không duyệt'}: ${a.what} (${money(a.cost)} xu)`, 0); } }
     if (act === 'evpick' && (a1 === 'a' || a1 === 'b')) { const k = 'ev/' + dayNo(), e = save.get(k); if (e && e.state === 'open') save.set(k, { ...e, pick: a1 }); }
     if (act === 'millup') millOwnerUp();
+    if (['rivalad', 'festno', 'innup', 'boatbuy', 'photo'].includes(act)) bizAct(act, a1, a2);
     if (['lgift', 'lwed', 'lraiseok', 'lraiseno'].includes(act)) lifeAct(act, a1);
     if (act[0] === 'c' && act !== 'cook' && act !== 'close' && mCmdAct(act, a1)) return renderPanel();
     if (act === 'hustle') mHustle(a1, Number(a2));
@@ -6310,7 +6669,7 @@
   }
   // how long each motion takes (ms)
   const MDUR = { guide: 3000, zooFeed: 5000, rest: 9000, chop: 7000, replant: 7000, incubate: 4000, hatch: 4000, buyAnimal: 3500, land: 3500, upgrade: 5000, hire: 3500, sow: 3000, hoe: 6000, plant: 6000, clear: 4000, water: 5000, weed: 4500, spray: 4500, harvest: 4500, collect: 4500, net: 5000, feed: 5000, feedFish: 4500,
-    fish: 12000, fishMiss: 7000, millIn: 6000, millOut: 5000, cook: 7000, serve: 4000, count: 5000, sell: 4500, order: 4500, sweep: 5000, inspect: 3500, cure: 4500, stock: 4500 };
+    fish: 12000, fishMiss: 7000, millIn: 6000, millOut: 5000, market: 5000, cook: 7000, serve: 4000, count: 5000, sell: 4500, order: 4500, sweep: 5000, inspect: 3500, cure: 4500, stock: 4500 };
   function staffTick(v, now) {
     const q = mVis[v.staff];
     if (v.step === 'going' && !v.path.length) {
@@ -7820,7 +8179,7 @@
     if (hm >= 21.5 && hm < 22.5 && XL.get('remind', -1) !== today) {
       XL.set('remind', today);
       const n = xNight(Date.now());
-      const msg = `21:30 rồi. ${n && n.fire ? 'Lửa trại đang cháy, lữ khách sắp kể chuyện.' : 'Đêm nay không có lửa trại.'} Cất việc, ngủ thôi 🌙`;
+      const msg = `21:30 rồi. ${n && n.fire ? 'Lửa trại đang cháy, lữ khách sắp kể chuyện.' : 'Đêm nay không có lửa trại.'} Cất việc, ngủ thôi 🌙${astroNote()}`;
       xNotify(msg); xToast(msg, [['Ngủ thôi', () => xSleepStart(30)], ['Đọc truyện', () => openPanel({ kind: 'night', tab: 'story' })]]);
     }
     if (hm >= 5 && hm < 12 && XL.get('morning', -1) !== today && farmPanel && !panelView && !xSleep) {
