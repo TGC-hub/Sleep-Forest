@@ -4694,7 +4694,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '15:32 12-11';
+    const build = '16:43 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6011,7 +6011,7 @@
     // a new villager (or a pair) every 5-14 s by day, up to VMAX outside
     // no random villagers any more (user 2026-11-06: too crowded): only the farm's own staff, later the visitors
     const vmax = 0;
-    const extras = villagers.filter((x) => !x.staff && !x.tourist && x.step !== 'home');
+    const extras = villagers.filter((x) => !x.staff && !x.tourist && !x.diner && x.step !== 'home');
     // tourists step off the boat at the pier, one after another
     while (mTourQueue.length && mTourQueue[0].at <= now && FARM.pier) {
       const q = mTourQueue.shift(), v = spawnVillager(now, 'tourist');
@@ -6020,6 +6020,23 @@
       Object.assign(v, { tileCol: p.c, tileRow: p.r, x: p.c * 16 + 8, y: p.r * 16 + 8, home: { c: p.c, r: p.r }, tourist: { stops: q.stops, si: 0 }, step: 'out', jobsLeft: 0 });
     }
     for (const x of extras.slice(vmax)) goHome(x);
+    // customers of the food islets: while a shop is open they come by speedboat from off the map (alone, a couple /
+    // friends, or a group), land at the east pier, walk over the bridges, eat / drink at the counter, then either go
+    // sightseeing or straight back to the pier where a boat picks them up. The busier the hour (shopRate), the closer
+    // together the boats come; never more people at a shop than its places in front of the counter (+2 standing).
+    for (const id of Object.keys(SHOP)) {
+      const I = XISLE[id]; if (!I || !I.seats) continue;
+      if (!shopOpenNow(id)) { for (const v of villagers) if (v.diner && v.diner.id === id && v.step !== 'home') goHome(v); continue; }
+      if (now < (dinerNext[id] || 0)) continue;
+      const rate = shopRate(id), here = villagers.filter((x) => x.diner && x.diner.id === id && x.step !== 'home');
+      dinerNext[id] = now + Math.max(7000, Math.min(60000, 90000 / Math.max(0.5, rate))) * (0.6 + Math.random() * 0.8);
+      const coming = boats.filter((b) => b.group && b.group.id === id && b.mode === 'in').reduce((a, b) => a + b.group.n, 0);
+      const room = I.seats.length + 2 - here.length - coming; if (room <= 0) continue;
+      const r = Math.random(), n = Math.min(room, r < 0.5 ? 1 : r < 0.8 ? 2 + Math.floor(Math.random() * 2) : 4 + Math.floor(Math.random() * 2));
+      if (FARM.pier) boatArrive(now, { id, n });
+      else { const v = spawnVillager(now, 'diner'); if (v) { v.diner = { id, k: here.length, then: 'home' }; v.jobsLeft = 0; } }
+    }
+    boatTick(now);
     if (day && now > nextVillager && villagers.filter((x) => !x.staff).length < vmax) {
       nextVillager = now + 3000 + Math.random() * 6000;
       const job = pickOne(['chore', 'chore', 'chore', 'chop', 'chop', 'hunt', 'chat', 'play', 'stroll']);
@@ -6040,6 +6057,7 @@
       }
       if (v.staff && v.step !== 'home') { staffTick(v, now); continue; }
       if (v.tourist && v.step !== 'home') { tourTick(v, now); continue; }
+      if (v.diner && v.step !== 'home') { dinerTick(v, now); continue; }
       // night or rain: everyone heads home
       if (!day && v.step !== 'home') goHome(v);
       if (v.step === 'out') {
@@ -6101,6 +6119,7 @@
         }
       }
       if (v.step === 'home' && !v.path.length) {
+        if (v.boatPax && v.tileCol === v.home.c && v.tileRow === v.home.r) { if (!v.waiting) { v.waiting = true; v.dir = DIR.RIGHT; boatCall(now); } continue; } // waits for the boat
         if (v.tileCol === v.home.c && v.tileRow === v.home.r) { villagers.splice(villagers.indexOf(v), 1); if (v.partner) v.partner.partner = null; }
         else if (!villagerGo(v, v.home.c, v.home.r)) villagers.splice(villagers.indexOf(v), 1);
       }
@@ -6126,6 +6145,14 @@
         g.save(); g.globalAlpha = Math.min(1, (now - v.born) / 400, near && v.step === 'home' ? 1 - v.moveProgress : 1);
         window.__forestAnim.draw(g, crewAtlas, sx, sy, C.w, C.h, v.x - dw / 2, v.y + 8 - dh + hop, dw, dh, v, 'char', v.dir === DIR.LEFT, true);
         g.restore();
+        if (v.diner) {
+          if (v.step !== 'doing') return;
+          const food = { banhmi: ['🥖', '🥪', '😋'], cafe: ['☕', '🧋', '🍹'], restaurant: ['🍜', '🍛', '😋'] }[v.diner.id] || ['😋'];
+          const em = (now - v.start) % 4000 < 3000 ? food[Math.floor(v.seed) % 2] : food[2];
+          g.font = '8px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(v.x - 6, v.y - 30, 12, 11); g.fillText(em, v.x, v.y - 24);
+          return;
+        }
         if (v.tourist) {
           if (v.step !== 'doing') return;
           g.font = '8px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -6288,6 +6315,83 @@
         });
       }
     }
+  }
+  // a customer of a food islet: walks to their place in front of the counter, eats / drinks a while, goes back
+  const dinerNext = {};
+  window.__forestBoats = () => boats.map((b) => ({ mode: b.mode, x: Math.round(b.x), pax: b.pax, shop: b.group && b.group.id, n: b.group && b.group.n }));
+  window.__forestDiners = () => villagers.filter((v) => v.diner || v.boatPax).map((v) => ({ id: v.diner ? v.diner.id : 'tour', k: v.diner ? v.diner.k : -1, then: v.diner ? v.diner.then : 'tour', step: v.step, waiting: !!v.waiting, x: Math.round(v.x), y: Math.round(v.y) }));
+  function dinerTick(v, now) {
+    const D = v.diner, I = XISLE[D.id], st = I && I.seats[D.k];
+    if (!st) { goHome(v); return; }
+    if (v.step === 'out') {
+      const extra = D.k >= I.seats.length ? (D.k % 2 ? 14 : -14) : 0, ty = Math.max(st.y, I.stall.y + 14);
+      const tile = nearWalkFree(st.x + extra, ty, v); v.step = tile && villagerGo(v, tile.c, tile.r) ? 'going' : 'doing';
+      if (v.step === 'doing') { v.start = now; v.until = now + 1500; } return;
+    }
+    if (v.step === 'going' && !v.path.length) { v.step = 'doing'; v.start = now; v.until = now + 9000 + Math.random() * 9000; faceToward(v, { x: I.stall.x, y: I.stall.y - 8 }); return; }
+    if (v.step === 'doing' && now >= v.until) {
+      if (D.then === 'tour') { const stops = dinerStops(D.id); v.diner = null; v.tourist = { stops, si: 0 }; v.step = 'out'; tourTick(v, now); return; }
+      goHome(v);
+    }
+  }
+  // sightseeing after the meal: 2-3 places of the farm (the zoo when open, the field, the islets, another shop)
+  function dinerStops(id) {
+    const st = [], T = (c, r) => st.push({ c, r });
+    if (FARM.stops) { if (zooOpen() && FARM.stops.zoo) st.push(...FARM.stops.zoo); if (FARM.stops.farm) st.push(...FARM.stops.farm); }
+    for (const k of ['camp', 'bees', 'orchard']) { const I = XISLE[k]; if (I && xBuilt(k)) { const sd = I.stand || (I.items && I.items[0].stand); if (sd) T(sd.c, sd.r + 1); } }
+    for (const k of Object.keys(SHOP)) if (k !== id && XISLE[k] && xBuilt(k)) T(XISLE[k].stand.c, XISLE[k].stand.r + 2);
+    return st.sort(() => Math.random() - 0.5).slice(0, 2 + Math.floor(Math.random() * 2));
+  }
+  // ── speedboats (drawn by hand: no CC0 boat in the packs) between off the map (east) and the pier ──
+  const boats = [];
+  // moored on the last sea column beside the pier end (the camera stops at the map edge), below it or above it
+  const boatDock = (lane = 0) => ({ x: Math.min((DATA.w || 60) * 16 - 14, FARM.pier.c * 16 + 4), y: FARM.pier.r * 16 + (lane ? -5 : 22) });
+  const boatFar = () => (DATA.w || 60) * 16 + 220;
+  function boatArrive(now, group) {
+    const lane = boats.filter((b) => b.mode !== 'out').length % 2, d = boatDock(lane);
+    boats.push({ mode: 'in', t0: now, dur: 5200, x0: boatFar(), x1: d.x, y: d.y, x: boatFar(), group, pax: group.n, seed: Math.random() });
+  }
+  function boatCall(now) { if (!boats.some((b) => !b.group && b.mode !== 'out')) { const d = boatDock(boats.filter((b) => b.mode !== 'out').length % 2); boats.push({ mode: 'in', t0: now, dur: 5200, x0: boatFar(), x1: d.x, y: d.y, x: boatFar(), group: null, pax: 0, seed: Math.random() }); } }
+  function boatTick(now) {
+    for (const b of boats.slice()) {
+      const k = Math.min(1, (now - b.t0) / b.dur), e = b.mode === 'in' ? 1 - (1 - k) * (1 - k) : k * k; // slows into the dock, speeds away
+      if (b.mode !== 'dock') b.x = b.x0 + (b.x1 - b.x0) * e;
+      if (b.mode === 'in' && k >= 1) {
+        b.mode = 'dock'; b.t0 = now;
+        if (b.group) { // step off at the pier, one after another
+          const p = FARM.pier;
+          for (let i = 0; i < b.group.n; i++) {
+            const v = spawnVillager(now, 'diner'); if (!v) break;
+            const here = villagers.filter((x) => x.diner && x.diner.id === b.group.id && x !== v).map((x) => x.diner.k), free = [...Array(12).keys()].find((j) => !here.includes(j));
+            Object.assign(v, { home: { c: p.c, r: p.r }, tileCol: p.c, tileRow: p.r, x: p.c * 16 + 8, y: p.r * 16 + 8, jobsLeft: 0, boatPax: true, born: now + i * 350 });
+            v.diner = { id: b.group.id, k: free, then: Math.random() < 0.5 ? 'tour' : 'home' };
+          }
+          b.pax = 0;
+        }
+      }
+      if (b.mode === 'dock') {
+        if (!b.group) for (const v of villagers.slice()) if (v.waiting) { villagers.splice(villagers.indexOf(v), 1); b.pax++; } // board
+        if (now - b.t0 > (b.group ? 2200 : 3000)) { b.mode = 'out'; b.t0 = now; b.dur = 4200; b.x0 = b.x; b.x1 = boatFar(); }
+      }
+      if (b.mode === 'out' && k >= 1) boats.splice(boats.indexOf(b), 1);
+    }
+  }
+  function boatDraw(now) {
+    for (const b of boats) depth(b.y + 4, (g) => {
+      const left = b.mode === 'in', moving = b.mode !== 'dock', bob = Math.sin(now / 260 + b.seed * 6) * 0.7, x = Math.round(b.x), y = Math.round(b.y + bob);
+      g.save(); g.translate(x, y); if (!left) g.scale(-1, 1);
+      if (moving) { g.fillStyle = 'rgba(255,255,255,0.55)'; for (let i = 0; i < 4; i++) { const w = (now / 90 + i * 7) % 28; g.fillRect(12 + w, 2 + (i % 2 ? 2 : -1), 5, 1); } g.fillRect(12, 1, 14, 1); }
+      // hull: white with a red stripe, pointed bow on the left, dark waterline
+      g.fillStyle = '#1e2a3a'; g.fillRect(-12, 3, 24, 2);
+      g.fillStyle = '#f4f6fa'; g.beginPath(); g.moveTo(-15, -1); g.lineTo(12, -1); g.lineTo(12, 3); g.lineTo(-11, 3); g.closePath(); g.fill();
+      g.fillStyle = '#d83a3a'; g.fillRect(-12, 1, 24, 1);
+      g.fillStyle = '#9fd8ff'; g.fillRect(-6, -4, 5, 3); g.fillStyle = '#5a6a7a'; g.fillRect(-6, -4, 1, 3);
+      g.fillStyle = '#3a3a44'; g.fillRect(10, -2, 3, 4); // the outboard motor
+      // passengers' heads
+      const P = ['#f2c9a0', '#8a5a3a', '#e8b890', '#c08060', '#f0d0b0'];
+      for (let i = 0; i < Math.min(5, b.pax); i++) { g.fillStyle = P[i]; g.fillRect(-1 + i * 2.6, -4, 2, 2); g.fillStyle = ['#3a2a20', '#f0c040', '#202020', '#a04020', '#604030'][i]; g.fillRect(-1 + i * 2.6, -5, 2, 1); }
+      g.restore();
+    });
   }
   // a tourist walks from stop to stop (looking for a few seconds at each), then back to the boat
   function tourTick(v, now) {
@@ -6950,6 +7054,7 @@
   }
   function xDraw(now, ph) {
     const t = farmNow(), night = ph.night > 0.55;
+    if (FARM.pier) boatDraw(now);
     for (const [id, P] of Object.entries(XPROJ)) {
       const I = XISLE[id]; if (!I) continue;
       const p = xProj(id), built = !!p && t >= p.done, k = p ? Math.min(1, (t - p.t0) / (p.done - p.t0)) : 0;
@@ -6991,10 +7096,6 @@
       const built = t >= p.done, L = built ? facLv(id) : 1, nm = FAC[id].names[L - 1], open = built && shopOpenNow(id, t), cx = I.stall.x, sy = I.stall.y;
       depth(sy, (g) => xSprite(g, 'shop_' + id, cx - q[2] / 2, sy - q[3], q[2], q[3], built ? 1 : 0.25 + 0.45 * Math.min(1, (t - p.t0) / (p.done - p.t0))));
       if (!built) continue;
-      if (open && VCREW && crewAtlas.complete) {
-        const crowd = Math.max(1, Math.min(I.seats.length, Math.round(shopRate(id, t) / 2)));
-        I.seats.slice(0, crowd).forEach((st, j) => depth(st.y, (g) => xPerson(g, (j * 7 + id.length * 3 + 5) % VCREW.n, st.x, st.y - Math.abs(Math.sin(now / 400 + j)) * 0.6, st.x > cx ? 1 : 2, now)));
-      }
       if (open && id === 'restaurant') depth(SKY, (g) => { for (let i = 0; i < 3; i++) { const k = ((now / 1400) + i / 3) % 1; g.fillStyle = `rgba(255,255,255,${0.45 * (1 - k)})`; g.beginPath(); g.arc(cx - 10 + i * 10 + Math.sin(now / 300 + i) * 2, sy - q[3] - k * 14, 2 + k * 2, 0, Math.PI * 2); g.fill(); } });
       depth(SKY, (g) => xLabel(g, cx, sy - q[3] - 2, open ? `${SHOP[id].icon} ${nm} · ${shopRec(id, t).sold || 0} khách` : `${SHOP[id].icon} ${nm} · ${mStaff().some((w) => w.role === SHOP[id].role) ? 'đóng' : 'chưa có người bán'}`));
     }
@@ -7367,7 +7468,8 @@
     function draw(g, img, sx, sy, sw, sh, dx, dy, dw, dh, ent, kind, flip, smooth) {
       // only the farm's own staff walk the map (user 2026-11-06); the engine's characters (Claude sessions on the PC)
       // stay hidden unless the owner turns them on in the books, and then only while they work at their desk
-      if (kind === 'char' && ent && ent.staff === undefined && !(SHOW_AGENTS && ent.isActive)) return;
+      // visitors (tour groups, customers of the food islets, 2026-11-12) are the farm's guests: shown too
+      if (kind === 'char' && ent && ent.staff === undefined && !ent.tourist && !ent.diner && !ent.boatPax && !(SHOW_AGENTS && ent.isActive)) return;
       const R = (v) => (smooth ? v : Math.round(v));
       g.save();
       g.imageSmoothingEnabled = !!smooth; if (smooth) g.imageSmoothingQuality = 'high';
