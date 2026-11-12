@@ -2310,6 +2310,13 @@
   // 70% of the list price, barn stock not held for orders at 60%, the usual takings from the stove / fishing / tickets
   // over the hours left at 60%) and what falls due then (wages, wages owed, bank interest). The reserve is the gap.
   let mFcCache = null;
+  save.onChange((ks) => { if (!ks || ks.length > 20) mFcCache = null; }); // a sync / load replaced the save
+  // the day's running costs (bought for the work, not investments) and the investment lines of the books
+  const FC_RUNCOST = ['Mồi câu', 'Vé hồ câu', 'Hạt giống', 'Cá giống', 'Vật tư (cám, thuốc, củi)'];
+  const FC_INVEST = ['Thuê người', 'Mở rộng, nâng cấp', 'Con giống', 'Thú sở thú'];
+  // a day's result from running the farm: what came in − what went out, investments (capital) put back
+  const mOpNet = (d) => d.in - d.out + FC_INVEST.reduce((a, n) => a + (((d.cat || {}).out || {})[n] || 0), 0);
+  const mInvested = (d) => FC_INVEST.reduce((a, n) => a + (((d.cat || {}).out || {})[n] || 0), 0);
   function mForecast(t = farmNow()) {
     const key = Math.floor(t / MSTEP);
     if (mFcCache && mFcCache.key === key) return mFcCache.f;
@@ -2317,11 +2324,24 @@
     for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) held[k] = (held[k] || 0) + q;
     let crops = 0; for (let i = 0; i < land(); i++) { const x = simPlot(i, t); if (x.C && (x.status === 'ripe' || x.status === 'over' || (x.status === 'grow' && t + x.left <= dayEnd))) crops += (x.yield || x.C.yield) * x.C.price; }
     let stock = 0; for (const k of Object.keys(GOODS)) { const n = have(k) - (held[k] || 0); if (n > 0 && k !== 'cui') stock += Math.min(n, 14) * priceOf(k); } // the shop pays less after 14 of a kind
-    let run = 0, nd = 0; for (let k = 1; k <= 3; k++) { const d = mDayRec(t - k * 864e5); if (!d.acts) continue; const c = (d.cat || { in: {} }).in; run += ['Bán cá câu', 'Bán món ăn', 'Vé tham quan farm', 'Vé sở thú', 'Tiền tip hướng dẫn', 'Vé cắm trại', 'Bán trứng, sữa, thịt', 'Bán cá nuôi', 'Bán mật ong, trái cây'].reduce((a, n) => a + (c[n] || 0), 0); nd++; }
-    run = nd ? run / nd : 0;
-    const left = Math.max(0, Math.min(1, (dayEnd - t) / ((MWORK[1] - MWORK[0]) * HOUR)));
-    const f = { crops: Math.round(crops * 0.7), stock: Math.round(stock * 0.6), run: Math.round(run * left * 0.6), wages: mWages(), owed: mDebtTotal(), interest: Math.round((mLoan().owed || 0) * loanRate()) };
-    f.inflow = f.crops + f.stock + f.run; f.outflow = f.wages + f.owed + f.interest;
+    // 2026-11-12 (the forecast said "dư 5.000" with 74 in the purse): it added the anglers' takings but never took off
+    // their bait + pond tickets (~2.000 xu/day on the real save) nor the seed / feed / fry the day still buys, and the
+    // dishes / eggs in the barn were counted twice (as stock AND as the usual "Bán món ăn" takings). Now: flow takings
+    // (fish caught, tickets, tips, camp) + produce sales beyond what is already in the barn, at 80% (was 60%, a fudge for
+    // the missing costs) − the usual running costs at 100%.
+    let flow = 0, prod = 0, cost = 0, nd = 0;
+    for (let k = 1; k <= 3; k++) {
+      const d = mDayRec(t - k * 864e5); if (!d.acts) continue;
+      const c = (d.cat || {}).in || {}, o = (d.cat || {}).out || {}, sum = (src, ns) => ns.reduce((a, n) => a + (src[n] || 0), 0);
+      flow += sum(c, ['Bán cá câu', 'Vé tham quan farm', 'Vé sở thú', 'Tiền tip hướng dẫn', 'Vé cắm trại']);
+      prod += sum(c, ['Bán món ăn', 'Bán trứng, sữa, thịt', 'Bán cá nuôi', 'Bán mật ong, trái cây']);
+      cost += sum(o, FC_RUNCOST); nd++;
+    }
+    const left = Math.max(0, Math.min(1, (dayEnd - t) / ((MWORK[1] - MWORK[0]) * HOUR))), avg = (x) => (nd ? (x / nd) * left : 0);
+    const stockV = stock * 0.6;
+    const f = { crops: Math.round(crops * 0.7), stock: Math.round(stockV), run: Math.round(avg(flow) * 0.8 + Math.max(0, avg(prod) * 0.8 - stockV)), cost: Math.round(avg(cost)),
+      wages: mWages(), owed: mDebtTotal(), interest: Math.round((mLoan().owed || 0) * loanRate()) };
+    f.inflow = f.crops + f.stock + f.run; f.outflow = f.wages + f.owed + f.interest + f.cost;
     mFcCache = { key, f }; return f;
   }
   // what must stay in the purse: only the part of tomorrow's bills the forecast takes in does not cover
@@ -2478,8 +2498,13 @@
   // for the journal, the estimated days to earn it back. mCanInvest only checks (callers use it in filters);
   // mFund is called right before paying: it asks the owner when needed and borrows in 🚀 mode.
   const mOwnCash = (cost) => !(mLoan().owed > 0) && coins() >= cost && coins() - cost - mReserve() >= mMinSeed() * 2;
-  const mCanInvest = (cost, o = {}) => mLineOk(o.line) && mAskState(cost, o) !== 'no' && (mOwnCash(cost) || mBoldCheck(cost, o).ok);
+  // the owner's orders to the manager (2026-11-12, buttons in her report): mgr/cmd = { pause: until, keep: { id: until } }
+  const mCmd = () => save.get('mgr/cmd', {});
+  const mPaused = (t = farmNow()) => (mCmd().pause || 0) > t;
+  const mKept = (id, t = farmNow()) => ((mCmd().keep || {})[id] || 0) > t;
+  const mCanInvest = (cost, o = {}) => !mPaused() && mLineOk(o.line) && mAskState(cost, o) !== 'no' && (mOwnCash(cost) || mBoldCheck(cost, o).ok);
   function mFund(cost, o = {}) {
+    if (mPaused()) return false;
     if (mAsk(cost, o) !== 'ok') return false;
     const t = farmNow();
     if (mOwnCash(cost)) { mAskDone(o); return true; }
@@ -2501,7 +2526,7 @@
     if (save.get('mgr/broke', false)) return fail('két đang cạn'); // 4.
     const need = Math.max(0, cost + mReserve() + mMinSeed() * 2 - coins());
     if (owed + need > loanLimit() * 0.4) return fail(`nợ sau khi vay (${money(owed + need)} xu) sẽ quá 40% hạn mức TJBank`); // 5. room left for emergencies
-    let prof = 0, n = 0; for (let k = 1; k <= 3; k++) { const d = mDayRec(t - k * 864e5); if (d.acts) { prof += d.in - d.out; n++; } }
+    let prof = 0, n = 0; for (let k = 1; k <= 3; k++) { const d = mDayRec(t - k * 864e5); if (d.acts) { prof += mOpNet(d); n++; } }
     if (n < 2 || prof / n <= 0) return fail('3 ngày gần đây trại chưa có lãi'); // 6. the farm makes money
     if (prof / n < (owed + need) * loanRate() * 2) return fail('lãi mỗi ngày chưa gấp đôi tiền lãi phải trả TJBank'); // 7.
     if (repNow() < 30) return fail('uy tín đang thấp'); // 8.
@@ -2514,7 +2539,7 @@
     if (mRiskPick() !== 'bold' || mBrake(t)) return;
     const y = mDayRec(t - 864e5), why = [];
     if (mDebtTotal() > 0) why.push('đang nợ lương nhân viên');
-    if (y.acts && y.in - y.out < -mWages()) why.push(`hôm qua lỗ ${money(y.out - y.in)} xu, hơn một ngày lương`);
+    if (y.acts && mOpNet(y) < -mWages()) why.push(`hôm qua lỗ ${money(-mOpNet(y))} xu (không tính tiền đầu tư), hơn một ngày lương`);
     if (hist.length >= 4 && hist[3] > hist[2] && hist[2] > hist[1] && hist[1] > hist[0]) why.push('nợ TJBank tăng 3 ngày liền');
     const bl = save.get('mgr/bloans', []).find((b) => t - b.t >= 3 * 864e5 && t - b.t < 6 * 864e5 && b.line);
     if (bl) { const s = mLineStats(bl.line, 3); if (s.days >= 2 && s.net < 0) why.push(`khoản vay đầu tư "${bl.what}" chưa sinh lời sau 3 ngày`); }
@@ -2713,7 +2738,8 @@
     if (crops.length) L.push(`🌱 Gieo ưu tiên: ${crops.map(([k, v]) => `${CROPS[k].icon} ${CROPS[k].name} ~${Math.round(v)} xu/giờ/ô${xSeasonMul(k) > 1 ? ' (đúng mùa)' : ''}`).join(', ')}`);
     const open = orderBook(dayNo(t)).filter((o) => !o.done).length; if (open) L.push(`📦 ${open} đơn hàng: làm đơn có lãi (lỗ nhẹ vẫn làm để giữ uy tín), không kịp thì huỷ sớm`);
     const ln = mLoan().owed || 0; if (ln) L.push(`🏦 Nợ TJBank ${money(ln)} xu (lãi ~${money(ln * loanRate())} xu/ngày): dư tiền là trả ngay`);
-    const nx = mNextInvest(t); if (nx) L.push(`🎯 Đầu tư tiếp: ${nx.what} (${money(nx.cost)} xu${nx.payback ? `, hoàn vốn ~${Math.ceil(nx.payback)} ngày` : ''}): ${nx.state}`);
+    if (mPaused(t)) L.push(`⏸️ Chủ trại dặn ngưng đầu tư đến ${new Date(mCmd().pause).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' })}: chỉ chạy việc, dư tiền thì trả nợ`);
+    const nx = !mPaused(t) && mNextInvest(t); if (nx) L.push(`🎯 Đầu tư tiếp: ${nx.what} (${money(nx.cost)} xu${nx.payback ? `, hoàn vốn ~${Math.ceil(nx.payback)} ngày` : ''}): ${nx.state}`);
     if (barBuilt(t)) { const E = barExpect(t); L.push(`🍹 Quầy bar tối nay: dự tính ~${E.guests} lượt khách, lời ~${money(E.margin)} xu trước lương tăng ca (quyết lúc 17:30)`); }
     for (const [k, s] of Object.keys(LINES).map((k) => [k, mLineStats(k, 5, t)]).filter(([, s]) => s.days >= 3 && s.net < 0).slice(0, 2)) L.push(`⚠️ ${LINES[k].name} lỗ ~${money(-s.perDay)} xu/ngày: tạm không đổ thêm tiền vào đây`);
     const dd = xWx && xWx.daily; if (dd && dd.precipitation_probability_max && dd.precipitation_probability_max[0] >= 60) L.push(`🌧️ Hôm nay ${dd.precipitation_probability_max[0]}% có mưa: mưa thì khỏi tưới, dồn người sang việc khác`);
@@ -2982,8 +3008,8 @@
       : null;
     if (!want) return null;
     const R = ROLES[want[0]];
-    let prof = 0, days = 0; for (let k = 1; k <= 3; k++) { const x = mDayRec(t - k * 864e5); if (x.acts) { prof += x.in - x.out; days++; } }
-    prof = days ? prof / days : d.in - d.out;
+    let prof = 0, days = 0; for (let k = 1; k <= 3; k++) { const x = mDayRec(t - k * 864e5); if (x.acts) { prof += mOpNet(x); days++; } }
+    prof = days ? prof / days : mOpNet(d);
     const o = { line: count(want[0]) ? ROLE_LINE[want[0]] : null, key: 'hire:' + want[0], what: `thuê thêm ${R.name}` }; // a trade's first hire is not judged by its (empty) books
     const cash = mCanInvest(R.hire + R.wage, o), paid = !(st.length > 1 && prof < R.wage), full = st.length >= mMax();
     return { want, R, o, ok: cash && paid && !d.hired && !full, cash, paid, full, hiredToday: !!d.hired, prof, need: R.hire + R.wage + mReserve() + mMinSeed() * 2 };
@@ -3594,7 +3620,7 @@
     const st = mStaff(), boss = st.find((w) => w.role === 'boss');
     let worst = null;
     for (const w of st) {
-      const R = ROLES[w.role]; if (!R || w.role === 'boss' || !R.wage || t - (w.hired || t) < 5 * 864e5) continue;
+      const R = ROLES[w.role]; if (!R || w.role === 'boss' || !R.wage || t - (w.hired || t) < 5 * 864e5 || mKept(w.id, t)) continue;
       const days = [1, 2, 3, 4, 5].map((k) => mStaffDay(w, t - k * 864e5)), red = days.filter((d) => d.net < 0).length, sum = days.reduce((a, d) => a + d.net, 0);
       const atts = days.map((d) => d.att).filter((x) => x != null), att = atts.length ? atts.reduce((a, x) => a + x, 0) / atts.length : 1;
       const why = red >= 4 && sum < -2 * R.wage ? `làm lỗ ${red}/5 ngày gần nhất (tổng ${money(sum)} xu)` : att < 0.6 && atts.length >= 3 ? `hay lười (chỉ làm ${Math.round(att * 100)}% giờ ca trong 5 ngày)` : null;
@@ -3835,16 +3861,17 @@
   function mTick(now) {
     if (now < mNextCheck) return;
     mNextCheck = now + 4000;
+    try { mUrgentTick(now); } catch (e) { console.warn('[Claude Forest] urgent: ' + e); }
     try { mCatchUp(); } catch (e) { console.warn('[Claude Forest] manager: ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' <- ') : e)); }
     // user 2026-11-10: when the owner opens the app the manager reports in her own words (not a table of numbers):
     // after being away (30 min+) or the first time in 3 hours; the old tables stay behind buttons
     if (typeof openPanel === 'function' && farmPanel && !panelView && mWait !== 'sync' && mWait !== 'claim' && (mAwayPending || Date.now() - XL.get('briefAt', 0) > 3 * HOUR) && mStaff().length) {
       mAwayPending = false; XL.set('briefAt', Date.now());
       const hh = new Date().getHours(); if (hh >= 5 && hh < 12) XL.set('morning', dayNo(Date.now()));
-      openPanel({ kind: 'brief' });
+      openPanel({ kind: mBriefKind() });
     }
   }
-  window.__forestMgr = { hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
+  window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
   farm.debug = { simCook, specialOf, priceOf, RECIPES, workReward, fuelOf };
 
@@ -4300,6 +4327,7 @@
     if (v.kind === 'night') return xNightPanel(v, head);
     if (v.kind === 'morning') return xMorningPanel(head);
     if (v.kind === 'brief') return mBriefHtml(head);
+    if (v.kind === 'week') return mWeekHtml(head);
     return '';
   }
   // ── Manager panels: the user only watches; the staff decide ──
@@ -4332,9 +4360,9 @@
     }
     say(open);
     // 2. money
-    const week = [1, 2, 3, 4, 5, 6, 7].map((k) => mDayRec(t - k * 864e5)).filter((d) => d.acts), avg = week.length ? week.reduce((a, d) => a + d.in - d.out, 0) / week.length : 0, yp = yd.in - yd.out;
+    const week = [1, 2, 3, 4, 5, 6, 7].map((k) => mDayRec(t - k * 864e5)).filter((d) => d.acts), avg = week.length ? week.reduce((a, d) => a + mOpNet(d), 0) / week.length : 0, yp = mOpNet(yd), yInv = mInvested(yd);
     const topIn = Object.entries((yd.cat || { in: {} }).in).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n, v]) => `${n.toLowerCase()} (${money(v)} xu)`);
-    if (yd.acts) say(`Về doanh thu: hôm qua trại thu <b style="color:#7fd65a">${money(yd.in)} xu</b>, chi <b style="color:#e08a5a">${money(yd.out)} xu</b>, ${yp >= 0 ? 'lãi' : 'lỗ'} <b>${money(Math.abs(yp))} xu</b>${week.length >= 3 ? ` (${Math.abs(vnPct(yp, avg)) > 150 ? `${yp >= avg ? 'cao hơn hẳn' : 'thấp hơn hẳn'} trung bình tuần` : `${yp >= avg ? 'cao hơn' : 'thấp hơn'} trung bình tuần ${Math.abs(vnPct(yp, avg))}%`})` : ''}.${topIn.length ? ` Tiền vào nhiều nhất từ ${topIn.join(' và ')}.` : ''} Hôm nay đến giờ đã thu ${money(td.in)} xu.`);
+    if (yd.acts) say(`Về doanh thu: hôm qua trại thu <b style="color:#7fd65a">${money(yd.in)} xu</b>, chi <b style="color:#e08a5a">${money(yd.out)} xu</b>, ${yp >= 0 ? 'lãi' : 'lỗ'} <b>${money(Math.abs(yp))} xu</b>${yInv ? ' từ việc kinh doanh' : ''}${week.length >= 3 ? ` (${Math.abs(vnPct(yp, avg)) > 150 ? `${yp >= avg ? 'cao hơn hẳn' : 'thấp hơn hẳn'} trung bình tuần` : `${yp >= avg ? 'cao hơn' : 'thấp hơn'} trung bình tuần ${Math.abs(vnPct(yp, avg))}%`})` : ''}.${topIn.length ? ` Tiền vào nhiều nhất từ ${topIn.join(' và ')}.` : ''}${yInv ? ` Ngoài ra em chi ${money(yInv)} xu để đầu tư (thuê người, mở rộng, mua giống), khoản này không tính vào lỗ lãi.` : ''} Hôm nay đến giờ đã thu ${money(td.in)} xu.`);
     const ln = mLoan().owed || 0, F = mForecast(t), end = coins() + F.inflow - F.outflow;
     say(`Trong két đang có <b>${money(coins())} xu</b>. ${ln ? `Trại còn nợ TJBank ${money(ln)} xu, lãi khoảng ${money(ln * loanRate())} xu mỗi ngày, em dư đồng nào là trả bớt đồng đó.` : 'Trại không nợ ngân hàng đồng nào ạ.'} ${(() => { const A = mAdjust(); return A.owed > 0 ? `Em xin báo thêm: sổ sách có một khoản điều chỉnh ${money(A.total || A.owed)} xu (${A.note}). Khoản này không tính lãi, em trả dần khi két dư, còn ${money(A.owed)} xu.` : ''; })()} ${mDebtTotal() ? `Em còn nợ lương anh chị em ${money(mDebtTotal())} xu, sẽ trả trước tiên.` : ''} Em tính đến ngày lương mai trại ${end >= 0 ? `còn dư khoảng ${money(end)} xu, chủ nhân yên tâm` : `còn thiếu khoảng ${money(-end)} xu, em sẽ bán bớt hàng trong kho cho đủ`}. Uy tín trại ${repNow()}/100 (${repName(repNow()).toLowerCase()}).`);
     // 3. the staff yesterday
@@ -4352,12 +4380,12 @@
     }
     // 4. who to watch / let go
     const fired = save.get('mgr/log', []).filter((e) => e.text && /👋 Quản lý cho/.test(e.text) && t - e.t < 36 * HOUR).map((e) => e.text.replace(/^👋 Quản lý cho /, ''));
-    const watch = [];
+    const watch = [], watchW = [];
     for (const w of st) {
       const R = ROLES[w.role]; if (!R || w.role === 'boss' || !R.wage || t - (w.hired || t) < 2 * 864e5) continue;
       const days = [1, 2, 3, 4, 5].map((k) => mStaffDay(w, t - k * 864e5)).filter((d) => d.att != null), red = days.filter((d) => d.net < 0).length, sum = days.reduce((a, d) => a + d.net, 0);
       const att = days.length ? days.reduce((a, d) => a + d.att, 0) / days.length : 1;
-      if (days.length >= 2 && ((red >= 3 && sum < 0) || att < 0.75)) watch.push(`<b>${w.name}</b> (${ROLES[w.role].name.toLowerCase()}: ${red >= 3 && sum < 0 ? `lỗ ${red}/${days.length} ngày, tổng ${money(sum)} xu` : `chỉ làm ${Math.round(att * 100)}% giờ ca`})`);
+      if (days.length >= 2 && ((red >= 3 && sum < 0) || att < 0.75)) watchW.push(w), watch.push(`<b>${w.name}</b>${mKept(w.id, t) ? ' <i>(chủ nhân dặn giữ)</i>' : ''} (${ROLES[w.role].name.toLowerCase()}: ${red >= 3 && sum < 0 ? `lỗ ${red}/${days.length} ngày, tổng ${money(sum)} xu` : `chỉ làm ${Math.round(att * 100)}% giờ ca`})`);
     }
     say((fired.length ? `Em xin báo: em đã cho ${fired.join('; ')}. ` : '') + (watch.length ? `Em đang để ý ${watch.slice(0, 3).join(', ')}. Nếu vài ngày tới không khá lên em xin phép cho nghỉ; chủ nhân muốn giữ ai thì cứ dặn em ạ.` : 'Cả đội đang làm ổn, em chưa thấy ai cần cho nghỉ.'));
     // 5. last night, the weather
@@ -4374,9 +4402,93 @@
       + `<p style="margin:0 0 4px;line-height:1.55">Kế hoạch sắp tới của em (${RISK[mRiskKey()].name.toLowerCase()}):</p>${plan.map((x) => `<div style="font-size:13px;margin:3px 0 3px 4px;line-height:1.45">• ${x}</div>`).join('')}`;
     const asks = mAsks();
     if (asks.length) html += `<p style="margin:8px 0 4px">Có ${asks.length} việc em cần chủ nhân duyệt ạ:</p>` + asks.map((a) => `<div style="margin:4px 0">${a.what} (${money(a.cost)} xu) ${B('mok:' + a.k, '✅ Duyệt')}${B('mno:' + a.k, '❌ Không')}</div>`).join('');
+    html += mCmdHtml(t, watchW);
     html += `<p style="margin:9px 0 0;line-height:1.55">Chủ nhân cứ nghỉ ngơi, có gì em báo ngay ạ 🌿</p></div></div>`
-      + `<div style="margin-top:8px">${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}</div>`;
+      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}</div>`;
     return head(`💬 ${boss.name} báo cáo`) + html;
+  }
+  // ── The weekly report (2026-11-12): on Mondays the morning report opens with it; any day from the button. Lan speaks:
+  // the week's takings / spending / profit from running the farm (investments apart), against the week before, the best
+  // and the weakest part of the farm, the worker of the week, who came and went, the bank, the reputation, next week.
+  const mBriefKind = () => (new Date().getDay() === 1 && XL.get('weekSeen', -1) !== dayNo(Date.now()) ? 'week' : 'brief');
+  function mWeekHtml(head) {
+    XL.set('weekSeen', dayNo(Date.now()));
+    const t = farmNow(), st = mStaff(), boss = st.find((w) => w.role === 'boss') || { name: 'Lan' };
+    const P = [], say = (x) => P.push(`<p style="margin:0 0 9px;line-height:1.55">${x}</p>`);
+    const wk = (from) => { const o = { in: 0, out: 0, net: 0, inv: 0, n: 0, best: null }; for (let k = from; k < from + 7; k++) { const d = mDayRec(t - k * 864e5); if (!d.acts) continue; o.n++; o.in += d.in; o.out += d.out; o.net += mOpNet(d); o.inv += mInvested(d); if (!o.best || mOpNet(d) > o.best.v) o.best = { v: mOpNet(d), t: t - k * 864e5 }; } return o; };
+    const A = wk(1), Bw = wk(8), d0 = new Date(t - 7 * 864e5), d1 = new Date(t - 864e5), dm = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
+    if (!A.n) return head(`📅 ${boss.name} báo cáo tuần`) + '<p>Dạ, trại chưa chạy đủ ngày để em làm báo cáo tuần ạ.</p>';
+    say(`Kính thưa chủ nhân, em là <b>${boss.name}</b>, em xin báo cáo <b>tuần qua</b> (${dm(d0)}–${dm(d1)}, ${A.n} ngày trại chạy).`);
+    say(`Cả tuần trại thu <b style="color:#7fd65a">${money(A.in)} xu</b>, chi <b style="color:#e08a5a">${money(A.out)} xu</b>${A.inv ? ` (trong đó ${money(A.inv)} xu là đầu tư: thuê người, mở rộng, mua giống)` : ''}. Riêng việc kinh doanh ${A.net >= 0 ? 'lãi' : 'lỗ'} <b>${money(Math.abs(A.net))} xu</b>, trung bình ${money(Math.round(A.net / A.n))} xu mỗi ngày${Bw.n ? `, ${A.net >= Bw.net ? 'hơn' : 'kém'} tuần trước ${Bw.net ? Math.abs(vnPct(A.net, Bw.net)) + '%' : money(Math.abs(A.net - Bw.net)) + ' xu'}` : ''}. Ngày khá nhất là ${dm(new Date(A.best.t))} (${A.best.v >= 0 ? '+' : ''}${money(A.best.v)} xu).`);
+    const lines = Object.keys(LINES).map((k) => ({ k, s: mLineStats(k, 7, t) })).filter((x) => x.s.days && (x.s.v || x.s.c || x.s.wage)).sort((a, b) => b.s.net - a.s.net);
+    if (lines.length) { const top = lines[0], low = lines[lines.length - 1]; say(`Mảng làm ăn tốt nhất là <b>${LINES[top.k].name}</b> (${top.s.net >= 0 ? '+' : ''}${money(top.s.net)} xu sau lương)${low !== top ? `, yếu nhất là <b>${LINES[low.k].name}</b> (${low.s.net >= 0 ? '+' : ''}${money(low.s.net)} xu)${low.s.net < 0 ? ', tuần tới em không đổ thêm tiền vào đó cho đến khi có lãi' : ''}` : ''}.`); }
+    const rows = st.filter((w) => w.role !== 'boss').map((w) => { let net = 0, att = 0, n = 0; for (let k = 1; k <= 7; k++) { const s2 = mStaffDay(w, t - k * 864e5); if (s2.att == null) continue; net += s2.net; att += s2.att; n++; } return { w, net, att: n ? att / n : null, n }; }).filter((x) => x.n);
+    if (rows.length) {
+      const star = rows.slice().sort((a, b) => b.net - a.net)[0], hard = rows.slice().sort((a, b) => b.att - a.att)[0], lazy = rows.filter((x) => x.att < 0.8).sort((a, b) => a.att - b.att);
+      say(`Nhân viên của tuần là <b>${star.w.name}</b> (${ROLES[star.w.role].name.toLowerCase()}, làm ra ${star.net >= 0 ? '+' : ''}${money(star.net)} xu sau lương)${hard.w !== star.w ? `, chăm nhất là <b>${hard.w.name}</b> (có mặt ${Math.round(hard.att * 100)}% giờ ca)` : ''}.${lazy.length ? ` Cả tuần còn lười: ${lazy.slice(0, 3).map((x) => `${x.w.name} (${Math.round((1 - x.att) * 100)}%)`).join(', ')}.` : ' Cả đội không ai lười đáng kể ạ.'}`);
+    }
+    const came = st.filter((w) => w.role !== 'boss' && t - (w.hired || 0) < 7 * 864e5).length, went = save.keys('mgr/gone/').filter((k) => t - ((save.get(k) || {}).t || 0) < 7 * 864e5).length;
+    const ln = mLoan().owed || 0;
+    say(`Trong tuần ${came ? `em thuê ${came} người` : 'em không thuê thêm ai'}, ${went ? `${went} người nghỉ` : 'không ai nghỉ'}; đội giờ có ${st.length} người, lương ${money(mWages())} xu mỗi ngày. Két đang có ${money(coins())} xu${ln ? `, nợ TJBank ${money(ln)} xu (hạn mức ${money(loanLimit())})` : ', không nợ ngân hàng'}. Uy tín ${repNow()}/100.`);
+    const nx = mNextInvest(t), plan = [];
+    if (nx) plan.push(`đầu tư tiếp: ${nx.what} (${money(nx.cost)} xu${nx.payback ? `, hoàn vốn ~${Math.ceil(nx.payback)} ngày` : ''})`);
+    if (ln) plan.push('trả dứt nợ TJBank trước khi đầu tư lớn');
+    if (lines.length > 1 && lines[lines.length - 1].s.net < 0) plan.push(`xem lại mảng ${LINES[lines[lines.length - 1].k].name}`);
+    say(`Tuần tới em định: ${plan.length ? plan.join('; ') : 'giữ nhịp như tuần này'}. Chủ nhân muốn em làm khác thì cứ dặn ạ.`);
+    const html = `<div style="display:flex;gap:10px;align-items:flex-start;margin-top:6px">${bossFace() ? `<img src="${bossFace()}" alt="" style="width:76px;height:76px;image-rendering:pixelated;border-radius:10px;border:2px solid #f0c8d8;flex:none;background:#2a2238">` : '<div style="font-size:44px">👩‍💼</div>'}`
+      + `<div style="flex:1;min-width:0;background:rgba(255,255,255,0.06);border-radius:10px;padding:9px 11px;font-size:14px">${P.join('')}${mCmdHtml(t, [])}</div></div>`
+      + `<div style="margin-top:8px">${B('open:brief', '💬 Báo cáo hôm nay')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:money', '📊 Doanh thu')}</div>`;
+    return head(`📅 ${boss.name} báo cáo tuần`) + html;
+  }
+  // ── Urgent news (2026-11-12, "thông báo gấp"): checked every minute while the app is open (the PC app stays open):
+  // the purse runs dry, wages owed, the 🚀 brake, the bank debt near the limit, the reputation falling, approvals
+  // waiting. Each kind at most once a day per device; quiet 22h–6h (the owner sleeps: the morning report has it).
+  let mUrgentAt = 0;
+  function mUrgentTick(now) {
+    if (now - mUrgentAt < 60000 || !mStaff().length || XL.get('urgentOff', false)) return;
+    mUrgentAt = now;
+    const h = new Date().getHours(); if (h >= 22 || h < 6) return;
+    const t = farmNow(), today = dayNo(now), seen = XL.get('urgent', {}), news = [], ln = mLoan().owed || 0, br = mBrake(t), asks = mAsks();
+    const add = (k, on, text) => { if (on && seen[k] !== today) { seen[k] = today; news.push(text); } };
+    add('broke', save.get('mgr/broke', false), `Két cạn (còn ${money(coins())} xu): em đang bán bớt hàng và cho đi câu kiếm tiền, tạm ngưng gieo.`);
+    add('debt', mDebtTotal() > 0, `Em đang nợ lương anh chị em ${money(mDebtTotal())} xu, có tiền là em trả trước tiên.`);
+    add('brake', !!br, br ? `🚀 Em tự phanh về ⚖️ Cân bằng 3 ngày: ${br.why}.` : '');
+    add('loan', ln > loanLimit() * 0.7, `Nợ TJBank đã ${money(ln)}/${money(loanLimit())} xu (quá 70% hạn mức), lãi ${money(ln * loanRate())} xu/ngày.`);
+    add('rep', repNow() < 30, `Uy tín trại tụt còn ${repNow()}/100, đơn hàng sẽ rẻ đi.`);
+    add('ask', asks.length > 0, `Em đang chờ chủ nhân duyệt: ${asks.map((a) => `${a.what} (${money(a.cost)} xu)`).join(', ')}.`);
+    if (!news.length) return;
+    XL.set('urgent', seen);
+    const boss = (mStaff().find((w) => w.role === 'boss') || { name: 'Lan' }).name;
+    xNotify(`${boss} báo gấp: ${news.join(' ')}`);
+    xToast(`🚨 <b>${boss} báo gấp:</b> ${news.join(' ')}`, [['Nghe báo cáo', () => openPanel({ kind: 'brief' })]]);
+  }
+  // ── Orders to the manager (2026-11-12, "nút ra lệnh cho Lan trong báo cáo"): right under her report, in her words.
+  // Each one is a save key the manager's own rules read (mgr/cmd pause / keep, hustle/<day>/<id>, ot/<day>/<id>,
+  // cfg/risk) so it holds on both devices; her answer stays on top for 15 minutes (mgr/cmdReply).
+  function mCmdHtml(t, watchW = []) {
+    const c = mCmd(), rep = save.get('mgr/cmdReply'), h = mLocalH(t), ln = mLoan().owed || 0, spare = Math.max(0, coins() - mReserve() - mMinSeed() * 2);
+    const onShift = mStaff().filter((w) => w.role !== 'boss' && mOnShift(w, t)), allHustled = onShift.length && onShift.every((w) => mHustled(w.id, t));
+    let x = '<p style="margin:10px 0 4px;line-height:1.55">Chủ nhân muốn dặn em gì không ạ?</p>';
+    if (rep && Date.now() - rep.at < 15 * 60000) x += `<div style="margin:2px 0 6px;padding:6px 8px;border-left:3px solid #f0c8d8;background:rgba(240,200,216,0.08);font-size:13px">💬 ${rep.text}</div>`;
+    const btn = [];
+    for (const w of watchW.slice(0, 3)) btn.push(B('cfire:' + w.id, `👋 Cho ${w.name} nghỉ`), mKept(w.id, t) ? '' : B('ckeep:' + w.id, `🤝 Giữ ${w.name} thêm 7 ngày`));
+    btn.push(mPaused(t) ? B('cpause:0', '▶️ Đầu tư lại bình thường') : B('cpause:1', '⏸️ Ngưng đầu tư 1 ngày'));
+    if (ln > 0 && spare > 0) btn.push(B('crepay', `🏦 Trả TJBank ngay ${money(Math.min(ln, spare))} xu`));
+    if (onShift.length && !allHustled && h < MWORK[1]) btn.push(B('chustle', '💪 Cả đội làm liền tay đến hết ca'));
+    if (h >= 12 && h < MWORK[1]) btn.push(B('cot', '🌙 Nông dân + bán hàng tăng ca đến 21h'));
+    const rk = mRiskPick(); btn.push(...Object.entries(RISK).filter(([k]) => k !== rk).map(([k, R]) => B('mrisk:' + k, `Đổi sang ${R.name}`)));
+    return x + `<div>${btn.filter(Boolean).join('')}</div>`;
+  }
+  function mCmdAct(act, a1) {
+    const t = farmNow(), c = mCmd(), boss = mStaff().find((w) => w.role === 'boss') || { name: 'Lan' }, w = a1 && mStaff().find((x) => x.id === a1);
+    const reply = (text, log) => { save.set('mgr/cmdReply', { at: Date.now(), text }); mLog(t, bossId(), `📣 Chủ trại dặn: ${log}`, 0); };
+    if (act === 'cfire' && w) { mFire(a1); if (!mStaff().some((x) => x.id === a1)) reply(`Dạ, em đã báo ${w.name} nghỉ việc rồi ạ${(mDebts()[a1] || {}).amt ? ', lương còn nợ em sẽ trả đủ' : ''}.`, `cho ${w.name} nghỉ`); return true; }
+    if (act === 'ckeep' && w) { save.set('mgr/cmd', { ...c, keep: { ...(c.keep || {}), [a1]: t + 7 * 864e5 } }); reply(`Dạ, em giữ ${w.name} thêm 7 ngày, không cho nghỉ đâu ạ. Em sẽ kèm thêm cho ${w.name} khá lên.`, `giữ ${w.name} 7 ngày`); return true; }
+    if (act === 'cpause') { const on = a1 === '1'; save.set('mgr/cmd', { ...c, pause: on ? t + 864e5 : 0 }); save.set('mgr/plan', null); reply(on ? 'Dạ, từ giờ đến mai em không mua đất, không nâng cấp, không thuê thêm ai. Dư đồng nào em trả nợ trước ạ.' : 'Dạ, em làm lại như cũ: tính ra có lời là em đầu tư tiếp ạ.', on ? 'ngưng đầu tư 1 ngày' : 'đầu tư lại bình thường'); return true; }
+    if (act === 'crepay') { const amt = mRepay(Math.max(0, coins() - mReserve() - mMinSeed() * 2), t); reply(amt ? `Dạ, em vừa trả TJBank ${money(amt)} xu${mLoan().owed ? `, còn nợ ${money(mLoan().owed)} xu` : ', trại hết nợ rồi ạ'}. Em vẫn giữ đủ tiền lương mai.` : 'Dạ, két giờ chỉ vừa đủ lương mai nên em chưa trả thêm được ạ.', `trả TJBank ${money(amt)} xu`); return true; }
+    if (act === 'chustle') { const ws = mStaff().filter((x) => x.role !== 'boss' && mOnShift(x, t)); for (const x of ws) mHustle(x.id, 1, t); reply(`Dạ, em đã nhắc cả đội (${ws.length} người) làm liền tay đến hết ca, không ai nghỉ ạ.`, 'cả đội làm liền tay'); return true; }
+    if (act === 'cot') { const ws = mStaff().filter((x) => ['farmer', 'seller'].includes(x.role)); let cost = 0; for (const x of ws) if (mSetOT(x.id, 21, 'owner', 'chủ trại dặn', t)) cost += otCost(x, 21); reply(ws.length ? `Dạ, tối nay ${ws.map((x) => x.name).join(', ')} ở lại đến 21h, lương tăng ca khoảng ${money(cost)} xu ạ.` : 'Dạ, trại chưa có nông dân hay người bán hàng để tăng ca ạ.', 'tăng ca đến 21h'); return true; }
+    return false;
   }
   // 📈 Đầu tư: how bold the manager may be, approvals, the plan, each part of the farm's books, recent investments
   function mPlanPanelHtml(now) {
@@ -4430,7 +4542,7 @@
         + row('Hôm nay thu', `<b style="color:#7fd65a">+${money(today.in)}</b>`)
         + (today.cat && Object.keys(today.cat.in).length ? `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">từ ${Object.entries(today.cat.in).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, v]) => `${n.replace(/^Bán /, 'bán ').replace(/^Giao /, 'giao ')} ${money(v)}`).join(' · ')} ${B('tab:money', 'Xem chi tiết')}</div>` : '')
         + row(`Hôm nay chi <span style="opacity:.6">(lương ${money(today.wage)})</span>`, `<b style="color:#e08a5a">−${money(today.out)}</b>`)
-        + (() => { const F = mForecast(), end = coins() + F.inflow - F.outflow; return row('🧮 Quản lý tính đến ngày lương mai', `<b style="color:${end >= 0 ? '#7fd65a' : '#e08a5a'}">${end >= 0 ? 'dư' : 'thiếu'} ${money(Math.abs(end))}</b>`) + `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">sẽ thu ~${money(F.inflow)} (cây chín ${money(F.crops)}, kho ${money(F.stock)}, bán/vé ${money(F.run)}) · phải trả ${money(F.outflow)} (lương ${money(F.wages)}${F.owed ? `, nợ lương ${money(F.owed)}` : ''}${F.interest ? `, lãi TJBank ${money(F.interest)}` : ''})</div>`; })()
+        + (() => { const F = mForecast(), end = coins() + F.inflow - F.outflow; return row('🧮 Quản lý tính đến ngày lương mai', `<b style="color:${end >= 0 ? '#7fd65a' : '#e08a5a'}">${end >= 0 ? 'dư' : 'thiếu'} ${money(Math.abs(end))}</b>`) + `<div style="font-size:12px;opacity:.8;margin:-2px 0 4px">sẽ thu ~${money(F.inflow)} (cây chín ${money(F.crops)}, kho ${money(F.stock)}, bán/vé ${money(F.run)}) · phải trả ${money(F.outflow)} (lương ${money(F.wages)}${F.cost ? `, mồi/hạt/cám ${money(F.cost)}` : ''}${F.owed ? `, nợ lương ${money(F.owed)}` : ''}${F.interest ? `, lãi TJBank ${money(F.interest)}` : ''})</div>`; })()
         + (() => { const P = mPlanLines(now), asks = mAsks(); return `<div style="opacity:.8;margin-top:8px">📝 Kế hoạch hôm nay của quản lý ${B('tab:plan', 'Xem hết')}</div>` + P.slice(0, 4).map((x) => `<div style="font-size:12px;margin:2px 0">${x}</div>`).join('')
           + (asks.length ? `<div style="margin:6px 0;padding:6px;border:1px solid #ffb02e">🙋 Quản lý xin duyệt ${asks.length} khoản ${B('tab:plan', 'Duyệt')}</div>` : ''); })()
         + row('⭐ Uy tín', `${repNow()}/100 · ${repName(repNow())} · đơn hàng ×${repMul(repNow())}`)
@@ -4491,7 +4603,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:24 12-11';
+    const build = '11:48 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -4663,6 +4775,7 @@
     if (act === 'mrisk' && RISK[a1]) { save.set('cfg/risk', a1); if (a1 !== 'bold') save.set('mgr/brake', null); mLog(farmNow(), '', `Chủ trại đặt tính cách quản lý: ${RISK[a1].name}`, 0); save.set('mgr/plan', null); }
     if (act === 'mapprove') save.set('cfg/approve', Number(a1) || 0);
     if ((act === 'mok' || act === 'mno') && a1 && a1.startsWith('mgr/ask/')) { const a = save.get(a1); if (a) { save.set(a1, { ...a, state: act === 'mok' ? 'ok' : 'no', at: farmNow() }); mLog(farmNow(), '', `${act === 'mok' ? '✅ Chủ trại duyệt' : '❌ Chủ trại không duyệt'}: ${a.what} (${money(a.cost)} xu)`, 0); } }
+    if (act[0] === 'c' && act !== 'cook' && act !== 'close' && mCmdAct(act, a1)) return renderPanel();
     if (act === 'hustle') mHustle(a1, Number(a2));
     if (act === 'ot') { mSetOT(a1, Number(a2), 'owner', 'chủ trại cho'); const w = mStaff().find((x) => x.id === a1); if (w) mLog(farmNow(), a1, Number(a2) ? `Chủ trại cho ${w.name} tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} nghỉ đúng giờ (không tăng ca)`, 0); }
     if (act === 'ocancel' && confirm('Huỷ đơn này? Uy tín −1 (để trễ đến hết ngày là −3).')) orderCancel(dayNo(), Number(a1), farmNow(), '', 'chủ trại huỷ');
@@ -6880,7 +6993,7 @@
       xNotify(msg); xToast(msg, [['Ngủ thôi', () => xSleepStart(30)], ['Đọc truyện', () => openPanel({ kind: 'night', tab: 'story' })]]);
     }
     if (hm >= 5 && hm < 12 && XL.get('morning', -1) !== today && farmPanel && !panelView && !xSleep) {
-      XL.set('morning', today); XL.set('briefAt', Date.now()); openPanel({ kind: 'brief' });
+      XL.set('morning', today); XL.set('briefAt', Date.now()); openPanel({ kind: mBriefKind() });
     }
   }
   let xToastEl = null;
@@ -6907,6 +7020,7 @@
         + `<div style="margin:6px 0">${B('xsleep:15', '15 phút')}${B('xsleep:30', '30 phút')}${B('xsleep:60', '1 giờ')}${B('xsleep:0', 'Suốt đêm')}</div>`
         + row('🔥 Lửa trại tối nay', n ? (n.fire ? 'đang cháy (1 🪵)' : '<span style="color:#ffb08a">không đốt: hết củi</span>') : mLocalH(t) < 19 ? 'nhóm lúc 19:00' : 'chờ nhân viên nhóm')
         + row('🪵 Củi trong kho', `${have('cui')}`)
+        + row('🚨 Quản lý báo gấp (két cạn, nợ lương, phanh, chờ duyệt)', B('xurgent', XL.get('urgentOff', false) ? 'Đang tắt' : 'Đang bật', true, XL.get('urgentOff', false) ? '' : 'border-color:#7fd65a;'))
         + row('🔔 Nhắc đi ngủ lúc 21:30', B('xnotif', on ? 'Đang bật' : 'Bật', true, on ? 'border-color:#7fd65a;' : '') + (perm === 'denied' ? '<div style="font-size:11px;opacity:.7">Trình duyệt đang chặn thông báo, vẫn hiện nhắc trong app</div>' : ''));
     } else if (tab === 'story') {
       const told = save.get('story/n', 0), seen = Math.min(told, STORY.length), cur = v.ch != null ? v.ch : n && n.ch != null ? n.ch : told ? (told - 1) % STORY.length : null;
@@ -6984,6 +7098,7 @@
     if (act === 'xch') { v.ch = Number(a1); return true; }
     if (act === 'xread') { openPanel({ kind: 'night', tab: 'story', ch: Number(a1) }); return true; }
     if (act === 'xrealwx') { XL.set('realWx', !XL.get('realWx', true)); if (!XL.get('realWx', true)) weather.until = 0; return true; }
+    if (act === 'xurgent') { XL.set('urgentOff', !XL.get('urgentOff', false)); return true; }
     if (act === 'xnotif') {
       const on = !XL.get('notif', false); XL.set('notif', on);
       try { if (on && window.Notification && Notification.permission === 'default') Notification.requestPermission().then(() => renderPanel()); } catch {}
