@@ -1815,20 +1815,23 @@
   };
   // animals: producers give `product` every `every` hours once grown; meat animals go to market once grown
   const ANIMALS = {
-    chicken: { name: 'Gà', icon: '🐔', price: 40, grow: 12, every: 8, product: 'egg', yield: 2, pen: 'small', feed: 1, lvl: 1 },
-    duck: { name: 'Vịt', icon: '🦆', price: 60, grow: 16, every: 10, product: 'duckegg', yield: 2, pen: 'small', feed: 1, lvl: 2 },
-    rabbit: { name: 'Thỏ', icon: '🐇', price: 45, grow: 20, meat: 'rabbitmeat', yield: 2, pen: 'small', feed: 1, lvl: 2 },
-    goat: { name: 'Dê', icon: '🐐', price: 120, grow: 30, every: 16, product: 'goatmilk', yield: 2, pen: 'big', feed: 2, lvl: 3 },
-    pig: { name: 'Heo', icon: '🐖', price: 120, grow: 48, meat: 'pork', yield: 4, pen: 'big', feed: 2, lvl: 3 },
-    sheep: { name: 'Cừu', icon: '🐑', price: 150, grow: 36, every: 24, product: 'wool', yield: 2, pen: 'big', feed: 2, lvl: 4 },
-    cow: { name: 'Bò sữa', icon: '🐄', price: 250, grow: 48, every: 12, product: 'milk', yield: 2, pen: 'big', feed: 2, lvl: 5 },
-    llama: { name: 'Lạc đà alpaca', icon: '🦙', price: 300, grow: 48, every: 36, product: 'alpaca', yield: 2, pen: 'big', feed: 2, lvl: 6 },
-    ostrich: { name: 'Đà điểu', icon: '🪶', price: 280, grow: 40, every: 30, product: 'ostrichegg', yield: 1, pen: 'big', feed: 2, lvl: 6 },
-    horse: { name: 'Ngựa', icon: '🐎', price: 400, grow: 60, every: 24, product: 'horsehair', yield: 2, pen: 'big', feed: 3, lvl: 7 },
+    chicken: { name: 'Gà', icon: '🐔', price: 40, life: 5, grow: 12, every: 8, product: 'egg', yield: 2, pen: 'small', feed: 1, lvl: 1 },
+    duck: { name: 'Vịt', icon: '🦆', price: 60, life: 6, grow: 16, every: 10, product: 'duckegg', yield: 2, pen: 'small', feed: 1, lvl: 2 },
+    rabbit: { name: 'Thỏ', icon: '🐇', price: 45, life: 6, grow: 20, meat: 'rabbitmeat', yield: 2, pen: 'small', feed: 1, lvl: 2 },
+    goat: { name: 'Dê', icon: '🐐', price: 120, life: 9, grow: 30, every: 16, product: 'goatmilk', yield: 2, pen: 'big', feed: 2, lvl: 3 },
+    pig: { name: 'Heo', icon: '🐖', price: 120, life: 8, grow: 48, meat: 'pork', yield: 4, pen: 'big', feed: 2, lvl: 3 },
+    sheep: { name: 'Cừu', icon: '🐑', price: 150, life: 10, grow: 36, every: 24, product: 'wool', yield: 2, pen: 'big', feed: 2, lvl: 4 },
+    cow: { name: 'Bò sữa', icon: '🐄', price: 250, life: 12, grow: 48, every: 12, product: 'milk', yield: 2, pen: 'big', feed: 2, lvl: 5 },
+    llama: { name: 'Lạc đà alpaca', icon: '🦙', price: 300, life: 14, grow: 48, every: 36, product: 'alpaca', yield: 2, pen: 'big', feed: 2, lvl: 6 },
+    ostrich: { name: 'Đà điểu', icon: '🪶', price: 280, life: 12, grow: 40, every: 30, product: 'ostrichegg', yield: 1, pen: 'big', feed: 2, lvl: 6 },
+    horse: { name: 'Ngựa', icon: '🐎', price: 400, life: 16, grow: 60, every: 24, product: 'horsehair', yield: 2, pen: 'big', feed: 3, lvl: 7 },
   };
   const PRODUCTS = {
     egg: { name: 'Trứng gà', icon: '🥚', price: 8 }, duckegg: { name: 'Trứng vịt', icon: '🪺', price: 11 }, goatmilk: { name: 'Sữa dê', icon: '🍼', price: 28 },
     wool: { name: 'Lông cừu', icon: '🧶', price: 45 }, alpaca: { name: 'Len alpaca', icon: '🧣', price: 95 }, ostrichegg: { name: 'Trứng đà điểu', icon: '🥚', price: 110 }, horsehair: { name: 'Lông bờm ngựa', icon: '🪮', price: 90 }, milk: { name: 'Sữa bò', icon: '🥛', price: 35 }, rabbitmeat: { name: 'Thịt thỏ', icon: '🍖', price: 55 }, pork: { name: 'Thịt heo', icon: '🥓', price: 80 },
+    // 2026-11-12: meat of old animals sold before their time is up (they stock the restaurant and the bánh mì cart)
+    chickenmeat: { name: 'Thịt gà', icon: '🍗', price: 18 }, duckmeat: { name: 'Thịt vịt', icon: '🍗', price: 22 }, goatmeat: { name: 'Thịt dê', icon: '🍖', price: 45 },
+    mutton: { name: 'Thịt cừu', icon: '🍖', price: 50 }, beef: { name: 'Thịt bò', icon: '🥩', price: 60 }, ostrichmeat: { name: 'Thịt đà điểu', icon: '🥩', price: 55 },
   };
   const CATCH_GOODS = { fish: { name: 'Cá chép', icon: '🐟', price: 12 }, perch: { name: 'Cá rô', icon: '🐠', price: 10 }, crab: { name: 'Cua', icon: '🦀', price: 15 }, gold: { name: 'Cá vàng', icon: '✨', price: 80 }, boot: { name: 'Ủng cũ', icon: '🥾', price: 1 },
     // lake fish (2026-11-09): the dearer, the rarer
@@ -1938,6 +1941,12 @@
   // ── Animals: bought (or hatched) into a pen, fed once a day, grow up, then give produce every few hours
   // (or are sent to market once grown). Hungry animals stop growing / producing and fall ill far more often;
   // an ill animal dies after 24 h without medicine. Produce left uncollected declines and spoils.
+  // lifespans (user 2026-11-12 "gia súc, gia cầm phải có tuổi thọ"): the last 20% (at least a day) of an animal's life
+  // it is "old": sell it now (meat into the barn; alpaca / horse sold alive), or it dies at the end whatever the care.
+  // Animals bought before this rule count as half-way through their life on that day (not all dying at once).
+  const OLD_MEAT = { chicken: ['chickenmeat', 2], duck: ['duckmeat', 2], rabbit: ['rabbitmeat', 2], goat: ['goatmeat', 3], pig: ['pork', 4], sheep: ['mutton', 3], cow: ['beef', 5], ostrich: ['ostrichmeat', 4] };
+  const LIFE_FROM = new Date(2026, 10, 12, 18, 0, 0).getTime();
+  const lifeOf = (a, A) => { const L = (A.life || 30) * 864e5; return { born: Math.max(a.t0, LIFE_FROM - L * 0.5), L, win: Math.max(864e5, L * 0.2) }; };
   const SICK_KILL = 24 * HOUR, FEED_FOR = 24 * HOUR, KEEP_GOLD = 24 * HOUR, KEEP_DECAY = 24 * HOUR, HATCH = 24 * HOUR;
   // upgrades (save key upg/<id> = how many bought): bigger pens, more daily orders from the barn
   const UPGRADES = {
@@ -2003,7 +2012,9 @@
       t = e;
       if (t === hb && t - a.t0 >= HOUR && hash01(a.t0, parseInt(id.slice(-4), 36) || 7, hb) < (fed ? 0.004 : 0.05)) sick = hb;
     }
-    const out = { id, a, A, adult, ready, sick, dead, grown, hungry: !(a.fed > now), fedLeft: a.fed - now, progress: Math.min(1, grown / growMs), prodProgress: everyMs ? Math.min(1, prod / everyMs) : 0 };
+    const LF = lifeOf(a, A), end = LF.born + LF.L; let aged = false;
+    if (!dead && now >= end) { dead = end; aged = true; } // old age: no care helps
+    const out = { id, a, A, adult, ready, sick, dead, grown, aged, lifeEnd: end, lifeLeft: end - now, ageDays: (now - LF.born) / 864e5, old: !dead && !!adult && end - now <= LF.win, hungry: !(a.fed > now), fedLeft: a.fed - now, progress: Math.min(1, grown / growMs), prodProgress: everyMs ? Math.min(1, prod / everyMs) : 0 };
     if (dead) out.status = 'dead';
     else if (sick) { out.status = 'sick'; out.left = sick + SICK_KILL - now; }
     else if (!adult) { out.status = 'baby'; out.left = growMs - grown; }
@@ -2236,6 +2247,14 @@
       sfx.jingle(pen.x, false); return true;
     },
     removeAnimal(id) { const s = simAnimal(id); if (!s || s.status !== 'dead') return false; save.set(`animal/${id}`, null); return true; },
+    sellOld(id) { // an old animal: meat into the barn (or sold alive for 40% of its price)
+      const s = simAnimal(id); if (!s || s.status === 'dead' || !s.adult) return false;
+      const M = OLD_MEAT[s.a.kind], pen = FARM.pens[s.A.pen];
+      if (M) ledger(0, 2, { [M[0]]: M[1] }); else ledger(Math.round(s.A.price * 0.4), 2, {});
+      save.set(`animal/${id}`, null);
+      floaters.push({ text: M ? `+${M[1]} ${PRODUCTS[M[0]].icon}` : `+${Math.round(s.A.price * 0.4)} xu`, x: pen.x + pen.w / 2, y: pen.y, born: performance.now(), col: '#ffe066' });
+      sfx.jingle(pen.x, false); return true;
+    },
     allAnimals(action, pen) { let n = 0; for (const id of animalIds(pen)) if (farm[action](id)) n++; return n; },
 
     // incubator: an egg from the barn hatches after 24 h, then the chick / duckling moves into the small pen
@@ -2472,6 +2491,9 @@
       if (R && depth < 3) { const short = Math.max(0, need[k] - have(k)); for (const [g, n] of Object.entries(R.need)) add(g, n * Math.min(q, short), s, depth + 1); }
     };
     for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) add(k, q, 'order', 0);
+    // the food islets (2026-11-12): what their menus are made of, a day's worth roughly (before the kitchen: user
+    // "đủ cho đơn hàng, quán cơm, quán nước rồi thì trồng cho nhà bếp")
+    for (const id of Object.keys(SHOP)) if (xBuilt(id, t) && mStaff().some((w) => w.role === SHOP[id].role)) for (const [k, q] of shopNeeds(id)) add(k, q, 'shop', 0);
     for (const m of mMenu()) add('d:' + m.k, 3, 'kitchen', 0);
     // already on its way: crops in the ground, fish in the cages, one round of produce from each animal
     const pipe = {};
@@ -2482,19 +2504,24 @@
     for (const [k, q] of Object.entries(need)) { const n = q - have(k) - (pipe[k] || 0); if (n > 0) short[k] = n; }
     return { need, src, short };
   }
-  const mFor = (pk) => (pk && pk.src === 'order' ? ' cho đơn hàng' : pk && pk.src === 'kitchen' ? ' cho bếp' : '');
+  const mFor = (pk) => (pk && pk.src === 'order' ? ' cho đơn hàng' : pk && pk.src === 'kitchen' ? ' cho bếp' : pk && pk.src === 'shop' ? ' cho quán' : '');
   // seed choice: a crop that is short for an order (if it ripens today) or for the kitchen; else the best earner
   function mPickCrop(i, t) {
+    // user 2026-11-12: orders first, then the shops, then the kitchen, and there the crop that is the only thing a dish
+    // still lacks (everything else for it is in the barn) before the rest
+    const menu = mMenu(), completes = (k) => menu.some((m) => m.R.need[k] && Object.entries(m.R.need).every(([g, q]) => g === k || have(g) >= q));
+    const cropRank = (k) => (D.src[k] === 'order' ? 0 : D.src[k] === 'shop' ? 1 : completes(k) ? 2 : 3);
     const L = level(), dayEnd = (dayNo(t) + 1) * 864e5 + new Date(t).getTimezoneOffset() * 60000, D = mDemand(t);
     const cand = Object.entries(D.short).filter(([k]) => {
       const C = CROPS[k];
       if (!C || C.lvl > L || !mSeedAfford(k)) return false;
       return D.src[k] !== 'order' || t + (C.grow * HOUR) / WET_RATE < dayEnd;
-    }).sort((a, b) => (D.src[a[0]] === 'order' ? 0 : 1) - (D.src[b[0]] === 'order' ? 0 : 1) || CROPS[a[0]].grow - CROPS[b[0]].grow)[0];
+    }).sort((a, b) => cropRank(a[0]) - cropRank(b[0]) || CROPS[a[0]].grow - CROPS[b[0]].grow)[0];
     if (cand) return { k: cand[0], src: D.src[cand[0]], order: D.src[cand[0]] === 'order' };
     const best = mPickBest(i, t);
     return best && { k: best, src: null, order: false };
   }
+  window.__forestPick = (t = farmNow()) => { const D = mDemand(t), p = mPickCrop(0, t); return { pick: p, short: Object.fromEntries(Object.entries(D.short).filter(([k]) => CROPS[k]).map(([k, q]) => [k, [q, D.src[k]]])) }; };
   function mPickBest(i, t) {
     const L = level(), glut = mCropGlut(t), list = Object.entries(CROPS).filter(([, C]) => C.lvl <= L).map(([k, C]) => {
       const ripe = t + C.grow * HOUR / WET_RATE, back = mNextWork(ripe);
@@ -3152,7 +3179,7 @@
         if (!s || s.status !== 'dead' || !mFree('a:' + id) || !farm.removeAnimal(id)) continue;
         mLate(t);
         const A = s.A, ao = { line: 'ranch', key: 'animal:' + s.a.kind, what: `mua ${A.name} mới`, payback: payback(A) }, again = A.lvl <= level() && payback(A) <= mRisk().payback + 1 && mCanInvest(A.price + feedDay(A) * 2, ao) && mFund(A.price + feedDay(A) * 2, ao) && farm.buyAnimal(s.a.kind);
-        return { kind: 'clear', text: `dọn ${A.icon} chết${again ? `, mua ${A.icon} mới` : ''}`, at: penAt(A.pen), icon: again ? A.icon : '🧹' };
+        return { kind: 'clear', text: `dọn ${A.icon} chết${s.aged ? ' già (bán không kịp)' : ''}${again ? `, mua ${A.icon} mới` : ''}`, at: penAt(A.pen), icon: again ? A.icon : '🧹' };
       }
       if (sc.pond && level() >= 2) for (let i = 0; i < 3; i++) {
         if (simPond(i).status !== 'dead' || !mFree('pond:' + i) || !farm.clearPond(i)) continue;
@@ -3189,6 +3216,15 @@
       const sc = mScope(w); if (!sc.pen) return null;
       const small = sc.pen === 'any' || sc.pen === 'small';
       if (small) for (let s = 0; s < 2; s++) if (mFree('inc:' + s) && farm.hatch(s)) return { kind: 'hatch', text: 'gà con nở, thả vào chuồng', at: penAt('small'), icon: '🐣' };
+      for (const id of penIds(sc)) {
+        const s = simAnimal(id); if (!s || !s.old || !mFree('a:' + id)) continue;
+        const A = s.A, M = OLD_MEAT[s.a.kind], left = s.lifeLeft;
+        if (s.yield && !A.meat) farm.collect(id); // its last eggs / milk first
+        if (!farm.sellOld(id)) continue;
+        const D = mDemand(t), want = D.short[A.product] > 0 || (M && D.short[M[0]] > 0), ao = { line: 'ranch', key: 'animal:' + s.a.kind, what: `mua ${A.name} giống mới`, payback: payback(A) };
+        const again = A.lvl <= level() && (want || payback(A) <= mRisk().payback + 1) && mCanInvest(A.price + feedDay(A) * 2, ao) && mFund(A.price + feedDay(A) * 2, ao) && farm.buyAnimal(s.a.kind);
+        return { kind: 'collect', text: `bán ${A.icon} ${A.name} già (còn ~${fmtDur(left)} là hết tuổi)${M ? `: ${M[1]} ${PRODUCTS[M[0]].icon} vào kho` : `: +${money(Math.round(A.price * 0.4))} xu`}${again ? `, mua ${A.icon} giống mới${want ? ' cho đơn hàng / quán' : ''}` : ''}`, at: penAt(A.pen), icon: A.icon, value: M ? M[1] * PRODUCTS[M[0]].price : Math.round(A.price * 0.4) };
+      }
       for (const id of penIds(sc)) { const s = simAnimal(id); if (s && s.yield && s.status !== 'sick' && mFree('a:' + id)) { const item = s.A.meat || s.A.product, n = s.yield; if (farm.collect(id)) return { kind: 'collect', text: `${s.A.meat ? 'xuất chuồng' : 'thu'} ${n} ${PRODUCTS[item].icon}`, at: penAt(s.A.pen), value: n * PRODUCTS[item].price, icon: '🧺' }; } }
       // feed a little before they go hungry (a full day of feed at once)
       for (const id of penIds(sc)) { const s = simAnimal(id); if (s && s.status !== 'dead' && s.fedLeft <= 6 * HOUR && mFree('a:' + id) && buySome('feed', s.A.feed) && farm.feedAnimal(id)) return { kind: 'feed', text: `cho ${s.A.icon} ăn`, at: penAt(s.A.pen), icon: '🥣' }; }
@@ -3206,7 +3242,7 @@
       // first an animal whose produce an order / the kitchen is short of (if it pays back within 8 days), else the
       // fastest payback within 5 days; always with 3x the price (and its feed) in the purse
       const L = level(), D = mDemand(t), ok = Object.entries(ANIMALS).filter(([, A]) => A.lvl <= L && (sc.pen === 'any' || A.pen === sc.pen) && penFree(A.pen) > 0 && mCanInvest(A.price + feedDay(A) * 2, { line: 'ranch', key: 'animal', payback: payback(A) }));
-      const forUse = ok.filter(([, A]) => D.short[A.meat || A.product] > 0 && payback(A) <= mRisk().payback + 3).sort((a, b) => payback(a[1]) - payback(b[1]))[0];
+      const forUse = ok.filter(([k, A]) => (D.short[A.meat || A.product] > 0 || (OLD_MEAT[k] && D.short[OLD_MEAT[k][0]] > 0)) && payback(A) <= mRisk().payback + 3).sort((a, b) => payback(a[1]) - payback(b[1]))[0];
       const pick = forUse || ok.filter(([, A]) => payback(A) <= mRisk().payback).sort((a, b) => payback(a[1]) - payback(b[1]))[0];
       if (pick && mFund(pick[1].price + feedDay(pick[1]) * 2, { line: 'ranch', key: 'animal', what: `mua ${pick[1].name}`, payback: payback(pick[1]) }) && farm.buyAnimal(pick[0])) {
         const A = pick[1], it = A.meat || A.product;
@@ -4294,11 +4330,13 @@
         const s = simAnimal(id); if (!s) return '';
         const A = s.A, name = `${A.icon} ${A.name}${s.status === 'baby' ? ' con' : ''}`;
         let info = '', acts = '';
-        if (s.status === 'dead') { info = '<span style="color:#c8a080">đã chết</span>'; acts = B(`remove:${id}`, '🧹 Dọn'); }
+        if (s.status === 'dead') { info = `<span style="color:#c8a080">${s.aged ? 'chết già' : 'đã chết'}</span>`; acts = B(`remove:${id}`, '🧹 Dọn'); }
         else if (s.status === 'sick') { info = `<span style="color:#ffb08a">ốm! chết sau ${fmtDur(s.left)}</span>`; acts = B(`cure:${id}`, `💊 Chữa (${have('med')})`, have('med') > 0) + (s.fedLeft <= 12 * HOUR ? B(`feed:${id}`, `🥣 (${A.feed})`, have('feed') >= A.feed) : ''); }
         else {
           info = s.status === 'baby' ? `lớn ${Math.round(s.progress * 100)}% · còn ${fmtDur(s.left)}` : s.yield ? (A.meat ? `sẵn xuất chuồng: ${s.yield} ${PRODUCTS[A.meat].icon}${s.fresh ? '' : ' (đang giảm)'}` : `có ${s.yield} ${PRODUCTS[A.product].icon}${s.fresh ? '' : ' (đang hỏng dần)'}`) : A.meat ? 'trưởng thành' : `ra ${PRODUCTS[A.product].icon} ${Math.round(s.prodProgress * 100)}%`;
           info += s.hungry ? ' · <span style="color:#ffb08a">đói!</span>' : ` · no ${fmtDur(s.fedLeft)}`;
+          info += s.old ? ` · <b style="color:#ff9a6a">già, cần bán! hết tuổi sau ${fmtDur(s.lifeLeft)}</b>` : ` · tuổi ${Math.floor(s.ageDays * 10) / 10}/${A.life} ngày`;
+          if (s.old && s.adult) acts += B(`sellold:${id}`, OLD_MEAT[s.a.kind] ? `🔪 Bán (${OLD_MEAT[s.a.kind][1]} ${PRODUCTS[OLD_MEAT[s.a.kind][0]].icon})` : `💰 Bán ${money(Math.round(A.price * 0.4))} xu`);
           if (s.yield) acts += B(`collect:${id}`, A.meat ? '🚚 Xuất' : '🧺 Thu');
           if (s.fedLeft <= 12 * HOUR) acts += B(`feed:${id}`, `🥣 Cho ăn (${A.feed})`, have('feed') >= A.feed);
         }
@@ -4694,7 +4732,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '16:43 12-11';
+    const build = '16:56 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -4892,6 +4930,7 @@
     if (act === 'cure') farm.cureAnimal(a1);
     if (act === 'collect') farm.collect(a1);
     if (act === 'remove') farm.removeAnimal(a1);
+    if (act === 'sellold') farm.sellOld(a1);
     if (act === 'feedAll') farm.allAnimals('feedAnimal', a1);
     if (act === 'collectAll') farm.allAnimals('collect', a1);
     if (act === 'incubate') farm.incubate(Number(a1), a2);
@@ -6677,15 +6716,63 @@
   // ── The town's food street (2026-11-12): bánh mì cart, drinks stall, restaurant. Customers an hour follow the time of
   // day (curve), the farm's / zoo's draw, today's visitors and campers, the weekend and the weather; each one buys from
   // the barn first (what the orders hold stays), marked up, else the stall's own basic item (its ingredients bought).
+  // menus (user 2026-11-12: "bán xuất ăn, uống với giá hợp lí, lời ít nhất x1.5, không lỗ"; meat / eggs / milk from the
+  // pens, vegetables and fruit from the barn; the drinks stall makes tea, juices and smoothies). A serving = main / per
+  // (per = servings from one unit; under 1 = several units a serving) + a side vegetable / sidePer + base (bread, rice,
+  // ice, sugar… bought). Price = ceil(cost x max(1.5, mul) x the level's mark): never under 1.5x its cost.
+  const VEG = ['cai', 'hanh', 'carrot', 'khoai', 'ot', 'tomato', 'ngo', 'san'];
+  const FISHY = () => ['fish', 'perch', 'loc', 'catfish', ...Object.keys(GOODS).filter((k) => k.startsWith('f:'))];
   const SHOP = {
-    banhmi: { role: 'baker', icon: '🥖', cat: 'Quầy bánh mì', base: 3, mul: 1.5, curve: [[6, 9, 1.8], [9, 11, 0.8], [11, 13, 1.1], [13, 16, 0.6], [16, 19, 1.1], [19, 22, 0.5]],
-      wares: () => ['d:banhmi', 'd:bosua', 'd:banhkem'].filter((k) => GOODS[k]), basic: { name: 'bánh mì thịt', icon: '🥖', price: 15, cost: 8 }, wait: 'nướng bánh, xếp bánh ra quầy' },
-    cafe: { role: 'barista', icon: '🧋', cat: 'Quán nước', base: 4, mul: 1.8, curve: [[6, 9, 1.6], [9, 11, 1.0], [11, 13, 0.7], [13, 17, 1.4], [17, 19, 0.8], [19, 22, 1.1]],
-      wares: () => ['caphe', 'cam', 'chanh', 'dua', 'nho', 'honey', 'dau'].filter((k) => GOODS[k]), basic: { name: 'trà đá', icon: '🍵', price: 6, cost: 1 }, wait: 'lau ly, pha sẵn đá' },
-    restaurant: { role: 'waiter', icon: '🍽️', cat: 'Nhà hàng', base: 2.5, mul: 1.6, curve: [[6, 10, 0.3], [10, 13, 1.9], [13, 17, 0.5], [17, 21, 1.9], [21, 22, 0.6]],
-      wares: () => Object.keys(DISHES).filter((k) => !['d:banhmi'].includes(k)), basic: { name: 'cơm phần', icon: '🍛', price: 32, cost: 18 }, wait: 'lau bàn, bày đũa bát' },
+    banhmi: { role: 'baker', icon: '🥖', cat: 'Quầy bánh mì', base: 3, mul: 1.5, est: 7, curve: [[6, 9, 1.8], [9, 11, 0.8], [11, 13, 1.1], [13, 16, 0.6], [16, 19, 1.1], [19, 22, 0.5]], wait: 'nướng bánh, xếp bánh ra quầy',
+      menu: [{ n: 'Bánh mì thịt heo', i: '🥖', main: ['pork'], per: 5, side: 4, base: 4 }, { n: 'Bánh mì gà', i: '🥖', main: ['chickenmeat'], per: 3, side: 4, base: 4 },
+        { n: 'Bánh mì bò', i: '🥖', main: ['beef'], per: 5, side: 4, base: 4 }, { n: 'Bánh mì trứng', i: '🥚', main: ['egg', 'duckegg'], per: 1, base: 4 },
+        { n: 'Bánh mì lò bếp trại', i: '🍞', main: ['d:banhmi'], per: 1, base: 0 }],
+      basic: { n: 'Bánh mì pate', i: '🥖', base: 9 } },
+    cafe: { role: 'barista', icon: '🧋', cat: 'Quán nước', base: 4, mul: 1.8, est: 6, curve: [[6, 9, 1.6], [9, 11, 1.0], [11, 13, 0.7], [13, 17, 1.4], [17, 19, 0.8], [19, 22, 1.1]], wait: 'lau ly, pha sẵn đá',
+      menu: [{ n: 'Trà mật ong', i: '🍯', main: ['honey'], per: 4, base: 2 }, { n: 'Cà phê sữa đá', i: '☕', main: ['caphe'], per: 4, base: 3 }, { n: 'Trà sữa', i: '🧋', main: ['milk', 'goatmilk'], per: 3, base: 3 },
+        { n: 'Nước ép cam', i: '🍊', main: ['cam'], per: 2, base: 1 }, { n: 'Nước chanh', i: '🍋', main: ['chanh'], per: 3, base: 1 }, { n: 'Nước ép dứa', i: '🍍', main: ['bi'], per: 4, base: 1 },
+        { n: 'Nước ép dưa lưới', i: '🍈', main: ['dua'], per: 4, base: 1 }, { n: 'Nước ép nho', i: '🍇', main: ['nho'], per: 2, base: 1 }, { n: 'Nước ép táo', i: '🍎', main: ['qtao'], per: 1, base: 1 },
+        { n: 'Nước ép lê', i: '🍐', main: ['qle'], per: 1, base: 1 }, { n: 'Trà đào', i: '🍑', main: ['qdao'], per: 2, base: 2 },
+        { n: 'Sinh tố bơ', i: '🥑', main: ['bo'], per: 3, base: 3 }, { n: 'Sinh tố dâu', i: '🍓', main: ['dau'], per: 0.5, base: 3 },
+        { n: 'Sinh tố rau củ', i: '🥤', main: ['carrot', 'tomato', 'hanh', 'cai'], per: 0.5, base: 2 }],
+      basic: { n: 'Trà đá', i: '🧊', base: 1 } },
+    restaurant: { role: 'waiter', icon: '🍽️', cat: 'Nhà hàng', base: 2.5, mul: 1.6, est: 16, curve: [[6, 10, 0.3], [10, 13, 1.9], [13, 17, 0.5], [17, 21, 1.9], [21, 22, 0.6]], wait: 'lau bàn, bày đũa bát',
+      menu: [{ n: 'Cơm gà', i: '🍗', main: ['chickenmeat'], per: 2, side: 2, base: 5 }, { n: 'Cơm vịt', i: '🍗', main: ['duckmeat'], per: 2, side: 2, base: 5 },
+        { n: 'Cơm sườn heo', i: '🍖', main: ['pork'], per: 3, side: 2, base: 5 }, { n: 'Lẩu dê', i: '🍲', main: ['goatmeat'], per: 2, side: 1, base: 6 },
+        { n: 'Cừu nướng', i: '🍖', main: ['mutton'], per: 2, side: 2, base: 4 }, { n: 'Bò lúc lắc', i: '🥩', main: ['beef'], per: 3, side: 2, base: 5 },
+        { n: 'Thỏ nướng', i: '🍖', main: ['rabbitmeat'], per: 2, side: 2, base: 4 }, { n: 'Đà điểu xào', i: '🥩', main: ['ostrichmeat'], per: 3, side: 2, base: 5 },
+        { n: 'Cơm cá kho', i: '🐟', main: 'fish', per: 1, side: 2, base: 5 }, { n: 'Cơm trứng', i: '🍳', main: ['egg', 'duckegg'], per: 0.5, side: 2, base: 5 },
+        { n: 'Canh rau', i: '🥬', main: 'veg', per: 0.5, base: 3 }, { n: 'Món bếp trại', i: '🍛', main: 'dish', per: 1, base: 0 }],
+      basic: { n: 'Cơm phần', i: '🍛', base: 18 } },
   };
+  const mainKeys = (m) => (m.main === 'veg' ? VEG : m.main === 'fish' ? FISHY() : m.main === 'dish' ? Object.keys(DISHES).filter((k) => k !== 'd:banhmi') : m.main).filter((k) => GOODS[k]);
+  // what a shop asks the farm to keep / grow / breed: [item, qty] (meat a couple, eggs / milk / fruit a few, vegetables)
+  function shopNeeds(id) {
+    const out = new Map();
+    for (const m of SHOP[id].menu) { if (m.main === 'dish' || m.main === 'fish') continue; const ks = mainKeys(m); for (const k of ks.slice(0, m.main === 'veg' ? 8 : 1)) out.set(k, Math.max(out.get(k) || 0, PRODUCTS[k] ? 2 : 2)); if (m.side) for (const v of VEG.slice(0, 3)) out.set(v, Math.max(out.get(v) || 0, 2)); }
+    return [...out];
+  }
   const SHOP_OF = Object.fromEntries(Object.entries(SHOP).map(([id, S]) => [S.role, id]));
+  const shopMark = (id, L = facLv(id)) => Math.max(1.5, SHOP[id].mul) * facFx('shopMark', id, L);
+  // the prepared stock: servings left from a unit already cut (persistent, per shop)
+  const shopPrep = (id) => save.get('shopprep/' + id, {});
+  // the cheapest way to make menu item m now (held = goods the orders keep): { k, units, cost, veg } or null
+  function shopCanMake(id, m, held, used, prep) {
+    const keys = mainKeys(m), uPer = m.per >= 1 ? 1 : Math.round(1 / m.per), sPer = m.per >= 1 ? m.per : 1;
+    const free = (k) => have(k) - (held[k] || 0) - (used[k] || 0);
+    const k = keys.filter((x) => (prep[x] || 0) >= 1 || free(x) >= uPer).sort((a, b) => free(b) - free(a))[0]; if (!k) return null;
+    let veg = null; if (m.side) { veg = (prep.veg || 0) >= 1 ? prep.vegK || VEG.find((x) => GOODS[x]) : VEG.filter((x) => free(x) >= 1).sort((a, b) => free(b) - free(a))[0]; if (!veg) return null; }
+    const cost = (priceOf(k) * uPer) / sPer + (veg ? priceOf(veg) / m.side : 0) + m.base;
+    return { k, uPer, sPer, veg, cost };
+  }
+  // the menu as it stands (what can be made now), with prices
+  function shopMenuNow(id) {
+    const held = barHeld(farmNow()), prep = shopPrep(id), mk = shopMark(id), S = SHOP[id], out = [];
+    for (const m of S.menu) { const c = shopCanMake(id, m, held, {}, prep); if (c) out.push({ n: m.n, i: m.i, cost: c.cost, price: Math.ceil(c.cost * mk) }); }
+    out.push({ n: S.basic.n, i: S.basic.i, cost: S.basic.base, price: Math.ceil(S.basic.base * mk) });
+    return out;
+  }
+  window.__forestShops = () => Object.fromEntries(Object.keys(SHOP).map((id) => [id, { menu: shopMenuNow(id), menuAll: Object.fromEntries(SHOP[id].menu.map((m) => [m.n, 1])), needs: shopNeeds(id) }]).concat([['needs', Object.keys(SHOP).flatMap((id) => shopNeeds(id))]]));
   const SHOP_CAT = Object.fromEntries(Object.entries(SHOP).map(([id, S]) => ['shop:' + id, S.cat]));
   const SHOP_OPEN = [6, 22];
   const shopKey = (id, t = farmNow()) => `shop/${id}/${dayNo(t)}`;
@@ -6704,31 +6791,39 @@
   function shopExpectDay(id, L = facLv(id), t = farmNow()) {
     const S = SHOP[id], d0 = new Date(t); let g = 0;
     for (let h = SHOP_OPEN[0]; h < SHOP_OPEN[1]; h++) { d0.setHours(h, 30, 0, 0); g += shopRate(id, d0.getTime(), L); }
-    const m = (S.basic.price * facFx('shopMark', id, L) - S.basic.cost) * 1.2;
+    const m = S.est * facFx('shopMark', id, L);
     return { guests: Math.round(g * 0.85), margin: Math.round(g * 0.85 * m) };
   }
-  // the seller's round: serve the customers that came since the last round
+  // the seller's round: serve the customers that came since the last round. Each one gets something from the menu
+  // that can be made (a random pick among them, so the menu turns over), else the basic item; ingredients come out of
+  // the barn (what the orders hold stays), the bought part (bread, rice, ice…) is paid in cash; price ≥ 1.5x the cost.
   function shopJob(t, w) {
     const id = SHOP_OF[w.role], I = id && XISLE[id], S = SHOP[id];
     if (!I || !xBuilt(id, t) || !shopOpenNow(id, t)) return null;
     const key = shopKey(id, t), rec = shopRec(id, t), d0 = new Date(t); d0.setHours(SHOP_OPEN[0], 0, 0, 0);
-    const last = Math.max(rec.last || 0, d0.getTime()), dt = Math.min(HOUR, t - last), L = facLv(id), mk = facFx('shopMark', id, L);
+    const last = Math.max(rec.last || 0, d0.getTime()), dt = Math.min(HOUR, t - last), mk = shopMark(id);
     const at = { x: I.stall.x, y: I.stall.y - 12 }, stand = I.stand;
     if (dt < 4 * 60000) return null;
     const want = (shopRate(id, t) * dt) / HOUR, n = Math.floor(want) + (hash01(t, 7373 + id.length, 3) < want % 1 ? 1 : 0);
     rec.last = t;
     if (n <= 0) { save.set(key, rec); return { kind: 'count', line: 'shops', text: `${S.wait}, chờ khách`, at, stand, icon: S.icon, value: 0 }; }
-    const held = barHeld(t), used = {}, names = [];
-    let total = 0, cost = 0, basic = 0;
+    const held = barHeld(t), used = {}, prep = { ...shopPrep(id) }, names = [];
+    let total = 0, cost = 0, cash = 0;
     for (let i = 0; i < n; i++) {
-      const k = S.wares().filter((x) => have(x) - (held[x] || 0) - (used[x] || 0) > 0).sort((a, b) => (have(b) - (used[b] || 0)) - (have(a) - (used[a] || 0)))[0];
-      if (k) { used[k] = (used[k] || 0) + 1; total += Math.round(priceOf(k) * S.mul * mk); cost += priceOf(k); names.push(GOODS[k].icon); }
-      else { total += Math.round(S.basic.price * mk); basic += S.basic.cost; cost += S.basic.cost; names.push(S.basic.icon); }
+      const can = S.menu.map((m) => [m, shopCanMake(id, m, held, used, prep)]).filter(([, c]) => c);
+      const pick = can.length ? can[Math.floor(hash01(t + i * 977, 4141 + i, id.length) * can.length)] : null;
+      if (pick) {
+        const [m, c] = pick;
+        if ((prep[c.k] || 0) >= 1) prep[c.k] -= 1; else { used[c.k] = (used[c.k] || 0) + c.uPer; prep[c.k] = (prep[c.k] || 0) + c.sPer - 1; }
+        if (c.veg) { if ((prep.veg || 0) >= 1) prep.veg -= 1; else { used[c.veg] = (used[c.veg] || 0) + 1; prep.veg = (prep.veg || 0) + m.side - 1; prep.vegK = c.veg; } }
+        const price = Math.ceil(c.cost * mk); total += price; cost += c.cost; cash += m.base; names.push(m.i);
+      } else { const price = Math.ceil(S.basic.base * mk); total += price; cost += S.basic.base; cash += S.basic.base; names.push(S.basic.i); }
     }
-    ledger(total - basic, 1, Object.fromEntries(Object.entries(used).map(([k, q]) => [k, -q])));
-    rec.sold = (rec.sold || 0) + n; rec.in = (rec.in || 0) + total - basic; save.set(key, rec);
+    ledger(total - cash, 1, Object.fromEntries(Object.entries(used).map(([k, q]) => [k, -q])));
+    save.set('shopprep/' + id, prep);
+    rec.sold = (rec.sold || 0) + n; rec.in = (rec.in || 0) + total - cash; rec.cost = (rec.cost || 0) + cost; save.set(key, rec);
     for (const k0 of save.keys(`shop/${id}/`)) if (Number(k0.split('/')[2]) < dayNo(t) - 2) save.set(k0, null);
-    return { kind: 'sell', cat: 'shop:' + id, line: 'shops', text: `bán cho ${n} khách (${names.join('')}) +${money(total - basic)} xu`, at, stand, icon: S.icon, value: total - cost };
+    return { kind: 'sell', cat: 'shop:' + id, line: 'shops', text: `bán cho ${n} khách (${names.join('')}) thu ${money(total)} xu, vốn ~${money(Math.round(cost))} xu`, at, stand, icon: S.icon, value: Math.round(total - cost) };
   }
   const xProj = (id) => save.get('proj/' + id, null);
   const xBuilt = (id, t = farmNow()) => { const p = xProj(id); return !!p && t >= p.done; };
@@ -7349,7 +7444,8 @@
           if (built && id === 'camp') { const nn = xNight(t); more = nn && nn.camp ? `đêm nay ${nn.camp} khách${nn.campFire ? ', có lửa trại' : ', hết củi'}` : 'khách đến lúc 19:00'; }
           if (built && SHOP[id]) {
             const rc = shopRec(id, t), sl = mStaff().find((w) => w.role === SHOP[id].role), E = shopExpectDay(id);
-            more = `mở ${SHOP_OPEN[0]}h–${SHOP_OPEN[1]}h · ${sl ? `${staffName(sl.id)} bán` : '<b style="color:#ffb08a">chưa có người bán nên đóng cửa</b> (thuê ở 👔)'} · hôm nay ${rc.sold || 0} khách, +${money(rc.in || 0)} xu · ước ~${E.guests} khách/ngày`;
+            const mn = shopMenuNow(id);
+            more = `<div style="margin:2px 0">Thực đơn (giá ≥ 1,5 lần vốn): ${mn.map((x) => `${x.i} ${x.n} <b>${money(x.price)}</b>`).join(' · ')}</div>` + `mở ${SHOP_OPEN[0]}h–${SHOP_OPEN[1]}h · ${sl ? `${staffName(sl.id)} bán` : '<b style="color:#ffb08a">chưa có người bán nên đóng cửa</b> (thuê ở 👔)'} · hôm nay ${rc.sold || 0} khách, +${money(rc.in || 0)} xu · ước ~${E.guests} khách/ngày`;
           }
           if (built && id === 'bar') {
             const b = barRec(t), E = barExpect(t), own = save.get(`barown/${dayNo(t)}`, null);
