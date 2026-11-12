@@ -1973,7 +1973,7 @@
   };
   const facLv = (id) => 1 + Math.max(0, Math.min(2, save.get(`flv/${id}`, 0)));
   const facFx = (k, id, L = facLv(id)) => FX[k][L - 1];
-  const zooCap = () => facFx('zooCap', 'zoo'), campFee = () => facFx('campFee', 'camp'), loanRate = () => facFx('bankRate', 'bank');
+  const zooCap = () => facFx('zooCap', 'zoo'), campFee = () => facFx('campFee', 'camp'), loanRate = () => Math.max(0.01, facFx('bankRate', 'bank') - (mStaff().some((w) => w.role === 'accountant') ? 0.005 : 0));
   const PEN_CAP = new Proxy({}, { get: (_, pen) => upgValue(pen) });
   function simAnimal(id, now = farmNow()) {
     const a = save.get(`animal/${id}`);
@@ -2268,6 +2268,9 @@
     beekeeper: { name: 'Nuôi ong', icon: '🐝', ap: 4, wage: 25, hire: 150, jobs: ['bees'], need: 'bees' },
     gardener: { name: 'Làm vườn', icon: '🍑', ap: 4, wage: 25, hire: 150, jobs: ['orchard'], need: 'orchard' },
     camphost: { name: 'Quản lý cắm trại', icon: '⛺', ap: 3, wage: 30, hire: 180, jobs: ['camp'], need: 'camp' },
+    // user 2026-11-12 "thêm 1 kế toán nữa đi": takes payroll + the TJBank loan off the manager, talks the bank's rate
+    // down 0.5 points a day, checks the books every couple of hours and writes the cash book every morning
+    accountant: { name: 'Kế toán', icon: '🧮', ap: 3, wage: 40, hire: 200, jobs: ['payroll', 'acct'] },
     bartender: { name: 'Pha chế', icon: '🍹', ap: 5, wage: 45, hire: 220, jobs: ['bar'], need: 'bar', night: true },
     // older saves: hired before the trades were split
     fisher: { name: 'Ngư dân', icon: '🎣', ap: 5, wage: 25, hire: 100, jobs: ['rescue', 'dead', 'pond', 'water', 'fish'] },
@@ -2379,9 +2382,12 @@
     const st = mStaff(), R = ROLES[role], crew = DATA.crew;
     const usedS = new Set(st.map((w) => w.sheet)), usedN = new Set(st.map((w) => w.name));
     const sheets = crew ? [...Array(crew.n).keys()].filter((i) => !usedS.has(i)) : [0];
-    const names = MNAMES.filter((n) => !usedN.has(n));
+    // user 2026-11-12 "kế toán xinh vào nhé": the accountant is always a pretty girl: the blonde "Woman" sheet with the
+    // blue bow (Ninja Adventure, crew index 67 = ninjachars ORDER 'Woman'; else Princess 50 / EggGirl 10), a girl's name
+    const pretty = role === 'accountant' ? [67, 50, 10].find((i) => crew && i < crew.n && !usedS.has(i)) : undefined;
+    const names = (role === 'accountant' ? ['Ngọc Anh', 'Thu Trang', 'Minh Thư', 'Bảo Ngọc', 'Khánh Vy', 'Diệu Linh'] : MNAMES).filter((n) => !usedN.has(n));
     const w = { id: 's' + t.toString(36) + Math.random().toString(36).slice(2, 4), name: name || names[Math.floor(Math.random() * names.length)] || 'Nhân viên', role,
-      sheet: sheets[Math.floor(Math.random() * sheets.length)] || 0, hired: t, acc: 2 }; // two actions in hand: starts work right away
+      sheet: pretty != null ? pretty : sheets[Math.floor(Math.random() * sheets.length)] || 0, hired: t, acc: 2 }; // two actions in hand: starts work right away
     if (R.hire) ledger(-R.hire, 0, {});
     mAddWorker(w);
     return w;
@@ -2591,7 +2597,7 @@
   const LINES = {
     field: { name: '🌱 Ruộng', roles: ['farmer'] }, ranch: { name: '🐄 Chuồng trại', roles: ['poultry', 'cattle', 'rancher'] }, pond: { name: '🐟 Ao cá', roles: ['pondkeeper', 'fisher'] },
     kitchen: { name: '🍳 Bếp', roles: ['cook'] }, shop: { name: '🛒 Bán hàng, đơn hàng', roles: ['seller'] }, fishing: { name: '🎣 Câu cá', roles: ['angler'] }, wood: { name: '🪓 Củi', roles: ['woodcutter'] },
-    zoo: { name: '🦁 Sở thú', roles: ['zookeeper'] }, visit: { name: '🚶 Du khách', roles: ['guide'] }, isles: { name: '🏝️ Trại ong, vườn, cắm trại', roles: ['beekeeper', 'gardener', 'camphost'] }, bar: { name: '🍹 Quán bar, vũ trường', roles: ['bartender'] }, bank: { name: '🏦 Cổ phần TJBank', roles: [] }, staff: { name: '🏘️ Nhà ở nhân viên', roles: [] },
+    zoo: { name: '🦁 Sở thú', roles: ['zookeeper'] }, visit: { name: '🚶 Du khách', roles: ['guide'] }, isles: { name: '🏝️ Trại ong, vườn, cắm trại', roles: ['beekeeper', 'gardener', 'camphost'] }, bar: { name: '🍹 Quán bar, vũ trường', roles: ['bartender'] }, bank: { name: '🏦 TJBank, kế toán', roles: ['accountant'] }, staff: { name: '🏘️ Nhà ở nhân viên', roles: [] },
   };
   const ROLE_LINE = Object.fromEntries(Object.entries(LINES).flatMap(([k, L]) => L.roles.map((r) => [r, k])));
   const KIND_LINE = { harvest: 'field', plant: 'field', replant: 'field', sow: 'field', water: 'field', fert: 'field', spray: 'field', land: 'field',
@@ -2792,9 +2798,12 @@
     const broke = mBroke();
     if (w.role === 'boss') {
       mBrokeNote(farmNow(), w.id);
+      if (mStaff().some((x) => x.role === 'accountant')) { const L = mJobs({ ...w, role: 'boss!' }, t); return L; }
       return broke ? ['payroll', 'rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
         : ['payroll', 'rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'sell', 'water', 'wood', 'fish'];
     }
+    if (w.role === 'boss!') { const broke = mBroke(); return (broke ? ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
+      : ['rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'sell', 'water', 'wood', 'fish']); } // the manager without payroll (the accountant has it)
     if (barTender(t) === w.id && (mLocalH(t) >= MWORK[1] || mLocalH(t) < MWORK[0])) return ['bar'];
     const j = HELP[w.role] ? ROLES[w.role].jobs.concat('help') : ROLES[w.role].jobs;
     return broke && !j.includes('fish') && w.role !== 'woodcutter' ? j.concat('fish') : j;
@@ -3019,6 +3028,7 @@
       : !count('hr') && st.length >= 4 ? ['hr', 'đông người, cần chấm công và ghi sổ ai chăm ai lười']
       : !count('guide') && guideAllowed() ? ['guide', 'sở thú đã có khách: người hướng dẫn đón được gấp đôi số đoàn, thêm tiền tip']
       : !count('zookeeper') && zooIds().length >= 3 ? ['zookeeper', 'sở thú đông thú, cần người cho ăn']
+      : !count('accountant') && ((mLoan().owed || 0) >= 300 || st.length >= 8) ? ['accountant', (mLoan().owed || 0) >= 300 ? 'đang nợ TJBank, có kế toán thương lượng được lãi thấp hơn 0,5%/ngày và lo trả nợ' : 'đông người, cần kế toán lo lương, sổ quỹ, ngân hàng']
       : !count('bartender') && xBuilt('bar', t) ? ['bartender', 'quán bar cần người pha chế ca đêm (đỡ trả tăng ca x2 cho người ca ngày)']
       : !count('camphost') && xBuilt('camp', t) ? ['camphost', 'khu cắm trại có người đón thì khách đến đủ (không ai đón chỉ ~60%)']
       : !count('beekeeper') && xBuilt('bees', t) ? ['beekeeper', 'trại ong có người chuyên chăm: mật thêm 30%, nông dân đỡ phải ra đảo']
@@ -3080,6 +3090,21 @@
       return paid ? { kind: 'pay', text: `trả nợ lương ${money(paid)} xu`, at: barnAt(), icon: '💵', big: true } : null;
     },
     // the HR clerk: takes attendance and keeps the staff book (a round every 2 hours)
+    acct(t, w) {
+      const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 }), day = dayNo(t);
+      const at = FARM.bank ? { x: FARM.bank.x + 25, y: FARM.bank.y + 50 } : barnAt();
+      // once a day: the cash book for yesterday
+      if (save.get('acct/book') !== day) {
+        save.set('acct/book', day);
+        const y = mDayRec(t - 864e5), ln = mLoan().owed || 0, owed = mDebtTotal(), wg = mWages();
+        const net = Math.round((y.in || 0) - (y.out || 0));
+        mLog(t, w.id, `🧮 Sổ quỹ hôm qua: thu ${money(y.in || 0)}, chi ${money(y.out || 0)} (${net >= 0 ? 'dư' : 'hụt'} ${money(Math.abs(net))} xu). Két ${money(coins())} xu${ln ? `, nợ TJBank ${money(ln)} xu (lãi ${(loanRate() * 100).toLocaleString('vi-VN')}%/ngày nhờ kế toán thương lượng)` : ', không nợ ngân hàng'}${owed ? `, nợ lương ${money(owed)} xu` : ''}; lương mai ${money(wg)} xu.`, 0);
+        return { kind: 'count', text: 'ghi sổ quỹ hôm qua', at, icon: '🧮', value: 0 };
+      }
+      if (b.acctAt && t - b.acctAt < 2 * HOUR) return null;
+      b.acctAt = t; save.set(`mgr/day/${day}`, d);
+      return { kind: 'count', text: mPick(['đối chiếu sổ thu chi', 'kiểm kê hàng trong kho', 'tính dòng tiền đến ngày lương']), at, icon: '🧮', value: 0 };
+    },
     hr(t, w) {
       const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 });
       if (b.hrAt && t - b.hrAt < 2 * HOUR) return null;
@@ -4374,7 +4399,7 @@
   const MONEY_FMT = new Intl.NumberFormat('vi-VN'); // one formatter (toLocaleString built a new one per call: ~20 ms/s)
   const money = (n) => (n < 0 ? '−' : '') + MONEY_FMT.format(Math.abs(Math.round(n)));
   const staffName = (id) => { const w = mStaff().find((x) => x.id === id); return w ? `${ROLES[w.role].icon} ${w.name}` : 'Người cũ'; };
-  const JOB_VI = { bees: 'lấy mật, chăm tổ ong', orchard: 'hái quả, chăm vườn', camp: 'dọn lều, xếp củi đón khách cắm trại', bar: 'pha chế, phục vụ quán bar đêm', rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
+  const JOB_VI = { acct: 'ghi sổ quỹ, đối chiếu thu chi', bees: 'lấy mật, chăm tổ ong', orchard: 'hái quả, chăm vườn', camp: 'dọn lều, xếp củi đón khách cắm trại', bar: 'pha chế, phục vụ quán bar đêm', rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
   // ── The manager's spoken report (user 2026-11-10: "quản lý báo cáo với tôi mọi thứ giống kiểu kính thưa chủ nhân,
   // doanh thu, ai lười ai chăm, có nên sa thải ai, kế hoạch sắp tới… chứ không phải quăng cho tôi cái bảng thông số";
   // her portrait: hand-drawn in portrait.js, face_boss in forest-extra.png). She speaks as "em", the owner is "chủ nhân".
@@ -4652,7 +4677,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '15:04 12-11';
+    const build = '15:08 12-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -4687,7 +4712,7 @@
         + (p.full ? `Đã đủ ${mMax()} người.` : p.hiredToday ? 'Hôm nay đã thuê 1 người, mai thuê tiếp.'
           : !p.cash ? `Chờ két đủ ~${money(p.need)} xu (phí thuê + 1 ngày lương, sau khi tính đủ lương mai).`
           : !p.paid ? `Chờ lãi mỗi ngày vượt lương ${p.R.wage} xu (hiện ~${money(p.prof)}).` : 'Sẽ thuê ngay trong ca làm.');
-    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender'];
+    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender'];
     return `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>🤝 Tuyển thêm</b> <span style="opacity:.7">(${st.length}/${mMax()} người)</span></div>`
       + `<div style="font-size:12px;margin:4px 0">${status}</div>`
       + roles.map((r) => { const R = ROLES[r], n = st.filter((x) => x.role === r).length;
@@ -5712,6 +5737,7 @@
     : role === 'beekeeper' && XISLE.bees ? { x: XISLE.bees.items[0].stand.c * 16 + 8, y: XISLE.bees.items[0].stand.r * 16 + 8 }
     : role === 'gardener' && XISLE.orchard ? { x: XISLE.orchard.items[0].stand.c * 16 + 8, y: XISLE.orchard.items[0].stand.r * 16 + 8 }
     : role === 'camphost' && XISLE.camp ? { x: XISLE.camp.stand.c * 16 + 8, y: XISLE.camp.stand.r * 16 + 8 }
+    : role === 'accountant' && FARM.bank ? { x: FARM.bank.x + 25, y: FARM.bank.y + 50 }
     : role === 'bartender' && XISLE.bar ? { x: XISLE.bar.stand.c * 16 + 8, y: XISLE.bar.stand.r * 16 + 8 }
     : ['fisher', 'pondkeeper', 'angler'].includes(role) ? pondAt(1) : ['rancher', 'poultry'].includes(role) ? penAt('small') : role === 'cattle' ? penAt('big')
     : role === 'woodcutter' ? treeAt() || barnAt() : role === 'seller' ? shopAt() : barnAt();
@@ -5773,6 +5799,7 @@
     if (role === 'beekeeper' && XISLE.bees) { const it = mPick(XISLE.bees.items); return { kind: 'inspect', at: { x: it.x, y: it.y }, stand: it.stand, cos: 1 }; }
     if (role === 'gardener' && XISLE.orchard) { const it = mPick(XISLE.orchard.items); return { kind: mPick(['water', 'inspect']), at: { x: it.x, y: it.y - 4 }, stand: it.stand, cos: 1 }; }
     if (role === 'camphost' && XISLE.camp) { const tn = mPick(XISLE.camp.tents); return { kind: 'sweep', at: { x: tn.x, y: tn.y + 6 }, cos: 1 }; }
+    if (role === 'accountant') return { kind: 'count', at: FARM.bank ? { x: FARM.bank.x + 25, y: FARM.bank.y + 50 } : barnAt(), cos: 1 };
     if (role === 'bartender' && XISLE.bar) return { kind: 'count', at: { x: XISLE.bar.stall.x, y: XISLE.bar.stall.y - 12 }, stand: XISLE.bar.stand, cos: 1 };
     if (['poultry', 'cattle'].includes(role)) return { kind: animalIds().length ? 'feed' : 'sweep', at: penAt(role === 'cattle' ? 'big' : 'small'), cos: 1 };
     if (role === 'angler') { const spots = SPOTS.filter((x) => x.kind === 'fish'); if (spots.length) { const sp = spots[nearSpotIdx(spots.map((x) => ({ c: x.col, r: x.row })), v.staff)]; return { kind: 'fishMiss', at: { x: sp.tc * 16 + 8, y: sp.tr * 16 + 8 }, stand: { c: sp.col, r: sp.row }, cos: 1 }; } }
@@ -6187,7 +6214,7 @@
     signsNight(g, v, now, ph); // TJ FARM on the mountains + TJBank light up after dark
   }
   const ROLE_COL = { boss: '#ffd84a', farmer: '#9fe070', seller: '#ffb07a', fisher: '#7fd0ff', rancher: '#e8c0a0', cook: '#ff9ab0',
-    poultry: '#fff0a0', cattle: '#e8c0a0', pondkeeper: '#7fd0ff', angler: '#a0e0ff', woodcutter: '#d8a870', hr: '#d0c0ff', guide: '#ffb0e0', zookeeper: '#c8e0a0', beekeeper: '#ffd070', gardener: '#ffa0a0', camphost: '#a0d8a0', bartender: '#d0a0ff' };
+    poultry: '#fff0a0', cattle: '#e8c0a0', pondkeeper: '#7fd0ff', angler: '#a0e0ff', woodcutter: '#d8a870', hr: '#d0c0ff', guide: '#ffb0e0', zookeeper: '#c8e0a0', beekeeper: '#ffd070', gardener: '#ffa0a0', camphost: '#a0d8a0', bartender: '#d0a0ff', accountant: '#a0c8ff' };
   // ── the fishing lake (sand shore, water, a jetty) and the zoo (locked: shaded with a sign; open: its animals) ──
   function drawLake(now) {
     const L = FARM.lake; if (!L) return;
