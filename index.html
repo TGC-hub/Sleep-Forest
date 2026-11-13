@@ -2001,7 +2001,7 @@
     restaurant: { icon: '🍽️', names: ['Quán cơm', 'Nhà hàng', 'Nhà hàng TJ'], cost: [5000, 14000], lvl: [6, 8], line: 'shops',
       what: ['cơm phần, món từ bếp trại', 'nhà hàng: khách gấp ~1,5, giá x1,2', 'nhà hàng TJ: khách gấp ~2,2, giá x1,45'] },
     bank: { icon: '🏦', names: ['Khách vay TJBank', 'Góp vốn chi nhánh TJBank', 'Cổ đông lớn TJBank'], cost: [3000, 10000], lvl: [4, 6], line: 'bank',
-      what: ['lãi vay 3%/ngày', 'cổ tức 150 xu/ngày, lãi vay 2,5%, hạn mức x1,5', 'cổ tức 450 xu/ngày, lãi vay 2%, hạn mức x2'] },
+      what: ['mua tối đa 50 cổ phần (5%), lãi vay 3%/ngày', 'mua tối đa 200 cổ phần (20%), ngân hàng đông khách vay hơn (cổ tức nhiều hơn), lãi vay 2,5%, hạn mức x1,5', 'mua tối đa 510 cổ phần (51%, cổ đông chi phối), khách vay đông nhất, lãi vay 2%, hạn mức x2'] },
   };
   const FX = {
     barRate: [1, 1.6, 2.3], barCap: [6, 11, 16], barCover: [0, 8, 15], barDrink: [12, 16, 22], barMark: [8, 12, 18],
@@ -4703,6 +4703,7 @@
   }
   window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
+  window.__forestTJB = { day: (t) => tjbDay(t), sim: (d, t = farmNow()) => tjbSim(d, t), trade: (k, a) => tjbTrade(k, a), own: () => tjbOwn(), cap: () => tjbCap(), price: () => tjbPrice(), rec: (d) => tjbRec(d), hist: (n) => tjbHist(n), html: () => tjbHtml(), lines: (t = farmNow()) => tjbLines(t), init: () => tjbInit() };
   window.__forestMenu = { items: (id) => menuItems(id), lv: (id, n) => menuLv(id, menuItems(id).find((m) => m.n === n)), act: (id, n) => menuAct(id, slug(n)), price: (id, n) => { const m = menuItems(id).find((x) => x.n === n); return venuePrice(id, m, venueCost(m)); }, html: (id) => venueHtml({ id }, (x) => x), lines: (t = farmNow()) => venueLines(t), slug: (x) => slug(x) };
   window.__forestStory = { MILL, millState, millLv, millCanStart, millInvest, millPayback, millNext, evStep, evToday, evLines, EV, lifeStep, lifeOff, lifeMood, lifeLines, lifeAct, isBday, bdayOf, doyOf, wageOf, repNow: () => repNow(), millPanel: () => millPanelHtml((x) => x), bizStep, seaStep, innNight, rvStep, festStep, festOf, msStep, astroEvents, astroShootMul, rivalWar, rivalMul, colScan, colSeen, starsAvg, photoTake, bizLines, bizAct, JOBS, bizPanel: () => bizPanelHtml((x) => x), colPanel: () => colPanelHtml((x) => x), storyPanel: () => storyPanelHtml((x) => x), brief: () => mBriefHtml((x) => x) };
   farm.debug = { simCook, specialOf, priceOf, RECIPES, workReward, fuelOf };
@@ -5276,7 +5277,7 @@
     }
     say((fired.length ? `Em xin báo: em đã cho ${fired.join('; ')}. ` : '') + (watch.length ? `Em đang để ý ${watch.slice(0, 3).join(', ')}. Nếu vài ngày tới không khá lên em xin phép cho nghỉ; chủ nhân muốn giữ ai thì cứ dặn em ạ.` : 'Cả đội đang làm ổn, em chưa thấy ai cần cho nghỉ.'));
     // 4b. today's event, the staff's lives (2026-11-12)
-    for (const x of evLines(t).concat(lifeLines(t), bizLines(t), venueLines(t))) say(x);
+    for (const x of evLines(t).concat(lifeLines(t), bizLines(t), venueLines(t), tjbLines(t))) say(x);
     // 5. last night, the weather
     const nk = nightKey(t - 8 * HOUR), n = save.get(`night/${nk}`, null), bar = save.get(`bar/${dayNo(t - 864e5)}`, null), dd = xWx && xWx.daily;
     const night = [];
@@ -5522,7 +5523,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:29 13-11';
+    const build = '09:48 13-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -5640,7 +5641,7 @@
       + `<div style="font-size:13px">Hạn mức vay: ${money(lim)} xu (tăng theo ruộng, vật nuôi, cấp, sở thú) · còn vay được ${money(room)} xu.</div>`
       + `<div style="margin-top:6px">${[200, 500, 1000].map((a) => B(`loan:${a}`, `Vay ${a}`, room >= a)).join('')}</div>`
       + `<div>${B('repay:200', 'Trả 200', (L.owed || 0) > 0 && c >= Math.min(200, L.owed || 0))}${B('repay:all', `Trả hết · ${money(L.owed || 0)}`, (L.owed || 0) > 0 && c >= (L.owed || 0))}</div>`
-      + '<div style="font-size:12px;opacity:.7;margin-top:4px">Quản lý tự vay khi không đủ tiền trả lương, và tự trả khi két dư.</div>' + facHtml('bank');
+      + '<div style="font-size:12px;opacity:.7;margin-top:4px">Quản lý tự vay khi không đủ tiền trả lương, và tự trả khi két dư.</div>' + facHtml('bank') + tjbHtml();
   }
   function mailPanelHtml() {
     const list = mailList();
@@ -5701,6 +5702,7 @@
     if (act === 'evpick' && (a1 === 'a' || a1 === 'b')) { const k = 'ev/' + dayNo(), e = save.get(k); if (e && e.state === 'open') save.set(k, { ...e, pick: a1 }); }
     if (act === 'millup') millOwnerUp();
     if (act === 'mu') menuAct(a1, a2);
+    if (act === 'tjbbuy' || act === 'tjbsell') { const n = a1 === 'max' || a1 === 'all' ? a1 : Number(a1); if (act === 'tjbbuy' || confirm(`Bán ${n === 'all' ? 'hết' : n} cổ phần TJBank?`)) tjbTrade(act === 'tjbbuy' ? 'buy' : 'sell', n); }
     if (act === 'openv') return openPanel({ kind: 'venue', id: a1 });
     if (['rivalad', 'festno', 'innup', 'boatbuy', 'photo'].includes(act)) bizAct(act, a1, a2);
     if (['lgift', 'lwed', 'lraiseok', 'lraiseno'].includes(act)) lifeAct(act, a1);
@@ -7811,7 +7813,7 @@
     if (id === 'orchard') { const avg = ORCH.reduce((a, [k]) => a + priceOf(k), 0) / ORCH.length; return 3 * (up('fruit') - now('fruit')) * avg * S.fruit; }
     if (id === 'camp') { const est = (3.5 + (farmAppeal() + zooAppeal()) / 30) * S.camp; return est * ((1 + 0.35 * L) * up('campFee') - (1 + 0.35 * (L - 1)) * now('campFee')); }
     if (SHOP[id]) return Math.max(0, shopExpectDay(id, L + 1, t).margin - shopExpectDay(id, L, t).margin);
-    if (id === 'bank') return up('bankDiv') - now('bankDiv') + (mLoan().owed || 0) * (now('bankRate') - up('bankRate'));
+    if (id === 'bank') return (TJB.cap[L] - TJB.cap[L - 1]) * tjbDps() * 1.3 + (mLoan().owed || 0) * (now('bankRate') - up('bankRate')); // more shares allowed (x1.3: more customers)
     return 0;
   }
   function facUp(id, t, by) {
@@ -7839,12 +7841,111 @@
     return null;
   }
   // TJBank dividend, every morning, once the farm holds a stake (bank level 2+)
-  function facDividend(t) {
-    const dv = facFx('bankDiv', 'bank'); if (!dv) return;
-    ledger(dv, 0, {}); mCatAdd(t, 'in', 'Cổ tức TJBank', dv);
-    const boss = mStaff().find((w) => w.role === 'boss'); if (boss) mBook(t, boss.id, dv, dv, 'bank', 'bank');
-    mLog(t, boss ? boss.id : '', `🏦 Cổ tức TJBank hôm nay: +${money(dv)} xu (${FAC.bank.names[facLv('bank') - 1]})`, dv);
+  // ── TJBank shares (user 2026-11-13: "nâng cấp ngân hàng thì mua được cổ phiếu, cổ phần; càng nhiều cổ phần càng có lợi
+  // nhuận khi khách hàng bên ngoài vào ngân hàng vay tiền"; "làm theo những gì bạn cho là hay"). The bank has 1,000
+  // shares; its level sets how many the owner may hold (50 / 200 / 510 = control). Every day outside customers borrow
+  // (villagers, traders, the boat owners, even the rival farm): interest comes in, some pay late, now and then one
+  // defaults. Each morning the profit (interest − 30% running costs − bad debts) is paid out 70% as a dividend per share;
+  // the farm's own TJBank interest counts in the bank's takings too. The share price drifts toward a fair value (bank
+  // level, reputation, profit), jolts down on a default day; the owner buys (+2% fee) and sells (−2%) at it. The manager
+  // never trades: she only says in her report when the price is low / high. Keys: tjb/own, tjb/d/<day> (day = the
+  // business day booked the next morning: n, I, bad, P, dps, price (today's), own, div, top), tjb/init.
+  const TJB = { total: 1000, cap: [50, 200, 510], p0: 20, fee: 0.02, payout: 0.7, ops: 0.3 };
+  const TJB_WHO = [['🧑‍🌾', 'Nông dân làng bên', 800, 3000], ['🛒', 'Tiểu thương chợ', 500, 2500], ['🚚', 'Chủ xe chở hàng', 2000, 6000], ['🏗️', 'Thợ xây nhà', 1500, 5000],
+    ['🚤', 'Chủ ca nô du lịch', 3000, 8000], ['🐄', 'Trại bò làng bên', 2000, 7000], ['😤', 'Trại Phát Tài', 4000, 9000], ['🍜', 'Quán phở đầu làng', 600, 2000], ['🏫', 'Trường mầm non làng', 1000, 4000], ['⛪', 'Hội làng sửa đình', 2000, 5000]];
+  FC_INVEST.push('Mua cổ phần TJBank'); // buying shares is capital, not a running loss
+  const tjbOwn = () => Math.max(0, save.get('tjb/own', 0) || 0);
+  const tjbCap = () => TJB.cap[facLv('bank') - 1];
+  const tjbRec = (day) => save.get('tjb/d/' + day, null);
+  const tjbPrice = (day = dayNo()) => { for (let k = 0; k < 60; k++) { const r = tjbRec(day - k); if (r) return r.price; } return TJB.p0 * [1, 1.3, 1.7][facLv('bank') - 1]; };
+  const tjbHist = (n = 14, day = dayNo()) => { const out = []; for (let k = n; k >= 1; k--) { const r = tjbRec(day - k); if (r) out.push({ day: day - k, ...r }); } return out; };
+  const tjbDps = () => { const h = tjbHist(7); return h.length ? h.reduce((a, r) => a + r.dps, 0) / h.length : 0.6; };
+  // the day's lending (same on every device): who borrowed, how much, at what rate, who paid late / defaulted
+  function tjbSim(day, t) {
+    const L = facLv('bank'), n = Math.round((8 + evRnd(day, 1101) * 10) * [1, 1.4, 1.9][L - 1] * (0.8 + repNow(t) / 250)), loans = [];
+    let I = 0, bad = 0;
+    for (let i = 0; i < n; i++) {
+      const W = TJB_WHO[Math.floor(evRnd(day, 1110 + i) * TJB_WHO.length)], amt = Math.round((W[2] + evRnd(day, 1150 + i) * (W[3] - W[2])) / 10) * 10, rate = 0.02 + evRnd(day, 1190 + i) * 0.02;
+      const b = evRnd(day, 1230 + i) < 0.025, late = !b && evRnd(day, 1270 + i) < 0.08, got = b || late ? 0 : Math.round(amt * rate), loss = b ? Math.round(amt * 0.4) : 0;
+      I += got; bad += loss; loans.push({ i: W[0], who: W[1], amt, rate: Math.round(rate * 1000) / 10, bad: b, late });
+    }
+    return { n, loans, I, bad };
   }
+  // the old fixed dividend levels become shares once (what was paid for levels 2-3, at the starting price)
+  function tjbInit() {
+    if (save.get('tjb/init')) return;
+    save.set('tjb/init', 1);
+    const L = facLv('bank'); if (L < 2) return;
+    const paid = FAC.bank.cost.slice(0, L - 1).reduce((a, x) => a + x, 0), n = Math.min(TJB.cap[L - 1], Math.floor(paid / TJB.p0));
+    if (n > tjbOwn()) { save.set('tjb/own', n); mLog(farmNow(), bossId(), `🏦 TJBank đổi quyền cổ tức cũ thành ${n} cổ phần cho chủ trại (đã góp ${money(paid)} xu)`, 0); }
+  }
+  // each payday (start of the day): book yesterday, pay the dividend, set today's price
+  function tjbDay(t) {
+    tjbInit();
+    const day = dayNo(t) - 1; if (tjbRec(day)) return;
+    const S = tjbSim(day, t), farmInt = ((mDayRec(t - 864e5).cat || {}).out || {})['Lãi ngân hàng'] || 0;
+    const I = S.I + farmInt, P = Math.round(I * (1 - TJB.ops) - S.bad), dps = P > 0 ? (P * TJB.payout) / TJB.total : 0;
+    const fair = TJB.p0 * [1, 1.3, 1.7][facLv('bank') - 1] * (0.85 + repNow(t) / 330) * (P > 0 ? 1 + Math.min(0.3, dps / 4) : 0.85);
+    const prev = tjbHist(40, day).length ? tjbPrice(day - 1) : fair; // the first day opens at the fair price (no free climb)
+    let price = prev * 0.75 + fair * 0.25; price *= 1 + (evRnd(day, 1301) - 0.5) * 0.08; if (S.bad) price *= 1 - Math.min(0.15, S.bad / 30000);
+    price = Math.max(5, Math.min(200, Math.round(price * 10) / 10));
+    const own = tjbOwn(), div = Math.round(dps * own);
+    save.set('tjb/d/' + day, { n: S.n, I, farmInt, bad: S.bad, P, dps: Math.round(dps * 1000) / 1000, price, prev, own, div, top: S.loans.slice().sort((a, b) => b.amt - a.amt).slice(0, 6), bads: S.loans.filter((x) => x.bad).map((x) => `${x.i} ${x.who}`), late: S.loans.filter((x) => x.late).length });
+    for (const k of save.keys('tjb/d/')) if (Number(k.slice(6)) < day - 40) save.set(k, null);
+    if (div > 0) {
+      ledger(div, 0, {}); mCatAdd(t, 'in', 'Cổ tức TJBank', div);
+      const boss = mStaff().find((w) => w.role === 'boss'); if (boss) mBook(t, boss.id, div, div, 'bank', 'bank');
+    }
+    mLog(t, bossId(), `🏦 TJBank hôm qua: ${S.n} khoản vay, thu lãi ${money(I)} xu${S.bad ? `, bị quỵt ${money(S.bad)} xu` : ''} → ${P >= 0 ? 'lãi' : 'lỗ'} ${money(Math.abs(P))} xu${own ? `; chủ trại ${own} cổ phần nhận cổ tức ${money(div)} xu` : ''}; giá cổ phần ${String(price).replace('.', ',')} xu`, div);
+  }
+  function tjbTrade(kind, a) {
+    tjbInit();
+    const t = farmNow(), price = tjbPrice(), own = tjbOwn();
+    if (kind === 'buy') {
+      const room = tjbCap() - own, n = Math.min(room, a === 'max' ? Math.floor(coins() / (price * (1 + TJB.fee))) : Number(a) || 0); if (n <= 0) return false;
+      const cost = Math.ceil(n * price * (1 + TJB.fee)); if (coins() < cost) return false;
+      ledger(-cost, 0, {}); evBook(t, -cost, 'Mua cổ phần TJBank', true); save.set('tjb/own', own + n);
+      mLog(t, bossId(), `📈 Chủ trại mua ${n} cổ phần TJBank giá ${String(price).replace('.', ',')} xu (kể cả phí ${money(cost)} xu), giờ giữ ${own + n}/${TJB.total}`, 0); return true;
+    }
+    const n = Math.min(own, a === 'all' ? own : Number(a) || 0); if (n <= 0) return false;
+    const got = Math.floor(n * price * (1 - TJB.fee));
+    ledger(got, 0, {}); evBook(t, got, 'Bán cổ phần TJBank', true); save.set('tjb/own', own - n);
+    mLog(t, bossId(), `📉 Chủ trại bán ${n} cổ phần TJBank giá ${String(price).replace('.', ',')} xu (sau phí +${money(got)} xu), còn giữ ${own - n}`, 0); return true;
+  }
+  function tjbHtml() {
+    tjbInit();
+    const own = tjbOwn(), cap = tjbCap(), price = tjbPrice(), h = tjbHist(14), y = h[h.length - 1], c = coins(), L = facLv('bank');
+    const pct = (n) => `${String(Math.round((n / TJB.total) * 1000) / 10).replace('.', ',')}%`;
+    const max = Math.max(price, ...h.map((r) => r.price)), min = Math.min(price, ...h.map((r) => r.price)), avg = h.length ? h.reduce((a, r) => a + r.price, 0) / h.length : price;
+    const bars = h.concat([{ price, today: 1 }]).map((r) => `<div title="${r.price}" style="flex:1;height:${8 + Math.round(((r.price - min) / Math.max(0.1, max - min)) * 40)}px;background:${r.today ? '#ffd84a' : r.bad ? '#e08a5a' : '#7fd65a'};border-radius:2px 2px 0 0"></div>`).join('');
+    let x = `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>📈 Cổ phần TJBank</b> <span style="opacity:.7">(1.000 cổ phần)</span></div>`;
+    x += row('Bạn đang giữ', `<b>${own}</b>/${cap} cổ phần (${pct(own)})`) + row('Giá hôm nay', `<b>${String(price).replace('.', ',')} xu</b>${y ? ` <span style="color:${price >= y.prev ? '#7fd65a' : '#e08a5a'}">${price >= y.prev ? '▲' : '▼'} ${Math.abs(vnPct(price, y.prev))}%</span>` : ''}`) + row('Giá trị cổ phần của bạn', `${money(own * price)} xu`);
+    x += `<div style="display:flex;align-items:flex-end;gap:2px;height:52px;margin:6px 0 2px">${bars}</div><div style="font-size:11px;opacity:.7">Giá 14 ngày (vàng = hôm nay, cam = ngày có khách quỵt nợ) · thấp ${String(min).replace('.', ',')} · cao ${String(max).replace('.', ',')}</div>`;
+    const room = cap - own, bp = price * (1 + TJB.fee);
+    x += `<div style="margin-top:6px">${[10, 50].map((n) => B(`tjbbuy:${n}`, `Mua ${n} · ${money(Math.ceil(n * bp))}`, room >= n && c >= Math.ceil(n * bp))).join('')}${B('tjbbuy:max', `Mua tối đa (${Math.min(room, Math.floor(c / bp))})`, room > 0 && c >= bp)}</div>`;
+    x += `<div>${[10, 50].map((n) => B(`tjbsell:${n}`, `Bán ${n} · +${money(Math.floor(n * price * (1 - TJB.fee)))}`, own >= n)).join('')}${B('tjbsell:all', `Bán hết · +${money(Math.floor(own * price * (1 - TJB.fee)))}`, own > 0)}</div>`;
+    x += `<div style="font-size:12px;opacity:.75;margin:3px 0">Phí mua/bán 2%. Giữ tối đa theo cấp ngân hàng: ${TJB.cap.map((n, i) => `${i + 1 === L ? '<b>' : ''}cấp ${i + 1}: ${n}${i + 1 === L ? '</b>' : ''}`).join(' · ')}.</div>`;
+    if (y) {
+      x += `<div style="margin-top:6px"><b>🧾 Hôm qua ở TJBank</b></div>` + row('Khoản cho vay', `${y.n}${y.late ? ` (${y.late} trả chậm)` : ''}`) + row('Lãi thu được', `${money(y.I)} xu${y.farmInt ? ` <span style="opacity:.7">(có ${money(y.farmInt)} từ trại mình)</span>` : ''}`)
+        + (y.bad ? row('Bị quỵt nợ', `<span style="color:#e08a5a">−${money(y.bad)} xu</span> <span style="font-size:12px;opacity:.75">${y.bads.join(', ')}</span>`) : '')
+        + row('Lợi nhuận ngân hàng', `${y.P >= 0 ? '' : '−'}${money(Math.abs(y.P))} xu`) + row('Cổ tức mỗi cổ phần', `${String(y.dps).replace('.', ',')} xu`) + row('Bạn nhận', `<b style="color:#7fd65a">+${money(y.div)} xu</b>`);
+      x += '<div style="font-size:12px;opacity:.85;margin-top:4px">Khách vay lớn: ' + y.top.map((l) => `${l.i} ${l.who} ${money(l.amt)} xu (${String(l.rate).replace('.', ',')}%/ngày)${l.bad ? ' ❌' : l.late ? ' ⏳' : ''}`).join(' · ') + '</div>';
+    } else x += '<div style="font-size:12px;opacity:.7;margin-top:4px">Sáng mai TJBank chốt sổ ngày đầu tiên và chia cổ tức.</div>';
+    return x;
+  }
+  // in Lan's report: yesterday's dividend, the price, a word when it is low / high (she never trades herself)
+  function tjbLines(t) {
+    const y = tjbHist(1)[0], own = tjbOwn(), price = tjbPrice(), h = tjbHist(14), out = [];
+    if (!FARM.bank) return out;
+    if (y && own) out.push(`🏦 Hôm qua TJBank cho ${y.n} khách vay, thu lãi ${money(y.I)} xu${y.bad ? `, bị ${y.bads.join(', ')} quỵt ${money(y.bad)} xu` : ''}. Chủ nhân giữ ${own} cổ phần nên nhận <b>${money(y.div)} xu</b> cổ tức; giá cổ phần ${String(price).replace('.', ',')} xu.`);
+    if (h.length >= 5) {
+      const avg = h.reduce((a, r) => a + r.price, 0) / h.length, room = tjbCap() - own;
+      if (price < avg * 0.92 && room > 0) out.push(`📉 Giá cổ phần TJBank đang thấp hơn trung bình 2 tuần ${Math.abs(vnPct(price, avg))}%, chủ nhân còn mua được ${room} cổ phần. Em không tự mua đâu ạ, chủ nhân quyết: ${B('tjbbuy:50', `Mua 50 · ${money(Math.ceil(50 * price * (1 + TJB.fee)))} xu`, room >= 50 && coins() >= 50 * price * (1 + TJB.fee))}${B('open:bank', '🏦 Xem ngân hàng')}`);
+      else if (price > avg * 1.15 && own > 0) out.push(`📈 Giá cổ phần TJBank đang cao hơn trung bình 2 tuần ${vnPct(price, avg)}%, chủ nhân có thể bán bớt chốt lời. ${B('open:bank', '🏦 Xem ngân hàng')}`);
+    } else if (!own && tjbCap() > 0) out.push(`🏦 Chủ nhân có thể mua cổ phần TJBank (tối đa ${tjbCap()} cổ phần ở cấp ngân hàng hiện tại) để nhận cổ tức mỗi sáng từ tiền lãi khách ngoài vay. ${B('open:bank', '🏦 Vào ngân hàng')}`);
+    return out;
+  }
+  function facDividend(t) { tjbDay(t); } // 2026-11-13: dividends now come from the shares the owner holds (tjbDay)
   // the level card in a panel: this level, the next one, what it adds and the owner's button
   function facHtml(id) {
     const F = FAC[id], L = facLv(id), nx = facNext(id);
