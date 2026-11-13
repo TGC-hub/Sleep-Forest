@@ -424,10 +424,19 @@
 
     const newer = (a, b) => !b || a.t > b.t || (a.t === b.t && JSON.stringify(a.v) > JSON.stringify(b.v));
     // pull remote items into the local save; returns the keys that changed locally
+    // "chơi lại" (user 2026-11-13): what survives a new game; everything else written before game/epoch is dead on
+    // every device (a device that was offline brings old items back: they are dropped here, and its own stale ones wiped)
+    const RESET_KEEP = /^(feedback\/|cfg\/|run\/|game\/)/;
+    const epochOf = () => { const e = data.items['game/epoch']; return (e && e.v) || 0; };
     function mergeIn(items) {
-      const changed = [];
-      for (const [k, e] of Object.entries(items || {})) if (e && typeof e.t === 'number' && newer(e, data.items[k])) { data.items[k] = e; changed.push(k); }
-      if (changed.length) { persist(); notify(changed); }
+      const changed = [], ep0 = epochOf(), ep = Math.max(ep0, ((items || {})['game/epoch'] || {}).v || 0);
+      for (const [k, e] of Object.entries(items || {})) {
+        if (!e || typeof e.t !== 'number') continue;
+        if (ep && e.v != null && e.t < ep && !RESET_KEEP.test(k)) continue;
+        if (newer(e, data.items[k])) { data.items[k] = e; changed.push(k); }
+      }
+      if (ep > ep0) for (const [k, e] of Object.entries(data.items)) if (e.v != null && e.t < ep && !RESET_KEEP.test(k)) { data.items[k] = { t: ep, v: null }; changed.push(k); }
+      if (changed.length) { persist(); notify(ep > ep0 ? null : changed); }
       return changed;
     }
     // UTF-8 safe base64 for the GitHub contents API
@@ -504,6 +513,15 @@
         }
       },
       del(k) { this.set(k, null); },
+      // a new game: every game key becomes a tombstone, game/epoch = now (kept: feedback, settings, past runs)
+      wipe() {
+        const t = Date.now();
+        for (const [k, e] of Object.entries(data.items)) if (e.v != null && !RESET_KEEP.test(k)) data.items[k] = { t, v: null };
+        data.items['game/epoch'] = { t, v: t };
+        persist(); notify(null); schedulePush();
+        return t;
+      },
+      _merge: (items) => mergeIn(items), // tests
       keys(prefix) { return Object.keys(data.items).filter((k) => k.startsWith(prefix) && data.items[k].v != null); },
       onChange(f) { listeners.push(f); },
       sync: () => sync(),
@@ -4544,6 +4562,7 @@
     const dt = (t) => new Date(t).toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric', year: 'numeric' });
     let x = '<div><b>🏆 Cột mốc của trại</b></div>' + (ms.length ? ms.map(([m]) => `<div style="font-size:13px;margin:3px 0"><span style="opacity:.65">${dt(m.t)}</span> · ${m.text}</div>`).join('') : '<div style="font-size:13px;opacity:.7">Chưa có cột mốc nào.</div>');
     if (todo.length) x += `<details style="margin-top:4px"><summary style="cursor:pointer;opacity:.85">Còn ${todo.length} cột mốc chưa đạt</summary><div style="font-size:12px;opacity:.75">${todo.join(' · ')}</div></details>`;
+    { const past = pastRuns(); if (past.length) x += '<div style="margin-top:10px"><b>📜 Các lượt chơi trước</b></div>' + past.slice(0, 10).map((p) => `<div style="font-size:12px;opacity:.85;margin:2px 0">• ${runLine(p)}</div>`).join(''); }
     const ph = photos();
     x += `<div style="margin-top:10px"><b>📸 Ảnh trại theo tuần</b> ${B('photo', '📷 Chụp ngay')}</div><div style="font-size:12px;opacity:.7;margin-bottom:4px">Mỗi tuần tự chụp một tấm lúc mở app (lưu riêng trên máy này, giữ 12 tấm gần nhất).</div>`
       + (ph.length ? ph.map((p) => `<div style="margin:6px 0"><img src="${p.url}" alt="" style="width:100%;border-radius:8px;border:2px solid #44445a"><div style="font-size:12px;opacity:.8">${dt(p.t)}${p.note ? ' · ' + p.note : ''}</div></div>`).join('') : '<div style="font-size:13px;opacity:.7">Chưa có ảnh.</div>');
@@ -4703,6 +4722,7 @@
   }
   window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
+  window.__forestReset = { summary: () => runSummary(), runs: () => pastRuns(), html: (ask) => resetHtml({ ask }, (x) => x), go: () => gameReset() };
   window.__forestTJB = { day: (t) => tjbDay(t), sim: (d, t = farmNow()) => tjbSim(d, t), trade: (k, a) => tjbTrade(k, a), own: () => tjbOwn(), cap: () => tjbCap(), price: () => tjbPrice(), rec: (d) => tjbRec(d), hist: (n) => tjbHist(n), html: () => tjbHtml(), lines: (t = farmNow()) => tjbLines(t), init: () => tjbInit() };
   window.__forestMenu = { items: (id) => menuItems(id), lv: (id, n) => menuLv(id, menuItems(id).find((m) => m.n === n)), act: (id, n) => menuAct(id, slug(n)), price: (id, n) => { const m = menuItems(id).find((x) => x.n === n); return venuePrice(id, m, venueCost(m)); }, html: (id) => venueHtml({ id }, (x) => x), lines: (t = farmNow()) => venueLines(t), slug: (x) => slug(x) };
   window.__forestStory = { MILL, millState, millLv, millCanStart, millInvest, millPayback, millNext, evStep, evToday, evLines, EV, lifeStep, lifeOff, lifeMood, lifeLines, lifeAct, isBday, bdayOf, doyOf, wageOf, repNow: () => repNow(), millPanel: () => millPanelHtml((x) => x), bizStep, seaStep, innNight, rvStep, festStep, festOf, msStep, astroEvents, astroShootMul, rivalWar, rivalMul, colScan, colSeen, starsAvg, photoTake, bizLines, bizAct, JOBS, bizPanel: () => bizPanelHtml((x) => x), colPanel: () => colPanelHtml((x) => x), storyPanel: () => storyPanelHtml((x) => x), brief: () => mBriefHtml((x) => x) };
@@ -5213,6 +5233,7 @@
     if (v.kind === 'week') return mWeekHtml(head);
     if (v.kind === 'mill') return millPanelHtml(head);
     if (v.kind === 'venue') return venueHtml(v, head);
+    if (v.kind === 'reset') return resetHtml(v, head);
     if (v.kind === 'biz') return bizPanelHtml(head);
     if (v.kind === 'col') return colPanelHtml(head);
     if (v.kind === 'story') return storyPanelHtml(head);
@@ -5523,7 +5544,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:48 13-11';
+    const build = '09:53 13-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -5701,6 +5722,9 @@
     if ((act === 'mok' || act === 'mno') && a1 && a1.startsWith('mgr/ask/')) { const a = save.get(a1); if (a) { save.set(a1, { ...a, state: act === 'mok' ? 'ok' : 'no', at: farmNow() }); mLog(farmNow(), '', `${act === 'mok' ? '✅ Chủ trại duyệt' : '❌ Chủ trại không duyệt'}: ${a.what} (${money(a.cost)} xu)`, 0); } }
     if (act === 'evpick' && (a1 === 'a' || a1 === 'b')) { const k = 'ev/' + dayNo(), e = save.get(k); if (e && e.state === 'open') save.set(k, { ...e, pick: a1 }); }
     if (act === 'millup') millOwnerUp();
+    if (act === 'rsask') { if (confirm('Chơi lại từ đầu?\n\nToàn bộ trại (tiền, ruộng, kho, nhân viên, chuồng, sở thú, quán, xưởng, cổ phần…) sẽ bị xoá trên CẢ PC và điện thoại. Không lấy lại được.\n\nBấm OK để sang bước cuối.')) v.ask = 1; return renderPanel(); }
+    if (act === 'rsno') { v.ask = 0; return openPanel(null); }
+    if (act === 'rsgo') { const txt = ((document.getElementById('forestResetTxt') || {}).value || '').trim(); if (slug(txt) !== 'choi-lai') { alert('Chưa xoá gì cả. Muốn chơi lại thì gõ đúng chữ: CHƠI LẠI'); return; } gameReset(); return; }
     if (act === 'mu') menuAct(a1, a2);
     if (act === 'tjbbuy' || act === 'tjbsell') { const n = a1 === 'max' || a1 === 'all' ? a1 : Number(a1); if (act === 'tjbbuy' || confirm(`Bán ${n === 'all' ? 'hết' : n} cổ phần TJBank?`)) tjbTrade(act === 'tjbbuy' ? 'buy' : 'sell', n); }
     if (act === 'openv') return openPanel({ kind: 'venue', id: a1 });
@@ -6484,7 +6508,10 @@
     const actions = el('div');
     const syncNow = el('button', btnCss, 'Đồng bộ ngay'), off = el('button', btnCss, 'Ngắt kết nối');
     actions.append(syncNow, off);
-    panel.append(title, info, form, actions, status);
+    // "chơi lại từ đầu" (2026-11-13): out of the way, small and faint; it only opens the page that explains and asks twice
+    const resetLink = el('button', 'display:block;margin-top:12px;padding:6px 0 0;border:none;border-top:1px dashed rgba(255,255,255,0.18);width:100%;text-align:left;background:none;color:#a8988a;font-size:11px;cursor:pointer;opacity:.8;', 'Chơi lại từ đầu…');
+    panel.append(title, info, form, actions, status, resetLink);
+    resetLink.addEventListener('click', (e) => { e.stopPropagation(); panel.style.display = 'none'; openPanel({ kind: 'reset' }); });
     const hhmm = (t) => new Date(t).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     function paint() {
       const s = save.status();
@@ -7944,6 +7971,38 @@
       else if (price > avg * 1.15 && own > 0) out.push(`📈 Giá cổ phần TJBank đang cao hơn trung bình 2 tuần ${vnPct(price, avg)}%, chủ nhân có thể bán bớt chốt lời. ${B('open:bank', '🏦 Xem ngân hàng')}`);
     } else if (!own && tjbCap() > 0) out.push(`🏦 Chủ nhân có thể mua cổ phần TJBank (tối đa ${tjbCap()} cổ phần ở cấp ngân hàng hiện tại) để nhận cổ tức mỗi sáng từ tiền lãi khách ngoài vay. ${B('open:bank', '🏦 Vào ngân hàng')}`);
     return out;
+  }
+  // ── New game (user 2026-11-13: "nút làm mới chơi lại khi phá đảo; để chỗ setting không hay bị bấm nhầm, có hỏi lại
+  // xác nhận"). The link sits at the bottom of the ☁️ panel; this page says what goes and what stays, then OK in a
+  // dialog, then typing CHƠI LẠI. The run's summary is kept in run/<t> (shown here and in 📸 Cột mốc).
+  function runSummary() {
+    const days = save.keys('mgr/day/').map((k) => Number(k.slice(8))).filter((n) => n > 0), first = days.length ? Math.min(...days) : dayNo();
+    return { t: Date.now(), days: Math.max(1, dayNo() - first + 1), coins: coins(), level: level(), staff: mStaff().length, land: land(), animals: animalIds().length,
+      ms: save.keys('ms/').filter((k) => k !== 'ms/hr' && k !== 'ms/hadloan').length, badges: save.keys('col/badge/').length, shares: tjbOwn(), rep: repNow(), loan: mLoan().owed || 0 };
+  }
+  const pastRuns = () => save.keys('run/').map((k) => save.get(k)).filter(Boolean).sort((a, b) => b.t - a.t);
+  const runLine = (r) => `${new Date(r.t).toLocaleDateString('vi-VN')}: chơi ${r.days} ngày · cấp ${r.level} · két ${money(r.coins)} xu · ${r.staff} người · ${r.ms} cột mốc · ${r.badges} huy hiệu${r.shares ? ` · ${r.shares} cổ phần TJBank` : ''}`;
+  function resetHtml(v, head) {
+    const r = runSummary(), past = pastRuns(), on = save.status().connected;
+    let x = '<div style="font-size:14px;line-height:1.55">Bắt đầu lại trại từ con số 0, như lần đầu mở game.</div>';
+    x += `<div style="margin-top:8px"><b>Lượt chơi này</b> (sẽ được ghi lại để làm kỷ niệm)</div><div style="font-size:13px;opacity:.9">${runLine(r)}</div>`;
+    x += '<div style="margin-top:8px;color:#ffb08a"><b>Sẽ bị xoá</b></div><div style="font-size:13px;line-height:1.5">tiền và nợ TJBank, ruộng, kho, cấp trại, nhân viên (cả Lan), chuồng trại, ao, sở thú, các đảo đã xây, quán ăn, bar, xưởng, homestay, thuyền, thực đơn đã mở, cổ phần TJBank, bộ sưu tập, cột mốc, nhật ký.</div>';
+    x += '<div style="margin-top:6px;color:#9fe070"><b>Được giữ lại</b></div><div style="font-size:13px;line-height:1.5">hòm thư góp ý, cài đặt (mức mạo hiểm, âm thanh…), ảnh trại theo tuần trên máy này, lịch sử các lượt chơi.</div>';
+    x += `<div style="font-size:12px;opacity:.8;margin-top:6px">${on ? 'Đang kết nối GitHub: cả PC và điện thoại cùng về lượt mới (máy kia tự xoá khi đồng bộ, kể cả nếu đang tắt mạng).' : '⚠️ Máy này chưa kết nối GitHub: máy kia sẽ chỉ về lượt mới sau khi máy này kết nối và đồng bộ.'}</div>`;
+    if (!v.ask) x += `<div style="margin-top:10px">${B('rsask', '🔄 Tôi muốn chơi lại từ đầu', true, 'border-color:#e08a5a;')}${B('rsno', 'Thôi, giữ trại')}</div>`;
+    else x += `<div style="margin-top:10px;padding:8px;border:2px solid #e08a5a;border-radius:8px"><div style="font-size:13px">Bước cuối: gõ chữ <b>CHƠI LẠI</b> vào ô dưới rồi bấm xoá.</div>`
+      + '<input id="forestResetTxt" type="text" autocomplete="off" spellcheck="false" placeholder="CHƠI LẠI" style="width:100%;box-sizing:border-box;margin:6px 0;padding:6px 8px;font:16px system-ui,sans-serif;background:#12121e;color:#e8e8f0;border:1px solid #4a4a6a;border-radius:6px;user-select:text;-webkit-user-select:text">'
+      + `${B('rsgo', '🗑️ Xoá trại và chơi lại', true, 'border-color:#e05a4a;background:#7a2a20;color:#fff;')}${B('rsno', 'Thôi, giữ trại')}</div>`;
+    if (past.length) x += '<div style="margin-top:10px"><b>📜 Các lượt chơi trước</b></div>' + past.slice(0, 10).map((p) => `<div style="font-size:12px;opacity:.85;margin:2px 0">• ${runLine(p)}</div>`).join('');
+    return head('🔄 Chơi lại từ đầu') + x;
+  }
+  async function gameReset() {
+    save.set('run/' + Date.now(), runSummary());
+    save.wipe();
+    openPanel(null);
+    xToast('🔄 Trại đã về lúc ban đầu. Lan sẽ đến nhận việc ngay. Chúc bạn chơi lại vui!');
+    // the phone page reloads clean; the PC app holds the Claude Code terminals, so it only refreshes in place
+    if (String(save.device).startsWith('phone-')) { try { await Promise.race([save.sync(), new Promise((ok) => setTimeout(ok, 6000))]); } catch (e) {} location.reload(); } else save.sync();
   }
   function facDividend(t) { tjbDay(t); } // 2026-11-13: dividends now come from the shares the owner holds (tjbDay)
   // the level card in a panel: this level, the next one, what it adds and the owner's button
