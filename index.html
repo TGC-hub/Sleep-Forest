@@ -5616,7 +5616,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '13:29 13-11';
+    const build = '13:59 13-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -7614,7 +7614,7 @@
       if (out.on.kids) Object.assign(out, { title: 'Tết Thiếu nhi 1/6 🎈', sub: 'Chúc các bé luôn vui!' });
       if (out.on.flags) Object.assign(out, { title: 'Mừng Quốc khánh 2/9 ⭐', sub: 'Mừng 30/4 – 1/5', fw: 1 });
       if (out.on.teacher) Object.assign(out, { title: 'Tri ân thầy cô 20/11 💐', sub: 'Ngày Nhà giáo Việt Nam' });
-      out.preview = true; return out;
+      out.preview = true; out.sign = signFor(out.on, t); return out;
     }
     // new year's eve / day (Dec 30 - Jan 2): fireworks the night of the 31st (dense around midnight) and of the 1st
     if ((m === 12 && day >= 30) || (m === 1 && day <= 2)) {
@@ -7642,6 +7642,7 @@
     if (th.noel && (day === 24 || day === 25) && !out.title) { out.title = 'Merry Christmas 🎄'; out.sub = 'Giáng sinh an lành'; }
     if (m === 10 && day === 31 && !out.title) { out.title = 'Happy Halloween 🎃'; out.sub = 'Trick or treat!'; }
     { const TT = TRUNGTHU_DAY[y]; if (TT && TT[0] === m - 1 && TT[1] === day && !out.title) { out.title = 'Trung thu vui vẻ 🥮'; out.sub = 'Rước đèn phá cỗ'; } }
+    out.sign = signFor(out.on, t);
     return out;
   }
   // a big greeting near the top of the screen (sized in screen pixels, whatever the zoom)
@@ -7708,6 +7709,7 @@
   const petals = Array.from({ length: 90 }, (_, i) => ({ x: hash01(i, 11, 77), s: 6 + hash01(i, 12, 77) * 8, ph: hash01(i, 13, 77) * 100, c: i % 4 }));
   function themeMore(now, ph) {
     const M = themeMoreNow(), on = M.on, night = ph.night > 0.35, E = FARM.extra || {};
+    if (M.sign) depth(176.5, (g) => themeSignDraw(g, M.sign[0], M.sign[1], true)); // on the far mountains, like TJ FARM
     // Tết: falling peach petals + a few red envelopes; new year's day: confetti
     if (on.tet || on.valentine) depth(SKY, (g) => {
       const t = now / 1000, cols = on.tet ? ['#ffb0c8', '#ff8ab0', '#ffd0dc', '#ffe066'] : ['#ff7aa8', '#ffb0c8', '#ff5a8a', '#ffd0dc'];
@@ -7723,10 +7725,48 @@
     // flags (30/4, 2/9): under the eaves and around the islands
     if (on.flags) { for (const e of eaves()) depth(e.z, (g) => flagPx(g, e.x, e.y + 10, now, 0.8)); for (const p of openSpots(209, 16, 5)) { const x = p.c * 16 + 8, y = (p.r + 1) * 16 - 1; depth(y, (g) => flagPx(g, x, y, now, 1)); } }
   }
+  // ── The occasion's words on the far mountains, like TJ FARM (user 2026-11-13: "làm thêm text ở phía xa chỗ núi luôn
+  // nhé, giống text TJ FARM"). The 5x7 TJ FARM letters have no Vietnamese accents, so the words are written once in a
+  // small bold font, read back pixel by pixel and drawn as blocks (accents included), on the right-hand range (TJ FARM
+  // is on the left), in a gentle arch, with little legs; by day in the occasion's colour, at night they glow.
+  const signBmpCache = new Map();
+  function signBitmap(text) {
+    if (signBmpCache.has(text)) return signBmpCache.get(text);
+    const fs = 12, cv = document.createElement('canvas'); cv.width = Math.max(8, text.length * fs); cv.height = fs + 8;
+    const g = cv.getContext('2d'); g.font = `900 ${fs}px "Segoe UI", system-ui, sans-serif`; g.textBaseline = 'top'; g.fillStyle = '#000';
+    const w = Math.min(cv.width, Math.ceil(g.measureText(text).width) + 2); g.fillText(text, 1, 3);
+    const d = g.getImageData(0, 0, w, cv.height).data, px = []; let minY = 99, maxY = 0;
+    for (let y = 0; y < cv.height; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 120) { px.push([x, y]); if (y < minY) minY = y; if (y > maxY) maxY = y; }
+    const out = { px: px.map(([x, y]) => [x, y - minY]), w, h: Math.max(1, maxY - minY + 1) };
+    signBmpCache.set(text, out); return out;
+  }
+  const THEME_SIGN = { x: 650, y: 122, k: 1.5, arch: 4 };
+  function themeSignDraw(g, text, col, day) {
+    const B = signBitmap(text), k = THEME_SIGN.k, x0 = THEME_SIGN.x - (B.w * k) / 2, at = (x) => THEME_SIGN.y - Math.sin((x / B.w) * Math.PI) * THEME_SIGN.arch;
+    if (day) { g.fillStyle = 'rgba(40,50,40,0.55)'; for (const [x, y] of B.px) g.fillRect(x0 + x * k + 1, at(x) + y * k + 1, k, k); }
+    g.fillStyle = col; for (const [x, y] of B.px) g.fillRect(x0 + x * k, at(x) + y * k, k, k);
+    if (day) { g.fillStyle = 'rgba(60,50,40,0.75)'; for (let x = 4; x < B.w - 2; x += 11) g.fillRect(x0 + x * k, at(x) + B.h * k, 1, 3); }
+  }
+  function signFor(on, t) {
+    const d = new Date(t), y = d.getFullYear(), m = d.getMonth() + 1;
+    if (on.tet) return ['CHÚC MỪNG NĂM MỚI', '#ffd84a', '#fff2a0'];
+    if (on.newyear) return [`HAPPY NEW YEAR ${m >= 11 ? y + 1 : y}`, '#f4f4f0', '#fff6d8'];
+    if (on.valentine) return ['HAPPY VALENTINE', '#ffb0cc', '#ffd6e6'];
+    if (on.women) return [m === 10 ? 'MỪNG NGÀY 20/10' : 'MỪNG NGÀY 8/3', '#ffc0dc', '#ffe0ee'];
+    if (on.kids) return ['TẾT THIẾU NHI 1/6', '#9fe0ff', '#d8f4ff'];
+    if (on.flags) return [m === 9 ? 'MỪNG QUỐC KHÁNH 2/9' : 'MỪNG 30/4 – 1/5', '#ff6a5a', '#ffb0a0'];
+    if (on.teacher) return ['TRI ÂN THẦY CÔ', '#f4f4f0', '#fff6d8'];
+    const th = themeNow(t);
+    if (th.noel) return ['MERRY CHRISTMAS', '#f4f4f0', '#fff6d8'];
+    if (th.halloween) return ['HAPPY HALLOWEEN', '#ffa040', '#ffd090'];
+    if (th.trungthu) return ['TRUNG THU', '#ffe066', '#fff2b0'];
+    return null;
+  }
   // fireworks and the greeting go over the night shade (drawn with the floating texts, after the shade), else they look dim
   function themeTop(g, v, now, ph) {
-    const M = themeMoreNow(), night = ph.night > 0.35; if (!(M.title || M.fw)) return;
+    const M = themeMoreNow(), night = ph.night > 0.35; if (!(M.title || M.fw || M.sign)) return;
     g.save(); g.translate(v.x, v.y); g.scale(v.z, v.z);
+    { const on = smooth(0.25, 0.6, ph.night); if (M.sign && on > 0.01) { g.save(); g.globalAlpha = on * (0.94 + 0.06 * Math.sin(now / 900)); g.shadowColor = M.sign[2]; g.shadowBlur = 6 * v.z; themeSignDraw(g, M.sign[0], M.sign[2], false); g.restore(); } } // the mountain words light up after dark
     if (M.fw && (night || M.preview)) skyFireworks(g, now, M.fw);
     if (M.title) skyBanner(g, M.title, M.sub, now, night);
     g.restore();
