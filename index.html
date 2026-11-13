@@ -3077,15 +3077,24 @@
     if (who) mBook(t, who.id, total, guide ? Math.round(total * 0.3) : 0, 'tour');
     const d = mDayRec(t); d.visit = d.visit || { groups: 0, people: 0 }; d.visit.groups++; d.visit.people += n; if (toZoo) d.visit.zoo = (d.visit.zoo || 0) + n; save.set(`mgr/day/${day}`, d);
     const rv = toZoo ? zooReview(t) : null;
-    mLog(t, who ? who.id : '', `🚶 Đoàn ${n} khách tham quan farm${toZoo ? ' + sở thú' : ''}: +${money(total)} xu${guide ? ` (${guide.name} hướng dẫn)` : ' (chưa có hướng dẫn viên)'}${rv ? ` · chấm sở thú ${'★'.repeat(Math.floor(rv.s))}${rv.s % 1 ? '½' : ''} "${rv.note}"` : ''}`, 0);
+    const buys = tourShops(t, n, idx), buyTxt = buys.length ? ` · mua ở phố ăn uống ${buys.map((b) => `${SHOP[b.id].icon}×${b.k}`).join(' ')} +${money(buys.reduce((a, b) => a + b.total, 0))} xu` : '';
+    mLog(t, who ? who.id : '', `🚶 Đoàn ${n} khách tham quan farm${toZoo ? ' + sở thú' : ''}: +${money(total)} xu${guide ? ` (${guide.name} hướng dẫn)` : ' (chưa có hướng dẫn viên)'}${buyTxt}${rv ? ` · chấm sở thú ${'★'.repeat(Math.floor(rv.s))}${rv.s % 1 ? '½' : ''} "${rv.note}"` : ''}`, 0);
     if (mRun && mRun.sum) mRun.sum.kinds.tour = (mRun.sum.kinds.tour || 0) + 1;
-    if (mRun && mRun.live) mTourArrive(n, toZoo);
+    if (mRun && mRun.live) mTourArrive(n, toZoo, buys);
   }
   const mTourQueue = []; // live: tourists waiting to step off the boat
-  function mTourArrive(n, toZoo) {
+  function mTourArrive(n, toZoo, buys = []) {
     if (!FARM.pier || !FARM.stops) return;
     const stops = (toZoo && FARM.stops.zoo ? FARM.stops.zoo : []).concat(FARM.stops.farm); // from the east pier: the zoo first, then the farm
-    for (let i = 0; i < Math.min(n, 6); i++) mTourQueue.push({ at: performance.now() + i * 900, stops });
+    const m = Math.min(n, 6);
+    for (let i = 0; i < m; i++) {
+      // then the food street on the way back: the ones who bought there stop at that stall (as many as bought, scaled to who is drawn)
+      const eat = buys.filter((b) => i < Math.max(1, Math.round((b.k * m) / n))).map((b, j) => {
+        const I = XISLE[b.id], x = I.stall.x + ((i + j) % 3 - 1) * 14, y = Math.max(I.stall.y + 14, ...(I.seats || []).map((q) => q.y).slice(0, 1));
+        return { c: Math.floor(x / 16), r: Math.floor(y / 16), shop: b.id, face: { x: I.stall.x, y: I.stall.y - 8 } };
+      });
+      mTourQueue.push({ at: performance.now() + i * 900, stops: stops.concat(eat) });
+    }
   }
   // staff housing: the cap on staff, raised by building more rooms
   const mMax = () => upgValue('dorm');
@@ -3606,14 +3615,23 @@
     const r = JOBS.payroll(t, boss) || (mBroke() ? null : JOBS.boss(t, boss));
     if (r) { r.text = `${r.text} (duyệt lúc đang nghỉ tay)`; r.big = true; mRecord(boss.id, t, [r]); }
   }
-  const mOnShift = (w, t = farmNow()) => { if (lifeOff(w, t)) return false; const h = mLocalH(t); if ((ROLES[w.role] || {}).night) return h >= BAR_OPEN || h < BAR_CLOSE - 24; { const sh = (ROLES[w.role] || {}).shift; if (sh) return h >= sh[0] && h < sh[1]; } if (h >= MWORK[0] && h < MWORK[1]) return true; if (h < MWORK[0]) { const y = mOT(w.id, t - 864e5); return !!(y && y.until > 24 && h + 24 < y.until); } const o = h >= MWORK[1] && mOT(w.id, t); return !!(o && o.until > 0 && h < o.until); };
+  const mOnShift = (w, t = farmNow()) => { if (lifeOff(w, t)) return false; const h = mLocalH(t); if ((ROLES[w.role] || {}).night) return h >= BAR_OPEN || h < BAR_CLOSE - 24; { const sh = (ROLES[w.role] || {}).shift; if (sh) { if (h >= sh[0] && h < sh[1]) return true; const o = h >= sh[1] && mOT(w.id, t); return !!(o && o.until > sh[1] && h < o.until); } } if (h >= MWORK[0] && h < MWORK[1]) return true; if (h < MWORK[0]) { const y = mOT(w.id, t - 864e5); return !!(y && y.until > 24 && h + 24 < y.until); } const o = h >= MWORK[1] && mOT(w.id, t); return !!(o && o.until > 0 && h < o.until); };
   const otRate = (w) => ((ROLES[w.role] || {}).wage || 0) / (MWORK[1] - MWORK[0]) * 2; // coins per overtime hour
-  const otCost = (w, until) => Math.round(otRate(w) * Math.max(0, until - MWORK[1]));
+  const shiftEndH = (w) => ((ROLES[w.role] || {}).shift || [0, MWORK[1]])[1]; // 18h, the food stalls 22h
+  const otCost = (w, until, from = shiftEndH(w)) => Math.round(otRate(w) * Math.max(0, until - Math.max(from, shiftEndH(w))));
+  // the overtime ends the owner can pick now: before the shift ends the usual ones; once they've gone home (user
+  // 2026-11-13: "hết ca về nghỉ rồi vẫn gọi tăng ca được") the next whole hours up to midnight
+  function otChoices(w, h) {
+    const end = shiftEndH(w); if (h < end) return end >= 22 ? [23, 24] : OT_OPTIONS;
+    const c = []; for (let u = Math.max(end + 1, Math.floor(h) + 1); u <= 24; u++) if (u - h >= 0.5) c.push(u);
+    return c.length > 4 ? [c[0], c[1], c[Math.floor(c.length / 2) + 1], 24].filter((x, i, a) => a.indexOf(x) === i) : c;
+  }
   function mSetOT(id, until, by, why, t = farmNow()) {
     const k = `ot/${dayNo(t)}/${id}`, cur = save.get(k);
     // user 2026-11-09: the manager has the say on the worker cards too (may change the owner's overtime; logged)
     if (by === 'boss' && cur && cur.until === until) return false;
-    save.set(k, until > MWORK[1] ? { until, by, why: why || '', t } : { until: 0, by, t });
+    const w = mStaff().find((x) => x.id === id), end = w ? shiftEndH(w) : MWORK[1];
+    save.set(k, until > end ? { until, by, why: why || '', t } : { until: 0, by, t });
     return true;
   }
   // the latest time today the staff who can deliver an order (manager, farmers, seller) are still on shift
@@ -3821,7 +3839,7 @@
     for (const w0 of st) {
       const w = w0, R = ROLES[w.role]; if (!R) continue;
       if (!mOnShift(w, t)) continue; // off shift (6-18, or after their overtime)
-      if (mLocalH(t) >= MWORK[1] && !R.night && !R.shift) { const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 }); b.otH = (b.otH || 0) + stepH; save.set(`mgr/day/${dayNo(t)}`, d); }
+      if (mLocalH(t) >= shiftEndH(w) && !R.night) { const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 }); b.otH = (b.otH || 0) + stepH; save.set(`mgr/day/${dayNo(t)}`, d); }
       // attendance: a less diligent worker slacks off now and then (nothing done that step); unpaid wages make it worse
       {
         const owed = (mDebts()[w.id] || {}).amt || 0, dil = dilOf(w) * (R.wage && owed >= R.wage * 3 ? 0.7 : 1);
@@ -4731,7 +4749,7 @@
       openPanel({ kind: mBriefKind() });
     }
   }
-  window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
+  window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z, b) => mTourArrive(n, z, b), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
   window.__forestReset = { summary: () => runSummary(), runs: () => pastRuns(), html: (ask) => resetHtml({ ask }, (x) => x), go: () => gameReset() };
   window.__forestPondBox = null; window.__forestPond = { lv: () => facLv('pond'), gain: () => facGain('pond'), sim: (i) => simPond(i), fishes: () => FISHES };
@@ -5602,7 +5620,7 @@
             + `<div style="font-size:12px;opacity:.9">Hôm nay: ${s.acts} việc · làm ra ${money(s.value)} · chi vật tư ${money(s.cost)} · lương ${money(s.wage)} → ${pn(s.net)}</div>`
             + (hasHr ? `<div style="font-size:12px;opacity:.9">7 ngày: lãi/lỗ ${pn(wk)} · chăm chỉ ${attN ? Math.round((att / attN) * 100) + '%' : '–'}</div>` : '')
             + `<div style="font-size:12px;opacity:.65">Lo: ${R.jobs.map((j) => JOB_VI[j] || j).join(', ')}</div>`
-            + (w.role !== 'boss' ? B('fire:' + w.id, 'Cho nghỉ') : '') + '</div>';
+            + (otCallable(w, now) ? B('wcard:' + w.id, '📣 Gọi tăng ca') : '') + (w.role !== 'boss' ? B('fire:' + w.id, 'Cho nghỉ') : '') + '</div>';
         }).join('')
         + (hasHr ? '' : '<div style="font-size:12px;opacity:.75;margin-top:6px">🗂️ Thuê <b>Nhân sự</b> để có sổ chấm công: ai chăm, ai lười, lãi lỗ 7 ngày của từng người, báo cáo mỗi sáng trong Nhật ký.</div>')
         + mHireHtml(st);
@@ -5616,7 +5634,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '15:39 13-11';
+    const build = '18:38 13-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -5635,9 +5653,11 @@
       + row('Hôm nay', `${b.acts} việc · ~${money(b.value)} xu`) + row('7 ngày tạo ra', `~${money(wk)} xu`)
       + row('Lương', R.wage ? `${R.wage} xu/ngày` : 'chia lời')
       + (() => { // shift + overtime (owner's buttons; the manager decides at 17:30 otherwise)
-        const o = mOT(w.id, now), rate = otRate(w), cur = o && o.until > MWORK[1] ? `⏱️ tăng ca đến ${o.until > 24 ? (o.until - 24) + "h sáng" : o.until + "h"} (${o.by === 'owner' ? 'bạn cho' : 'quản lý cho: ' + (o.why || '')}) · ~${money(otCost(w, o.until))} xu` : o && o.by === 'boss' ? 'quản lý cho nghỉ đúng giờ' : 'không tăng ca';
-        return row('Ca làm', `6h–18h · ${cur}`) + `<div style="font-size:11px;opacity:.75;margin:-2px 0 2px">Tăng ca x2 lương: ${rate ? '~' + money(rate) + ' xu/giờ' : 'quản lý không lấy lương'}. Trả vào ngày lương hôm sau theo giờ làm thật. Quản lý được quyền đổi lúc 17:30 nếu tình hình trại cần.</div><div>`
-          + OT_OPTIONS.map((u) => B(`ot:${w.id}:${u}`, `đến ${u}h${rate ? ' · ' + money(otCost(w, u)) : ''}`, true, o && o.until === u ? 'border-color:#7fd65a;' : '')).join('') + B(`ot:${w.id}:0`, 'Không tăng ca', true, !o || !o.until ? 'border-color:#7fd65a;' : '') + '</div>';
+        const o = mOT(w.id, now), rate = otRate(w), end = shiftEndH(w), hNow = mLocalH(now), off = !mOnShift(w, now), cur = o && o.until > end ? `⏱️ tăng ca đến ${o.until > 24 ? (o.until - 24) + "h sáng" : o.until + "h"} (${o.by === 'owner' ? 'bạn cho' : 'quản lý cho: ' + (o.why || '')}) · ~${money(otCost(w, o.until))} xu` : o && o.by === 'boss' ? 'quản lý cho nghỉ đúng giờ' : 'không tăng ca';
+        if (R.night) return row('Ca làm', 'ca đêm (quầy bar)');
+        const ch = otChoices(w, hNow), late = hNow >= end;
+        return row('Ca làm', `${((R.shift || [MWORK[0]])[0])}h–${end}h · ${cur}`) + (late && off && ch.length ? `<div style="margin:4px 0;color:#ffd84a"><b>📣 ${w.name} đã hết ca về nghỉ.</b> Gọi quay lại làm tăng ca (x2 lương, tính từ lúc gọi):</div>` : late && !ch.length ? '<div style="font-size:12px;opacity:.75">Đã quá giờ gọi tăng ca hôm nay (tối đa đến 24h).</div>' : '') + `<div style="font-size:11px;opacity:.75;margin:-2px 0 2px">Tăng ca x2 lương: ${rate ? '~' + money(rate) + ' xu/giờ' : 'quản lý không lấy lương'}. Trả vào ngày lương hôm sau theo giờ làm thật. Quản lý được quyền đổi lúc 17:30 nếu tình hình trại cần.</div><div>`
+          + ch.map((u) => B(`ot:${w.id}:${u}`, `${off && late ? '📣 ' : ''}đến ${u}h${rate ? ' · ' + money(otCost(w, u, hNow)) : ''}`, true, o && o.until === u ? 'border-color:#7fd65a;' : '')).join('') + (late && off ? '' : B(`ot:${w.id}:0`, late ? 'Cho về nghỉ luôn' : 'Không tăng ca', true, !o || !o.until ? 'border-color:#7fd65a;' : '')) + '</div>';
       })()
       + (R.wage ? (() => { const y = mDayRec(now - 864e5).by[w.id] || {}, lazyH = Math.round((b.slack || 0) * 10) / 10; return row('Lười', `hôm nay ${lazyH} giờ${y.cut ? ` · hôm qua bị trừ ${money(y.cut)} xu` : ''}`) + '<div style="font-size:11px;opacity:.7;margin:-2px 0 4px">Lười bị trừ lương ngày đó (theo số giờ lười/giờ ca). Lúc bạn đang mở app xem thì không ai dám lười.</div>'; })() : '') + row('Vào làm', `${Math.max(1, Math.ceil((now - w.hired) / 864e5))} ngày`)
       + `<div style="margin:4px 0;border-top:1px solid #33334a;padding-top:4px">Phụ trách: <span style="opacity:.85">${R.jobs.map((j) => JOB_VI[j]).join(', ')}</span></div>`
@@ -5806,7 +5826,8 @@
     if (act[0] === 'c' && act !== 'cook' && act !== 'close' && mCmdAct(act, a1)) return renderPanel();
     if (act === 'hustle') mHustle(a1, Number(a2));
     if (act === 'lakego') mLakeGo(a1);
-    if (act === 'ot') { mSetOT(a1, Number(a2), 'owner', 'chủ trại cho'); const w = mStaff().find((x) => x.id === a1); if (w) mLog(farmNow(), a1, Number(a2) ? `Chủ trại cho ${w.name} tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} nghỉ đúng giờ (không tăng ca)`, 0); }
+    if (act === 'ot') { const w = mStaff().find((x) => x.id === a1), back = w && !mOnShift(w, farmNow()) && mLocalH(farmNow()) >= shiftEndH(w); mSetOT(a1, Number(a2), 'owner', back ? 'chủ trại gọi lại' : 'chủ trại cho'); if (w) mLog(farmNow(), a1, Number(a2) ? back ? `📣 Chủ trại gọi ${w.name} đang nghỉ quay lại làm tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} nghỉ đúng giờ (không tăng ca)`, 0); }
+    if (act === 'wcard') { openPanel({ kind: 'worker', id: a1 }); return; }
     if (act === 'ocancel' && confirm('Huỷ đơn này? Uy tín −1 (để trễ đến hết ngày là −3).')) orderCancel(dayNo(), Number(a1), farmNow(), '', 'chủ trại huỷ');
     if (act === 'cook') { let slot = 0; while (slot < kitchenSlots() && simCook(slot).status !== 'empty') slot++; farm.cook(slot, a1, Number(a2)); }
     if (act === 'serve') farm.serve(Number(a1));
@@ -7110,6 +7131,14 @@
         }
         if (v.tourist) {
           if (v.step !== 'doing') return;
+          const at = v.tourist.stops[v.tourist.si];
+          if (at && at.shop) {
+            const food = { banhmi: ['🥖', '🥪', '😋'], cafe: ['☕', '🧋', '🍹'], restaurant: ['🍛', '🍜', '😋'] }[at.shop] || ['😋'];
+            const em = (now - v.start) % 4000 < 3000 ? food[Math.floor(v.seed) % 2] : food[2];
+            g.font = '8px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(v.x - 6, v.y - 30, 12, 11); g.fillText(em, v.x, v.y - 24);
+            return;
+          }
           g.font = '8px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
           g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(v.x - 6, v.y - 30, 12, 11); g.fillText(v.seed % 3 < 1 ? '📷' : v.seed % 3 < 2 ? '😍' : '👏', v.x, v.y - 24);
           return;
@@ -7352,7 +7381,12 @@
   // a tourist walks from stop to stop (looking for a few seconds at each), then back to the boat
   function tourTick(v, now) {
     const T = v.tourist;
-    if (v.step === 'going' && !v.path.length) { v.step = 'doing'; v.start = now; v.until = now + 3500 + Math.random() * 2500; return; }
+    if (v.step === 'going' && !v.path.length) {
+      const s = T.stops[T.si]; v.step = 'doing'; v.start = now;
+      if (s && s.shop) { v.until = now + 8000 + Math.random() * 6000; faceToward(v, s.face); } // eating / drinking at the stall
+      else v.until = now + 3500 + Math.random() * 2500;
+      return;
+    }
     if (v.step === 'doing' && now < v.until) return;
     if (v.step === 'doing') T.si++;
     if (T.si >= T.stops.length) { goHome(v); return; }
@@ -8139,9 +8173,9 @@
   const shopKey = (id, t = farmNow()) => `shop/${id}/${dayNo(t)}`;
   const shopRec = (id, t = farmNow()) => save.get(shopKey(id, t), null) || { sold: 0, in: 0 };
   const shopSeller = (id, t = farmNow()) => mStaff().find((w) => w.role === SHOP[id].role && mOnShift(w, t));
-  const shopOpenNow = (id, t = farmNow()) => { const h = mLocalH(t); return xBuilt(id, t) && h >= SHOP_OPEN[0] && h < SHOP_OPEN[1] && !!shopSeller(id, t); };
+  const shopOpenNow = (id, t = farmNow()) => { const h = mLocalH(t); return xBuilt(id, t) && h >= SHOP_OPEN[0] && !!shopSeller(id, t); }; // after 22h only while the seller stays on overtime
   function shopRate(id, t = farmNow(), L = facLv(id)) {
-    const h = mLocalH(t), S = SHOP[id]; if (h < SHOP_OPEN[0] || h >= SHOP_OPEN[1]) return 0;
+    const h = mLocalH(t), S = SHOP[id]; if (h < SHOP_OPEN[0] || (h >= SHOP_OPEN[1] && !shopSeller(id, t))) return 0; // late (overtime): the curve's fallback 0.5
     const c = (S.curve.find(([a, b]) => h >= a && h < b) || [0, 0, 0.5])[2], d = mDayRec(t), n = xNight(t - 864e5), wd = new Date(t).getDay();
     let r = S.base * c * (1 + (farmAppeal() + zooAppeal()) / 60 + ((d.visit || {}).people || 0) / 15 + (n && n.camp ? n.camp / 10 : 0));
     if (wd === 0 || wd === 6) r *= 1.2;
@@ -8168,11 +8202,19 @@
     const want = (shopRate(id, t) * dt) / HOUR, n = Math.floor(want) + (hash01(t, 7373 + id.length, 3) < want % 1 ? 1 : 0);
     rec.last = t;
     if (n <= 0) { save.set(key, rec); return { kind: 'count', line: 'shops', text: `${S.wait}, chờ khách`, at, stand, icon: S.icon, value: 0 }; }
+    save.set(key, rec);
+    const s = shopServe(id, t, n, 4141);
+    return { kind: 'sell', cat: 'shop:' + id, line: 'shops', text: `bán cho ${n} khách (${s.names.join('')}) thu ${money(s.total)} xu, vốn ~${money(Math.round(s.cost))} xu`, at, stand, icon: S.icon, value: Math.round(s.total - s.cost) };
+  }
+  // serve n customers at a shop (the seller's round, or a tour group stopping by): each one gets something from the
+  // menu that can be made (a random pick, so the menu turns over), else the basic item; books the sale on the day
+  function shopServe(id, t, n, salt) {
+    const S = SHOP[id], key = shopKey(id, t), mk = shopMark(id);
     const held = barHeld(t), used = {}, prep = { ...shopPrep(id) }, names = [];
     let total = 0, cost = 0, cash = 0;
     for (let i = 0; i < n; i++) {
       const can = S.menu.filter((m) => menuLv(id, m) > 0).map((m) => [m, shopCanMake(id, m, held, used, prep), menuLv(id, m)]).filter(([, c]) => c); // unlocked items only (2026-11-13)
-      const pick = can.length ? menuPick(can, hash01(t + i * 977, 4141 + i, id.length)) : null;
+      const pick = can.length ? menuPick(can, hash01(t + i * 977, salt + i, id.length)) : null;
       if (pick) {
         const [m, c] = pick;
         if ((prep[c.k] || 0) >= 1) prep[c.k] -= 1; else { used[c.k] = (used[c.k] || 0) + c.uPer; prep[c.k] = (prep[c.k] || 0) + c.sPer - 1; }
@@ -8182,9 +8224,26 @@
     }
     ledger(total - cash, 1, Object.fromEntries(Object.entries(used).map(([k, q]) => [k, -q])));
     save.set('shopprep/' + id, prep);
+    const rec = shopRec(id, t);
     rec.sold = (rec.sold || 0) + n; rec.in = (rec.in || 0) + total - cash; rec.cost = (rec.cost || 0) + cost; save.set(key, rec);
     for (const k0 of save.keys(`shop/${id}/`)) if (Number(k0.split('/')[2]) < dayNo(t) - 2) save.set(k0, null);
-    return { kind: 'sell', cat: 'shop:' + id, line: 'shops', text: `bán cho ${n} khách (${names.join('')}) thu ${money(total)} xu, vốn ~${money(Math.round(cost))} xu`, at, stand, icon: S.icon, value: Math.round(total - cost) };
+    return { total, cost, cash, names };
+  }
+  // a tour group stops at the food street before the boat: who buys what depends on the hour (bread in the morning,
+  // a drink any time, a rice plate at lunch / dinner); only the stalls open with their seller on shift
+  const TOUR_BUY = { banhmi: (h) => (h < 11 ? 0.6 : 0.3), cafe: () => 0.7, restaurant: (h) => ((h >= 11 && h < 14) || (h >= 17 && h < 21) ? 0.6 : 0.15) };
+  function tourShops(t, n, idx) {
+    const h = mLocalH(t), out = [];
+    for (const id of Object.keys(SHOP)) {
+      if (!XISLE[id] || !shopOpenNow(id, t)) continue;
+      let k = 0; for (let i = 0; i < n; i++) if (hash01(dayNo(t) * 864e5, 4300 + idx * 31 + i * 7, id.length) < TOUR_BUY[id](h)) k++;
+      if (!k) continue;
+      const w = shopSeller(id, t), tape = mTaped(() => shopServe(id, t, k, 4500 + idx * 17)), s = tape.r;
+      mCatBook(t, tape.moves, 'shop:' + id);
+      if (w) mBook(t, w.id, s.total - s.cash, Math.round(s.total - s.cost), 'sell', 'shops', `bán cho đoàn du khách ${k} phần`);
+      out.push({ id, k, total: s.total, names: s.names });
+    }
+    return out;
   }
   const xProj = (id) => save.get('proj/' + id, null);
   const xBuilt = (id, t = farmNow()) => { const p = xProj(id); return !!p && t >= p.done; };
@@ -8689,6 +8748,8 @@
     if (mSlackNow[w.id]) return { where: 'nhà nhân viên', doing: '😴 đang lười trong nhà', ...(home || {}), out: false };
     return { where: 'nhà nhân viên', doing: '🏠 trong nhà, sắp ra làm', ...(home || {}), out: false };
   }
+  // gone home after their shift, still time today to call them back on overtime
+  const otCallable = (w, t = farmNow()) => !(ROLES[w.role] || {}).night && !lifeOff(w, t) && !mOnShift(w, t) && mLocalH(t) >= shiftEndH(w) && otChoices(w, mLocalH(t)).length > 0;
   function findHtml(head) {
     const st = mStaff(), t = farmNow(), rows = st.map((w) => ({ w, f: findWhere(w, t) })).sort((a, b) => (b.f.out ? 1 : 0) - (a.f.out ? 1 : 0) || (a.w.hired || 0) - (b.w.hired || 0));
     const nOut = rows.filter((r) => r.f.out).length;
@@ -8696,7 +8757,7 @@
     x += rows.map(({ w, f }) => { const R = ROLES[w.role] || { icon: '👤', name: w.role };
       return `<button data-act="findgo:${w.id}" class="fz-btn" style="display:flex;width:100%;gap:10px;align-items:center;text-align:left;margin:5px 0;padding:8px 10px;min-height:58px;${f.out ? '' : 'opacity:.82;'}">`
         + `<span style="font-size:28px;flex:none">${R.icon}</span><span style="flex:1;min-width:0;line-height:1.35;color:#3a2210"><b style="color:#7a2a10;font-size:15px">${w.name}</b> · ${R.name}<br><span style="font-size:12px">📍 ${f.where}</span><br><span style="font-size:12px;opacity:.85">${f.doing}</span></span>`
-        + `<span style="flex:none;font-size:20px">${f.out ? '🎯' : '🏠'}</span></button>`; }).join('');
+        + `<span style="flex:none;font-size:20px">${f.out ? '🎯' : '🏠'}</span></button>` + (otCallable(w, t) ? `<div style="margin:-2px 0 8px;text-align:right">${B('wcard:' + w.id, `📣 Gọi ${w.name} tăng ca`)}</div>` : ''); }).join('');
     return head('🔎 Nhân viên đang ở đâu') + x;
   }
   function findGo(id) {
