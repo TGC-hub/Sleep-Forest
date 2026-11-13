@@ -2768,13 +2768,17 @@
     rec.last = t;
     if (n <= 0) { save.set(key, rec); return { kind: 'bar', line: 'bar', text: 'lau quầy bar, chờ khách', at, stand, icon: '🍹', value: 0 }; }
     const held = barHeld(t), used = {}, names = [], cover = n * facFx('barCover', 'bar', L);
-    let total = cover, cost = 0, dishes = 0;
+    let total = cover, cost = 0, dishes = 0, cash = 0; const bprep = { ...shopPrep('bar') };
     for (let i = 0; i < n; i++) {
-      const k = BAR_IN.filter((x) => GOODS[x] && have(x) - (held[x] || 0) - (used[x] || 0) > 0).sort((a, b) => (have(b) - (used[b] || 0)) - (have(a) - (used[a] || 0)))[0];
-      if (k) { used[k] = (used[k] || 0) + 1; total += Math.round(priceOf(k) * 2 + facFx('barMark', 'bar', L)); cost += priceOf(k); names.push(GOODS[k].icon); } else { total += facFx('barDrink', 'bar', L); names.push(L >= 3 ? '🍸' : '🍺'); }
+      { // the menu (2026-11-13): what is unlocked and can be poured now, the higher-level drinks ordered more
+        const can = BAR_MENU.filter((m) => menuLv('bar', m) > 0).map((m) => [m, venueMake(m, held, used, bprep), menuLv('bar', m)]).filter(([, c]) => c);
+        const [m, c] = can.length ? menuPick(can, hash01(t + i * 977, 6161 + i, 5)) : [BAR_MENU[0], { k: null, cost: BAR_MENU[0].base }];
+        if (c.k) { if ((bprep[c.k] || 0) >= 1) bprep[c.k] -= 1; else { used[c.k] = (used[c.k] || 0) + c.uPer; bprep[c.k] = (bprep[c.k] || 0) + c.sPer - 1; } }
+        total += venuePrice('bar', m, c.cost); cost += c.cost; cash += m.base; names.push(m.i);
+      }
       if (((rec.sold || 0) + i) % 3 === 2) { const dk = barDishes(t, used)[0]; if (dk) { used[dk] = (used[dk] || 0) + 1; total += Math.round(priceOf(dk) * 1.5); cost += priceOf(dk); dishes++; } } // đồ nhắm
     }
-    ledger(total, 1, Object.fromEntries(Object.entries(used).map(([k, q]) => [k, -q])));
+    ledger(total - cash, 1, Object.fromEntries(Object.entries(used).map(([k, q]) => [k, -q]))); save.set('shopprep/bar', bprep);
     rec.sold = (rec.sold || 0) + n; rec.in = (rec.in || 0) + total; rec.dishes = (rec.dishes || 0) + dishes; save.set(key, rec);
     return { kind: 'bar', line: 'bar', text: `phục vụ ${n} khách (${names.join('')}${dishes ? ` + ${dishes} đĩa đồ nhắm` : ''}${cover ? `, vé vào cửa ${money(cover)}` : ''}) +${money(total)} xu`, at, stand, icon: '🍹', value: total - cost };
   }
@@ -4699,6 +4703,7 @@
   }
   window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z) => mTourArrive(n, z), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
+  window.__forestMenu = { items: (id) => menuItems(id), lv: (id, n) => menuLv(id, menuItems(id).find((m) => m.n === n)), act: (id, n) => menuAct(id, slug(n)), price: (id, n) => { const m = menuItems(id).find((x) => x.n === n); return venuePrice(id, m, venueCost(m)); }, html: (id) => venueHtml({ id }, (x) => x), lines: (t = farmNow()) => venueLines(t), slug: (x) => slug(x) };
   window.__forestStory = { MILL, millState, millLv, millCanStart, millInvest, millPayback, millNext, evStep, evToday, evLines, EV, lifeStep, lifeOff, lifeMood, lifeLines, lifeAct, isBday, bdayOf, doyOf, wageOf, repNow: () => repNow(), millPanel: () => millPanelHtml((x) => x), bizStep, seaStep, innNight, rvStep, festStep, festOf, msStep, astroEvents, astroShootMul, rivalWar, rivalMul, colScan, colSeen, starsAvg, photoTake, bizLines, bizAct, JOBS, bizPanel: () => bizPanelHtml((x) => x), colPanel: () => colPanelHtml((x) => x), storyPanel: () => storyPanelHtml((x) => x), brief: () => mBriefHtml((x) => x) };
   farm.debug = { simCook, specialOf, priceOf, RECIPES, workReward, fuelOf };
 
@@ -5206,6 +5211,7 @@
     if (v.kind === 'brief') return mBriefHtml(head);
     if (v.kind === 'week') return mWeekHtml(head);
     if (v.kind === 'mill') return millPanelHtml(head);
+    if (v.kind === 'venue') return venueHtml(v, head);
     if (v.kind === 'biz') return bizPanelHtml(head);
     if (v.kind === 'col') return colPanelHtml(head);
     if (v.kind === 'story') return storyPanelHtml(head);
@@ -5270,7 +5276,7 @@
     }
     say((fired.length ? `Em xin báo: em đã cho ${fired.join('; ')}. ` : '') + (watch.length ? `Em đang để ý ${watch.slice(0, 3).join(', ')}. Nếu vài ngày tới không khá lên em xin phép cho nghỉ; chủ nhân muốn giữ ai thì cứ dặn em ạ.` : 'Cả đội đang làm ổn, em chưa thấy ai cần cho nghỉ.'));
     // 4b. today's event, the staff's lives (2026-11-12)
-    for (const x of evLines(t).concat(lifeLines(t), bizLines(t))) say(x);
+    for (const x of evLines(t).concat(lifeLines(t), bizLines(t), venueLines(t))) say(x);
     // 5. last night, the weather
     const nk = nightKey(t - 8 * HOUR), n = save.get(`night/${nk}`, null), bar = save.get(`bar/${dayNo(t - 864e5)}`, null), dd = xWx && xWx.daily;
     const night = [];
@@ -5516,7 +5522,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '18:33 12-11';
+    const build = '09:29 13-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -5694,6 +5700,8 @@
     if ((act === 'mok' || act === 'mno') && a1 && a1.startsWith('mgr/ask/')) { const a = save.get(a1); if (a) { save.set(a1, { ...a, state: act === 'mok' ? 'ok' : 'no', at: farmNow() }); mLog(farmNow(), '', `${act === 'mok' ? '✅ Chủ trại duyệt' : '❌ Chủ trại không duyệt'}: ${a.what} (${money(a.cost)} xu)`, 0); } }
     if (act === 'evpick' && (a1 === 'a' || a1 === 'b')) { const k = 'ev/' + dayNo(), e = save.get(k); if (e && e.state === 'open') save.set(k, { ...e, pick: a1 }); }
     if (act === 'millup') millOwnerUp();
+    if (act === 'mu') menuAct(a1, a2);
+    if (act === 'openv') return openPanel({ kind: 'venue', id: a1 });
     if (['rivalad', 'festno', 'innup', 'boatbuy', 'photo'].includes(act)) bizAct(act, a1, a2);
     if (['lgift', 'lwed', 'lraiseok', 'lraiseno'].includes(act)) lifeAct(act, a1);
     if (act[0] === 'c' && act !== 'cook' && act !== 'close' && mCmdAct(act, a1)) return renderPanel();
@@ -5759,7 +5767,8 @@
     if (FARM.lake && inR({ x: FARM.lake.x - 8, y: FARM.lake.y - 8, w: FARM.lake.w + 16, h: FARM.lake.h + 16 })) return { kind: 'lake' };
     if (inR(FARM.bank)) return { kind: 'bank' };
     if (FARM.zoo && inR({ x: FARM.zoo.x + 8, y: FARM.zoo.y + 16, w: FARM.zoo.w - 16, h: FARM.zoo.h - 32 })) return { kind: 'zoo' };
-    for (const id of ['bees', 'orchard', 'camp', 'bar', 'banhmi', 'cafe', 'restaurant']) if (FARM.isles && inR(FARM.isles[id])) return { kind: 'night', tab: 'isles' };
+    { const I = FARM.isles || {}, foot = (f, w, h) => !!f && inR({ x: f.x - w / 2, y: f.y - h, w, h }); if (millLv() && foot(I.mill && I.mill.foot, 64, 48)) return { kind: 'mill' }; if (innLv() && foot(I.inn && I.inn.foot, 64, 80)) return { kind: 'biz' }; } // 2026-11-13
+    for (const id of ['bees', 'orchard', 'camp', 'bar', 'banhmi', 'cafe', 'restaurant']) if (FARM.isles && inR(FARM.isles[id])) return VENUE_IDS.includes(id) && xBuilt(id) ? { kind: 'venue', id } : { kind: 'night', tab: 'isles' };
     if (inR(FARM.shop)) return { kind: 'shop' };
     if (inR(FARM.barn)) return { kind: 'barn' };
     return null;
@@ -7558,6 +7567,117 @@
     return [...out];
   }
   const SHOP_OF = Object.fromEntries(Object.entries(SHOP).map(([id, S]) => [S.role, id]));
+  // ── Menus the owner unlocks and upgrades (user 2026-11-13: "vào trong quán nước, cơm, bánh mì, mở khóa các món bằng
+  // tiền, nâng cấp món, món càng cấp cao giá càng cao, lời hơn, có món quán phải đủ cấp mới mở khóa; quán bar cũng thế").
+  // Each item: locked (0) or level 1-5 (save menu/<venue>/<slug>); a few starters are free. Unlock = xu, some need the
+  // venue's level (FAC); an item's top level = 2 + the venue's level. Each level +15% on its price (same ingredients:
+  // more profit) and customers order the higher-level items more often. Tap the place on the map to go inside.
+  const slug = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  // premium items (only on the menu once unlocked)
+  SHOP.banhmi.menu.push({ n: 'Bánh mì xíu mại', i: '🥟', main: ['pork'], per: 4, side: 4, base: 6, mul: 1.25 }, { n: 'Bánh mì chảo đặc biệt', i: '🍳', main: ['beef', 'pork'], per: 3, side: 3, base: 8, mul: 1.4 });
+  SHOP.cafe.menu.push({ n: 'Cà phê muối', i: '🧂', main: ['caphe'], per: 3, base: 5, mul: 1.4 }, { n: 'Trà sữa hoàng gia', i: '👑', main: ['milk', 'goatmilk'], per: 2, base: 6, mul: 1.5 });
+  SHOP.restaurant.menu.push({ n: 'Lẩu cua đồng', i: '🦀', main: ['crab'], per: 1, side: 1, base: 10, mul: 1.5 }, { n: 'Bò bít tết', i: '🥩', main: ['beef'], per: 2, side: 2, base: 8, mul: 1.5 });
+  // the bar's drinks: fruit / honey / coffee from the barn, rice wine and wine from the workshop, the rest bought in
+  const BAR_MENU = [
+    { n: 'Bia hơi', i: '🍺', base: 4 },
+    { n: 'Nước ép trái cây', i: '🧃', main: BAR_IN.filter((k) => !['honey', 'caphe'].includes(k)), per: 1, base: 0 },
+    { n: 'Cocktail mật ong', i: '🍯', main: ['honey'], per: 2, base: 3 },
+    { n: 'Cà phê Irish', i: '☕', main: ['caphe'], per: 2, base: 6 },
+    { n: 'Rượu gạo', i: '🍶', main: ['m:ruougao', 'm:ruougao:2', 'm:ruougao:3'], per: 4, base: 1, mul: 0.75 }, // workshop goods are already marked up
+    { n: 'Mojito chanh', i: '🍸', main: ['chanh'], per: 2, base: 6 },
+    { n: 'Rượu vang ly', i: '🍷', main: ['m:vang', 'm:vang:2', 'm:vang:3'], per: 5, base: 1, mul: 0.75 },
+    { n: 'Cocktail nhiệt đới', i: '🍹', main: ['bi', 'dua', 'cam'], per: 2, base: 6 },
+    { n: 'Whisky', i: '🥃', base: 30 },
+    { n: 'Champagne', i: '🍾', base: 70 },
+  ];
+  // [venue level needed, unlock price in xu (0 = free starter)]
+  const MENU_META = {
+    banhmi: { 'Bánh mì pate': [1, 0], 'Bánh mì trứng': [1, 0], 'Bánh mì gà': [1, 150], 'Bánh mì thịt heo': [1, 250], 'Bánh mì lò bếp trại': [2, 300], 'Bánh mì bò': [2, 400], 'Bánh mì xíu mại': [2, 600], 'Bánh mì chảo đặc biệt': [3, 1200] },
+    cafe: { 'Trà đá': [1, 0], 'Trà mật ong': [1, 0], 'Nước chanh': [1, 0], 'Cà phê sữa đá': [1, 150], 'Nước ép cam': [1, 200], 'Nước ép táo': [1, 200], 'Nước ép lê': [1, 200], 'Trà sữa': [1, 250], 'Sinh tố rau củ': [1, 250], 'Nước ép dứa': [1, 250],
+      'Trà đào': [2, 300], 'Nước ép nho': [2, 300], 'Nước ép dưa lưới': [2, 350], 'Sinh tố dâu': [2, 400], 'Cà phê muối': [2, 700], 'Sinh tố bơ': [3, 600], 'Trà sữa hoàng gia': [3, 1500] },
+    restaurant: { 'Cơm phần': [1, 0], 'Cơm trứng': [1, 0], 'Canh rau': [1, 0], 'Cơm gà': [1, 200], 'Cơm vịt': [1, 250], 'Cơm sườn heo': [1, 300], 'Cơm cá kho': [1, 300], 'Món bếp trại': [2, 400], 'Thỏ nướng': [2, 400],
+      'Bò lúc lắc': [2, 500], 'Lẩu dê': [2, 600], 'Cừu nướng': [2, 600], 'Đà điểu xào': [3, 900], 'Lẩu cua đồng': [3, 1800], 'Bò bít tết': [3, 2000] },
+    bar: { 'Bia hơi': [1, 0], 'Nước ép trái cây': [1, 0], 'Cocktail mật ong': [1, 200], 'Cà phê Irish': [1, 300], 'Rượu gạo': [1, 300], 'Mojito chanh': [2, 600], 'Rượu vang ly': [2, 800], 'Cocktail nhiệt đới': [2, 900], 'Whisky': [3, 1500], 'Champagne': [3, 3000] },
+  };
+  const VENUE_IDS = ['banhmi', 'cafe', 'restaurant', 'bar'];
+  const menuItems = (id) => (id === 'bar' ? BAR_MENU : SHOP[id].menu.concat(SHOP[id].basic));
+  const menuMeta = (id, m) => (MENU_META[id] || {})[m.n] || [1, 300];
+  const menuKey = (id, m) => `menu/${id}/${slug(m.n)}`;
+  const menuLv = (id, m) => save.get(menuKey(id, m), menuMeta(id, m)[1] === 0 ? 1 : 0) || 0;
+  const menuMax = (id) => 2 + facLv(id);
+  const lvMul = (lv) => 1 + 0.15 * (Math.max(1, lv) - 1);
+  const itemMul = (id, m) => (m.mul || 1) * lvMul(menuLv(id, m));
+  const menuUpCost = (id, m, lv = menuLv(id, m)) => Math.round((Math.max(150, menuMeta(id, m)[1]) * 0.6 * Math.pow(2, lv - 1)) / 10) * 10;
+  const BAR_MUL = 2;
+  // a serving's price: the shops mark the cost up by their level's mark, the bar doubles it and adds its markup
+  const venuePrice = (id, m, cost, lv = menuLv(id, m)) => (id === 'bar' ? Math.ceil(cost * BAR_MUL * (m.mul || 1) * lvMul(lv)) + facFx('barMark', 'bar') : Math.ceil(cost * shopMark(id) * (m.mul || 1) * lvMul(lv)));
+  // what a serving costs now (cheapest ingredient on the list), for the menu board
+  function venueCost(m) {
+    if (!m.main) return m.base;
+    const ks = mainKeys(m); if (!ks.length) return m.base;
+    const uPer = m.per >= 1 ? 1 : Math.round(1 / m.per), sPer = m.per >= 1 ? m.per : 1;
+    return Math.min(...ks.map((k) => (priceOf(k) * uPer) / sPer)) + (m.side ? priceOf('cai') / m.side : 0) + m.base;
+  }
+  // make one serving now (bought-in items need nothing from the barn)
+  const venueMake = (m, held, used, prep) => (!m.main ? { k: null, cost: m.base } : shopCanMake(null, m, held, used, prep));
+  // customers lean to the higher-level items
+  function menuPick(can, r) { const tot = can.reduce((a, [m, , lv]) => a + lv, 0); let x = r * tot; for (const c of can) { if ((x -= c[2]) < 0) return c; } return can[can.length - 1]; }
+  function menuAct(id, s) {
+    const m = menuItems(id || '').find((x) => slug(x.n) === s); if (!m) return false;
+    const lv = menuLv(id, m), [need, ul] = menuMeta(id, m), t = farmNow(), nm = id === 'bar' ? FAC.bar.names[facLv('bar') - 1] : FAC[id].names[facLv(id) - 1];
+    if (!lv) {
+      if (facLv(id) < need || coins() < ul) return false;
+      ledger(-ul, 0, {}); evBook(t, -ul, 'Mở khóa, nâng cấp món', true); save.set(menuKey(id, m), 1);
+      mLog(t, bossId(), `🔓 Chủ trại mở khóa ${m.i} ${m.n} ở ${nm} (${money(ul)} xu)`, 0); sfx.jingle && sfx.jingle(420, true); return true;
+    }
+    if (lv >= Math.min(5, menuMax(id))) return false;
+    const c = menuUpCost(id, m, lv); if (coins() < c) return false;
+    ledger(-c, 0, {}); evBook(t, -c, 'Mở khóa, nâng cấp món', true); save.set(menuKey(id, m), lv + 1);
+    mLog(t, bossId(), `⬆️ Chủ trại nâng ${m.i} ${m.n} ở ${nm} lên cấp ${lv + 1} (${money(c)} xu): giá bán +15%`, 0); sfx.jingle && sfx.jingle(520, true); return true;
+  }
+  const venueName = (id) => FAC[id].names[facLv(id) - 1];
+  const venueIcon = (id) => (id === 'bar' ? '🍹' : SHOP[id].icon);
+  const venueBuilt = (id, t = farmNow()) => xBuilt(id, t);
+  // inside the place: the shelf of what is on the menu, today's takings, the venue's level, the menu board
+  function venueHtml(v, head) {
+    const id = v.id, t = farmNow(); if (!VENUE_IDS.includes(id)) return head('Quán') + '';
+    const L = facLv(id), items = menuItems(id), on = items.filter((m) => menuLv(id, m) > 0), c = coins();
+    const rec = id === 'bar' ? barRec(t) || {} : shopRec(id, t), open = id === 'bar' ? barOpenNow(t) : shopOpenNow(id, t);
+    const wall = id === 'bar' ? '#2a1f3a' : id === 'cafe' ? '#5a3f2a' : id === 'banhmi' ? '#6a4a2a' : '#4a3326', floor = id === 'bar' ? '#3a2d52' : '#b8875a';
+    let x = `<div style="border-radius:12px;overflow:hidden;border:3px solid #2a1a10;margin-bottom:8px;background:${wall}">`
+      + `<div style="padding:8px 10px 4px;display:flex;flex-wrap:wrap;gap:4px;min-height:40px;align-items:flex-end;border-bottom:5px solid #7a4f2a;background:linear-gradient(${wall},${id === 'bar' ? '#3a2a50' : '#7a5636'})">${on.map((m) => `<span title="${m.n}" style="font-size:24px;filter:drop-shadow(0 2px 0 rgba(0,0,0,.35))">${m.i}</span>`).join('')}</div>`
+      + `<div style="padding:8px 10px;background:repeating-linear-gradient(90deg,${floor} 0 18px,${id === 'bar' ? '#44365f' : '#a87a50'} 18px 36px);color:#fff;font-size:13px;text-shadow:0 1px 0 #000">`
+      + `${open ? '🟢 Đang mở cửa' : '🔴 Đang đóng'} · hôm nay <b>${rec.sold || 0}</b> khách, thu <b>${money(rec.in || 0)}</b> xu${id === 'bar' && rec.dishes ? ` · ${rec.dishes} đĩa đồ nhắm` : ''}</div></div>`;
+    x += `<div style="font-size:13px;margin:2px 0 4px">⭐ Cấp quán <b>${L}/3</b>: món nâng được tối đa cấp ${Math.min(5, menuMax(id))}.</div>` + (typeof facHtml === 'function' ? facHtml(id) : '');
+    x += `<div style="margin-top:8px;border-top:2px solid #44445a;padding-top:6px"><b>📜 Thực đơn</b> <span style="opacity:.7">${on.length}/${items.length} món đã mở</span></div>`;
+    x += items.map((m) => {
+      const lv = menuLv(id, m), [need, ul] = menuMeta(id, m), cost = venueCost(m), cap = Math.min(5, menuMax(id));
+      const price = venuePrice(id, m, cost, Math.max(1, lv)), next = lv && lv < 5 ? venuePrice(id, m, cost, lv + 1) : 0;
+      const ing = m.main ? mainKeys(m).slice(0, 6).map((k) => `<span style="color:${have(k) > 0 ? '#9fe070' : '#ffb08a'}">${GOODS[k].icon}${have(k)}</span>`).join(' ') : '<span style="opacity:.7">mua sẵn</span>';
+      const stars = lv ? `<span style="color:#ffd84a">${'★'.repeat(lv)}</span><span style="opacity:.35">${'★'.repeat(5 - lv)}</span>` : '🔒';
+      const btn = !lv ? (L < need ? `<span style="opacity:.7;font-size:12px">🔒 Cần quán cấp ${need}</span>` : B(`mu:${id}:${slug(m.n)}`, `🔓 Mở · ${money(ul)} xu`, c >= ul))
+        : lv >= 5 ? '<span style="opacity:.7">Tối đa</span>' : lv >= cap ? `<span style="opacity:.7;font-size:12px">Nâng quán lên cấp ${L + 1}</span>` : B(`mu:${id}:${slug(m.n)}`, `⬆️ Cấp ${lv + 1} · ${money(menuUpCost(id, m, lv))} xu`, c >= menuUpCost(id, m, lv));
+      return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0;padding:6px 8px;border-radius:9px;background:rgba(255,255,255,${lv ? 0.08 : 0.03});${lv ? '' : 'opacity:.85;'}">`
+        + `<div style="font-size:26px;${lv ? '' : 'filter:grayscale(1);'}">${m.i}</div><div style="flex:1;min-width:0;font-size:13px;line-height:1.4"><b>${m.n}</b> ${stars}`
+        + `<br>bán <b>${money(price)}</b> xu${next ? ` → <span style="color:#9fe070">${money(next)}</span> ở cấp ${lv + 1}` : ''} · lời ~${money(price - cost)}/phần<br><span style="font-size:12px">${ing}</span></div><div>${btn}</div></div>`;
+    }).join('');
+    return head(`${venueIcon(id)} Bên trong ${venueName(id)}`) + x;
+  }
+  // Lan's tip in the report: the best item to unlock next (cheapest that pays, its ingredients on hand)
+  function venueLines(t) {
+    const tips = [];
+    for (const id of VENUE_IDS) {
+      if (!venueBuilt(id, t)) continue;
+      const L = facLv(id);
+      for (const m of menuItems(id)) {
+        const lv = menuLv(id, m), [need, ul] = menuMeta(id, m); if (lv || L < need || !ul) continue;
+        const ok = !m.main || mainKeys(m).some((k) => have(k) > 0); if (!ok) continue;
+        const cost = venueCost(m), gain = venuePrice(id, m, cost, 1) - cost; tips.push({ id, m, ul, gain, score: gain / ul });
+      }
+    }
+    const b = tips.sort((a, c) => c.score - a.score)[0]; if (!b) return [];
+    return [`🔓 Gợi ý: ở ${venueIcon(b.id)} ${venueName(b.id)} có thể mở khóa ${b.m.i} <b>${b.m.n}</b> (${money(b.ul)} xu), mỗi phần lời ~${money(b.gain)} xu, kho đang có nguyên liệu. ${B(`mu:${b.id}:${slug(b.m.n)}`, `🔓 Mở · ${money(b.ul)} xu`, coins() >= b.ul)}${B('openv:' + b.id, '🚪 Vào quán')}`];
+  }
   const shopMark = (id, L = facLv(id)) => Math.max(1.5, SHOP[id].mul) * facFx('shopMark', id, L);
   // the prepared stock: servings left from a unit already cut (persistent, per shop)
   const shopPrep = (id) => save.get('shopprep/' + id, {});
@@ -7573,8 +7693,8 @@
   // the menu as it stands (what can be made now), with prices
   function shopMenuNow(id) {
     const held = barHeld(farmNow()), prep = shopPrep(id), mk = shopMark(id), S = SHOP[id], out = [];
-    for (const m of S.menu) { const c = shopCanMake(id, m, held, {}, prep); if (c) out.push({ n: m.n, i: m.i, cost: c.cost, price: Math.ceil(c.cost * mk) }); }
-    out.push({ n: S.basic.n, i: S.basic.i, cost: S.basic.base, price: Math.ceil(S.basic.base * mk) });
+    for (const m of S.menu) { if (!menuLv(id, m)) continue; const c = shopCanMake(id, m, held, {}, prep); if (c) out.push({ n: m.n, i: m.i, cost: c.cost, price: Math.ceil(c.cost * mk * itemMul(id, m)) }); }
+    out.push({ n: S.basic.n, i: S.basic.i, cost: S.basic.base, price: Math.ceil(S.basic.base * mk * itemMul(id, S.basic)) });
     return out;
   }
   window.__forestShops = () => Object.fromEntries(Object.keys(SHOP).map((id) => [id, { menu: shopMenuNow(id), menuAll: Object.fromEntries(SHOP[id].menu.map((m) => [m.n, 1])), needs: shopNeeds(id) }]).concat([['needs', Object.keys(SHOP).flatMap((id) => shopNeeds(id))]]));
@@ -7615,14 +7735,14 @@
     const held = barHeld(t), used = {}, prep = { ...shopPrep(id) }, names = [];
     let total = 0, cost = 0, cash = 0;
     for (let i = 0; i < n; i++) {
-      const can = S.menu.map((m) => [m, shopCanMake(id, m, held, used, prep)]).filter(([, c]) => c);
-      const pick = can.length ? can[Math.floor(hash01(t + i * 977, 4141 + i, id.length) * can.length)] : null;
+      const can = S.menu.filter((m) => menuLv(id, m) > 0).map((m) => [m, shopCanMake(id, m, held, used, prep), menuLv(id, m)]).filter(([, c]) => c); // unlocked items only (2026-11-13)
+      const pick = can.length ? menuPick(can, hash01(t + i * 977, 4141 + i, id.length)) : null;
       if (pick) {
         const [m, c] = pick;
         if ((prep[c.k] || 0) >= 1) prep[c.k] -= 1; else { used[c.k] = (used[c.k] || 0) + c.uPer; prep[c.k] = (prep[c.k] || 0) + c.sPer - 1; }
         if (c.veg) { if ((prep.veg || 0) >= 1) prep.veg -= 1; else { used[c.veg] = (used[c.veg] || 0) + 1; prep.veg = (prep.veg || 0) + m.side - 1; prep.vegK = c.veg; } }
-        const price = Math.ceil(c.cost * mk); total += price; cost += c.cost; cash += m.base; names.push(m.i);
-      } else { const price = Math.ceil(S.basic.base * mk); total += price; cost += S.basic.base; cash += S.basic.base; names.push(S.basic.i); }
+        const price = Math.ceil(c.cost * mk * itemMul(id, m)); total += price; cost += c.cost; cash += m.base; names.push(m.i);
+      } else { const price = Math.ceil(S.basic.base * mk * itemMul(id, S.basic)); total += price; cost += S.basic.base; cash += S.basic.base; names.push(S.basic.i); }
     }
     ledger(total - cash, 1, Object.fromEntries(Object.entries(used).map(([k, q]) => [k, -q])));
     save.set('shopprep/' + id, prep);
