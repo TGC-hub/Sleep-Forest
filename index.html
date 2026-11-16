@@ -411,6 +411,9 @@
     try { const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (d && d.items) data = d; } catch {}
     try { cfg = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}'); } catch {}
     if (!cfg.device) cfg.device = (/iPhone|iPad|Android/i.test(navigator.userAgent) ? 'phone-' : 'pc-') + Math.random().toString(36).slice(2, 8);
+    // one id per browser tab (sessionStorage survives a reload of the same tab): the staff lease is held by a TAB, so
+    // two tabs of the game on one device never both run the staff (2026-11-16: same device id = both thought they held it)
+    let tab = ''; try { tab = sessionStorage.getItem('claude-forest-tab') || ''; if (!tab) { tab = Math.random().toString(36).slice(2, 8); sessionStorage.setItem('claude-forest-tab', tab); } } catch { tab = Math.random().toString(36).slice(2, 8); }
     const status = { state: cfg.token ? 'idle' : 'off', msg: '', at: cfg.lastSync || 0 };
     const listeners = [];
     const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch {} };
@@ -492,13 +495,15 @@
       return running;
     }
 
+    // another tab of this device saved: take its newer items now (each tab keeps its own copy in memory)
+    window.addEventListener('storage', (e) => { if (e.key !== SAVE_KEY || !e.newValue) return; try { const d = JSON.parse(e.newValue); if (d && d.items) mergeIn(d.items); } catch {} });
     // pull on open, every minute while visible, and when the page comes back; push soon after changes and on hide
     setTimeout(() => sync(), 1200);
     setInterval(() => { if (!document.hidden) sync(); }, 15000);
     document.addEventListener('visibilitychange', () => sync(document.hidden ? { keepalive: true } : {}));
 
     return {
-      device: cfg.device,
+      device: cfg.device, tab,
       get(k, def) { const e = data.items[k]; return e && e.v != null ? e.v : def; },
       set(k, v) {
         data.items[k] = { t: Math.max(Date.now(), ((data.items[k] || {}).t || 0) + 1), v };
@@ -3007,7 +3012,14 @@
   const lakeAt = () => FARM.lake && { x: FARM.lake.x + FARM.lake.w / 2, y: FARM.lake.y + FARM.lake.h / 2 };
   // the bank: loans at 3% a day (added every morning); the limit grows with the farm
   const LOAN_RATE = 0.03;
-  const mLoan = () => save.get('mgr/loan', { owed: 0 });
+  // user 2026-11-16 "đồng bộ cho chuẩn, nhất là ngân hàng và tiền trong két": the purse was already safe (each device
+  // keeps its own bank/<device>, summed); the TJBank loan and the share count were ONE key that both devices read,
+  // changed and wrote back, so a repayment on the phone could be overwritten by the PC adding interest to the old
+  // amount (the coins gone, the debt still there). Now like the purse: each device adds its change under
+  // bal/<name>/<device>, the balance is the old key (frozen) + the sum of the changes.
+  const tallyGet = (name) => save.keys(`bal/${name}/`).reduce((a, k) => a + (Number(save.get(k)) || 0), 0);
+  const tallyAdd = (name, d) => { d = Math.round(d); if (!d) return; const k = `bal/${name}/${save.device}`; save.set(k, (Number(save.get(k)) || 0) + d); };
+  const mLoan = () => { const b = save.get('mgr/loan', null) || { owed: 0 }, owed = Math.max(0, Math.round((b.owed || 0) + tallyGet('loan'))); return owed > 0 ? { owed, since: save.get('mgr/loanSince', b.since || 0) } : { owed: 0 }; };
   const loanLimit = () => Math.round((500 + land() * 40 + animalIds().length * 20 + level() * 60 + (save.get('zoo/open') ? 1000 : 0)) * facFx('bankLimit', 'bank'));
   const bossId = () => (mStaff().find((w) => w.role === 'boss') || {}).id || '';
   // bank money is financing, not income / spending: kept out of the day's books (mFinNet) and the source tape
@@ -3019,7 +3031,7 @@
     if (amt < 50) return 0;
     finLedger(amt);
     const owed = Math.round((L.owed || 0) + amt);
-    save.set('mgr/loan', { owed, since: L.since || t });
+    tallyAdd('loan', amt); if (!L.owed) save.set('mgr/loanSince', t);
     mLog(t, bossId(), `🏦 Vay TJBank ${money(amt)} xu${why ? ' ' + why : ''} (lãi ${(loanRate() * 100).toLocaleString('vi-VN')}%/ngày, đang nợ ${money(owed)} xu)`, 0);
     return amt;
   }
@@ -3028,7 +3040,7 @@
     if (amt <= 0) return 0;
     finLedger(-amt);
     const owed = Math.round(L.owed - amt);
-    save.set('mgr/loan', owed > 0 ? { ...L, owed } : { owed: 0 });
+    tallyAdd('loan', -amt);
     mLog(t, bossId(), `🏦 Trả TJBank ${money(amt)} xu${owed > 0 ? `, còn nợ ${money(owed)} xu` : ', hết nợ'}`, 0);
     return amt;
   }
@@ -3897,7 +3909,7 @@
     if (!paid) return;
     // bank interest: 3% of what is owed, added every morning
     facDividend(t);
-    { const Ln = mLoan(); if (Ln.owed > 0) { const int = Math.max(1, Math.round(Ln.owed * loanRate())); save.set('mgr/loan', { ...Ln, owed: Ln.owed + int }); mCatAdd(t, 'out', 'Lãi ngân hàng', int); const dd = mDayRec(t); dd.out += int; save.set(`mgr/day/${day}`, dd); } }
+    { const Ln = mLoan(); if (Ln.owed > 0) { const int = Math.max(1, Math.round(Ln.owed * loanRate())); tallyAdd('loan', int); mCatAdd(t, 'out', 'Lãi ngân hàng', int); const dd = mDayRec(t); dd.out += int; save.set(`mgr/day/${day}`, dd); } }
     // zoo food bill for animals nobody fed is not charged (they just go hungry); feeding is paid when it happens
     if (mStaff().some((w) => w.role === 'hr')) mHrReport(t - 864e5);
     mLazyCut(t);
@@ -4469,7 +4481,7 @@
     if (mOff('hire')) return;
     for (const w of mStaff()) { const n = rankNext(w, t); if (!n || !n.ok || hash01(dayNo(t) * 100, wNum(w), 717) > 0.5) continue; const o = { line: 'visit', key: 'rank:' + w.id, what: `cho ${w.name} lên ${RANK.names[n.to]}` }; if (mCanInvest(n.cost, o) && mFund(n.cost, o)) { rankUp(w.id, 'boss', t); break; } }
   }
-  window.__forestFb = { setCover: (id, r, by, t) => setCover(id, r, by || 'owner', t), coverOf: (w, t) => coverOf(w, t), coverPlan: (t) => { save.set('coverplan', 0); mCoverPlan(t); }, roleDay: (r) => roleDay(r), shopSeller: (id, t) => shopSeller(id, t), coins: () => coins(), lifeOff: (w, t) => lifeOff(w, t), canInvest: (c, o) => mCanInvest(c, o || {}), ask: (c, o) => mAskState(c, o || {}), lineOk: (l) => mLineOk(l), weekReview: (t) => mWeekReview(t), rankUp, rankOf, adsBoost, rankNext, jobs: (w, t) => mJobs(w, t), shopServe: (id, t, n) => shopServe(id, t, n, 999), venueHot: (id) => venueHot(id), playing: () => sfx.playing(), carols: () => sfx.carols(), musicKey: () => themeNow() }; // tests (2026-11-16)
+  window.__forestFb = { borrow: (n) => mBorrow(n, farmNow(), '(chủ trại vay)'), interest: () => { const Ln = mLoan(); if (Ln.owed > 0) tallyAdd('loan', Math.max(1, Math.round(Ln.owed * loanRate()))); }, loanRate: () => loanRate(), tally: (n, d) => tallyAdd(n, d), tjbOwn: () => tjbOwn(), setCover: (id, r, by, t) => setCover(id, r, by || 'owner', t), coverOf: (w, t) => coverOf(w, t), coverPlan: (t) => { save.set('coverplan', 0); mCoverPlan(t); }, roleDay: (r) => roleDay(r), shopSeller: (id, t) => shopSeller(id, t), coins: () => coins(), lifeOff: (w, t) => lifeOff(w, t), canInvest: (c, o) => mCanInvest(c, o || {}), ask: (c, o) => mAskState(c, o || {}), lineOk: (l) => mLineOk(l), weekReview: (t) => mWeekReview(t), rankUp, rankOf, adsBoost, rankNext, jobs: (w, t) => mJobs(w, t), shopServe: (id, t, n) => shopServe(id, t, n, 999), venueHot: (id) => venueHot(id), playing: () => sfx.playing(), carols: () => sfx.carols(), musicKey: () => themeNow() }; // tests (2026-11-16)
   function innNight(t) {
     const L = innLv(), day = dayNo(t); if (!L || mLocalH(t) < 21 || save.get('inn/' + day)) return;
     const rooms = INN.rooms[L - 1], g = Math.max(0, Math.min(rooms, Math.round(rooms * innOcc(t) + (evRnd(day, 401) - 0.5) * 2)));
@@ -4866,20 +4878,23 @@
   const MLEASE = 10 * 60000, MFRESH = 150000;
   let mClaimAt = 0, mWait = '';
   function mHoldLease() {
-    const now = Date.now(), me = save.device, on = save.status().connected;
+    const now = Date.now(), me = save.device + '#' + save.tab, on = save.status().connected;
     if (on && now - save.syncedAt() > MFRESH) { mWait = 'sync'; save.sync(); return false; }
     const l = save.get('mgr/lease');
-    if (l && l.dev !== me && l.until > now) { mWait = l.dev; mClaimAt = 0; return false; }
+    if (l && l.dev !== me && l.dev !== save.device && l.until > now) { mWait = l.dev; mClaimAt = 0; return false; }
     if (!l || l.dev !== me) { save.set('mgr/lease', { dev: me, until: now + MLEASE }); mClaimAt = now; if (on) { mWait = 'claim'; save.sync(); return false; } }
     if (on && mClaimAt && save.syncedAt() <= mClaimAt) { mWait = 'claim'; return false; }
     mClaimAt = 0; mWait = '';
     if (l && l.dev === me && l.until - now < MLEASE - 2 * 60000) save.set('mgr/lease', { dev: me, until: now + MLEASE });
     return true;
   }
+  // closing / leaving the tab hands the staff back at once (otherwise a reload or the other device waits 10 minutes)
+  window.addEventListener('pagehide', () => { const l = save.get('mgr/lease'); if (l && l.dev === save.device + '#' + save.tab) { save.set('mgr/lease', { dev: l.dev, until: 0 }); try { save.sync(); } catch (e) {} } });
   // who runs the staff right now (shown in the manager panel)
   function mRunnerText() {
     if (!mWait) return '';
     if (mWait === 'sync' || mWait === 'claim') return '⏳ Đang đồng bộ với máy kia trước khi cho nhân viên làm tiếp…';
+    if (mWait.split('#')[0] === save.device) return '🗂️ Một tab khác của game trên máy này đang điều hành nhân viên — tab này chỉ xem (không tính tiền hai lần).';
     return `🖥️ Máy ${mWait.startsWith('pc-') ? 'PC' : 'điện thoại'} khác đang điều hành nhân viên — máy này chỉ xem (không tính tiền hai lần).`;
   }
   function mCatchUp() {
@@ -5813,7 +5828,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:14 16-11';
+    const build = '10:23 16-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -8587,7 +8602,7 @@
   const TJB_WHO = [['🧑‍🌾', 'Nông dân làng bên', 800, 3000], ['🛒', 'Tiểu thương chợ', 500, 2500], ['🚚', 'Chủ xe chở hàng', 2000, 6000], ['🏗️', 'Thợ xây nhà', 1500, 5000],
     ['🚤', 'Chủ ca nô du lịch', 3000, 8000], ['🐄', 'Trại bò làng bên', 2000, 7000], ['😤', 'Trại Phát Tài', 4000, 9000], ['🍜', 'Quán phở đầu làng', 600, 2000], ['🏫', 'Trường mầm non làng', 1000, 4000], ['⛪', 'Hội làng sửa đình', 2000, 5000]];
   FC_INVEST.push('Mua cổ phần TJBank'); // buying shares is capital, not a running loss
-  const tjbOwn = () => Math.max(0, save.get('tjb/own', 0) || 0);
+  const tjbOwn = () => Math.max(0, (save.get('tjb/own', 0) || 0) + tallyGet('tjb'));
   const tjbCap = () => TJB.cap[facLv('bank') - 1];
   const tjbRec = (day) => save.get('tjb/d/' + day, null);
   const tjbPrice = (day = dayNo()) => { for (let k = 0; k < 60; k++) { const r = tjbRec(day - k); if (r) return r.price; } return TJB.p0 * [1, 1.3, 1.7][facLv('bank') - 1]; };
@@ -8610,7 +8625,7 @@
     save.set('tjb/init', 1);
     const L = facLv('bank'); if (L < 2) return;
     const paid = FAC.bank.cost.slice(0, L - 1).reduce((a, x) => a + x, 0), n = Math.min(TJB.cap[L - 1], Math.floor(paid / TJB.p0));
-    if (n > tjbOwn()) { save.set('tjb/own', n); mLog(farmNow(), bossId(), `🏦 TJBank đổi quyền cổ tức cũ thành ${n} cổ phần cho chủ trại (đã góp ${money(paid)} xu)`, 0); }
+    if (n > tjbOwn()) { tallyAdd('tjb', n - tjbOwn()); mLog(farmNow(), bossId(), `🏦 TJBank đổi quyền cổ tức cũ thành ${n} cổ phần cho chủ trại (đã góp ${money(paid)} xu)`, 0); }
   }
   // each payday (start of the day): book yesterday, pay the dividend, set today's price
   function tjbDay(t) {
@@ -8637,12 +8652,12 @@
     if (kind === 'buy') {
       const room = tjbCap() - own, n = Math.min(room, a === 'max' ? Math.floor(coins() / (price * (1 + TJB.fee))) : Number(a) || 0); if (n <= 0) return false;
       const cost = Math.ceil(n * price * (1 + TJB.fee)); if (coins() < cost) return false;
-      ledger(-cost, 0, {}); evBook(t, -cost, 'Mua cổ phần TJBank', true); save.set('tjb/own', own + n);
+      ledger(-cost, 0, {}); evBook(t, -cost, 'Mua cổ phần TJBank', true); tallyAdd('tjb', n);
       mLog(t, bossId(), `📈 Chủ trại mua ${n} cổ phần TJBank giá ${String(price).replace('.', ',')} xu (kể cả phí ${money(cost)} xu), giờ giữ ${own + n}/${TJB.total}`, 0); return true;
     }
     const n = Math.min(own, a === 'all' ? own : Number(a) || 0); if (n <= 0) return false;
     const got = Math.floor(n * price * (1 - TJB.fee));
-    ledger(got, 0, {}); evBook(t, got, 'Bán cổ phần TJBank', true); save.set('tjb/own', own - n);
+    ledger(got, 0, {}); evBook(t, got, 'Bán cổ phần TJBank', true); tallyAdd('tjb', -n);
     mLog(t, bossId(), `📉 Chủ trại bán ${n} cổ phần TJBank giá ${String(price).replace('.', ',')} xu (sau phí +${money(got)} xu), còn giữ ${own - n}`, 0); return true;
   }
   function tjbHtml() {
