@@ -392,7 +392,7 @@
   // Ambient bed by time of day (stream, wind, birds, crickets, owls, campfire) + one-shot effects.
   // Toggle button under the zoom controls; mouse wheel on it = volume. Saved in localStorage.
   const SOUND_KEY = 'claude-forest-sound';
-  let soundPref = { muted: false, on: true, vol: 1.2, music: true, musicVol: 0.35, v: 3 };
+  let soundPref = { muted: false, on: true, vol: 1.2, music: true, musicVol: 0.35, themeMusic: true, v: 3 };
   try {
     const saved = JSON.parse(localStorage.getItem(SOUND_KEY) || '{}');
     // v3: rebalanced mix (headphones) -> volumes back to the new defaults; keep the on/off choices
@@ -660,8 +660,8 @@
     }
     // ── generative lo-fi: soft pads, kalimba, warm bass, lazy swung drums, vinyl crackle (72 bpm) ──
     const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
-    const CHORDS = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]]; // Fmaj7 Em7 Dm7 Cmaj7
-    const PENTA = [72, 74, 76, 79, 81, 84, 86, 88];
+    const CHORDS0 = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]]; // Fmaj7 Em7 Dm7 Cmaj7
+    const PENTA0 = [72, 74, 76, 79, 81, 84, 86, 88];
     const STEP = 60 / 72 / 2; // eighth notes
     let mStep = 0, mNext = 0;
     function pad(notes, when, len) {
@@ -674,8 +674,62 @@
         o.start(when); o2.start(when); o.stop(when + len + 3); o2.stop(when + len + 3);
       }
     }
+    // ── theme music (user 2026-11-13: "nghe nhạc theo theme, giáng sinh có những bài noel"): public-domain carols
+    // arranged here (music-box bells, bass, pads, sleigh bells), no recordings and no voices; Halloween / Tết / Trung thu
+    // swap the lo-fi's chords and scale. [midi, eighths] melody, [chord, eighths] chords (null = rest).
+    const CH = { C: [48, 52, 55], F: [53, 57, 60], G7: [55, 59, 62, 65], D7: [50, 54, 57, 60], Am: [57, 60, 64], G: [55, 59, 62] };
+    const CAROLS = [
+      { name: 'Jingle Bells', step: 0.25, bells: true,
+        mel: [[76, 2], [76, 2], [76, 4], [76, 2], [76, 2], [76, 4], [76, 2], [79, 2], [72, 3], [74, 1], [76, 8], [77, 2], [77, 2], [77, 3], [77, 1], [77, 2], [76, 2], [76, 2], [76, 1], [76, 1], [76, 2], [74, 2], [74, 2], [76, 2], [74, 4], [79, 4],
+          [76, 2], [76, 2], [76, 4], [76, 2], [76, 2], [76, 4], [76, 2], [79, 2], [72, 3], [74, 1], [76, 8], [77, 2], [77, 2], [77, 2], [77, 2], [77, 2], [76, 2], [76, 2], [76, 1], [76, 1], [79, 2], [79, 2], [77, 2], [74, 2], [72, 8]],
+        ch: [['C', 32], ['F', 8], ['C', 8], ['D7', 8], ['G7', 8], ['C', 32], ['F', 8], ['C', 8], ['G7', 8], ['C', 8]] },
+      { name: 'We Wish You a Merry Christmas', step: 0.21,
+        mel: [[67, 2], [72, 2], [72, 1], [74, 1], [72, 1], [71, 1], [69, 2], [69, 2], [69, 2], [74, 2], [74, 1], [76, 1], [74, 1], [72, 1], [71, 2], [67, 2], [67, 2], [76, 2], [76, 1], [77, 1], [76, 1], [74, 1], [72, 2], [69, 2], [67, 1], [67, 1], [69, 2], [74, 2], [71, 2], [72, 6]],
+        ch: [[null, 2], ['C', 6], ['F', 6], ['D7', 6], ['G7', 6], ['Am', 6], ['F', 6], ['G7', 6], ['C', 6]] },
+      { name: 'Silent Night', step: 0.34,
+        mel: [[67, 3], [69, 1], [67, 2], [64, 6], [67, 3], [69, 1], [67, 2], [64, 6], [74, 4], [74, 2], [71, 6], [72, 4], [72, 2], [67, 6], [69, 4], [69, 2], [72, 3], [71, 1], [69, 2], [67, 3], [69, 1], [67, 2], [64, 6],
+          [69, 4], [69, 2], [72, 3], [71, 1], [69, 2], [67, 3], [69, 1], [67, 2], [64, 6], [74, 4], [74, 2], [77, 3], [74, 1], [71, 2], [72, 6], [76, 6], [72, 3], [67, 1], [64, 2], [67, 3], [65, 1], [62, 2], [60, 12]],
+        ch: [['C', 24], ['G7', 12], ['C', 12], ['F', 12], ['C', 12], ['F', 12], ['C', 12], ['G7', 12], ['C', 12], ['C', 6], ['G7', 6], ['C', 12]] },
+    ].map((S) => { // index where each note / chord starts, once
+      const at = (list) => { const m = {}; let e = 0; for (const [n, d] of list) { if (n != null) m[e] = [n, d]; e += d; } return { m, len: e }; };
+      const M = at(S.mel), C = at(S.ch); return { ...S, mAt: M.m, cAt: C.m, len: Math.max(M.len, C.len) };
+    });
+    let cSong = 0, cPos = -4, cNext = 0, playing = '';
+    function themeMusicKey() {
+      if (soundPref.themeMusic === false) return null;
+      let th = {}; try { th = themeNow(); } catch (e) {}
+      return th.noel || th.santa ? 'noel' : th.halloween ? 'spooky' : th.tet || th.trungthu ? 'tet' : null;
+    }
+    function carolTick(ph) {
+      const now = ctx.currentTime;
+      if (!cNext || cNext < now) cNext = now + 0.15;
+      while (cNext < now + (document.hidden ? 1.6 : 0.35)) {
+        const t = cNext, e = cPos, T = CAROLS[cSong % CAROLS.length];
+        playing = T.name;
+        if (e >= 0) {
+          const m = T.mAt[e];
+          if (m) { // a music-box bell: the note + soft partials
+            const fq = mtof(m[0]), d = Math.max(0.5, m[1] * T.step * 1.6);
+            tone({ type: 'triangle', f: [fq, fq], dur: d, gain: 0.06, attack: 0.004, when: t, bus: musicBus, pan: 0.1 });
+            tone({ f: [fq * 2, fq * 2], dur: d * 0.5, gain: 0.018, attack: 0.002, when: t, bus: musicBus, pan: -0.1 });
+            tone({ f: [fq * 4.01, fq * 4.01], dur: 0.25, gain: 0.006, attack: 0.002, when: t, bus: musicBus, pan: 0 });
+          }
+          const c = T.cAt[e];
+          if (c) { const notes = CH[c[0]]; pad(notes, t, c[1] * T.step); tone({ f: [mtof(notes[0] - 12), mtof(notes[0] - 12)], dur: Math.min(1.4, c[1] * T.step), gain: 0.08, when: t, bus: musicBus, pan: 0 }); }
+          if (T.bells && e % 2 === 0) for (let k = 0; k < 2; k++) noise({ dur: 0.05, gain: (e % 4 ? 0.006 : 0.011) * (0.55 + 0.45 * (1 - ph.night)), type: 'highpass', f: 6500 + k * 1500, when: t + k * 0.03, bus: musicBus });
+        }
+        cNext += T.step; cPos++;
+        if (cPos >= T.len) { cSong++; cPos = -8; } // a short quiet between songs
+      }
+    }
+    const SPOOKY = { ch: [[57, 60, 64, 67], [53, 57, 60, 64], [50, 53, 57, 60], [52, 56, 59, 62]], pen: [69, 72, 74, 75, 76, 79, 81, 84] }; // Am7 Fmaj7 Dm7 E7, a minor blues scale
+    const TETM = { ch: [[48, 55, 62, 69], [50, 57, 62, 69], [53, 60, 65, 69], [45, 52, 57, 64]], pen: [72, 74, 77, 79, 81, 84, 86, 89] }; // open fifths, do-re-fa-sol-la
     function musicTick(ph) {
-      if (!soundPref.music) { mNext = 0; return; }
+      if (!soundPref.music) { mNext = 0; cNext = 0; playing = ''; return; }
+      const key = themeMusicKey();
+      if (key === 'noel') { mNext = 0; carolTick(ph); return; }
+      cNext = 0; playing = key === 'spooky' ? 'Halloween' : key === 'tet' ? 'nhạc Tết' : '';
+      const CHORDS = key === 'spooky' ? SPOOKY.ch : key === 'tet' ? TETM.ch : CHORDS0, PENTA = key === 'spooky' ? SPOOKY.pen : key === 'tet' ? TETM.pen : PENTA0;
       const now = ctx.currentTime;
       if (!mNext || mNext < now) { mNext = now + 0.15; mStep = 0; }
       const calm = 0.55 + 0.45 * (1 - ph.night); // softer drums at night
@@ -761,6 +815,7 @@
       rms() { if (!meter) return 0; const d = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); const w = Math.round(ctx.sampleRate * 0.05); let m = 0; for (let i = 0; i + w <= d.length; i += w >> 1) { let a = 0; for (let j = i; j < i + w; j++) a += d[j] * d[j]; m = Math.max(m, a / w); } return Math.sqrt(m); },
       solo(on, keepStream) { solo = !!on; if (bed) for (const k in bed) bed[k].g.gain.value = keepStream && k === 'stream' ? 0.06 : 0; },
       isSolo: () => solo,
+      playing: () => playing, carols: () => CAROLS.map((S) => S.name),
       sample: (group, gain, rate) => playSample(group, W / 2, gain, rate),
       pass(fn) { soloPass = true; try { return fn(); } finally { soloPass = false; } },
       state: () => (ctx ? `${ctx.state} muted=${soundPref.muted} forest=${soundPref.on}@${soundPref.vol} music=${soundPref.music}@${soundPref.musicVol} gains=${master.gain.value.toFixed(2)}/${musicBus.gain.value.toFixed(2)} bed=${!!bed} step=${mStep} samples=${Object.entries(samples).map(([k, v]) => k + ':' + v.length).join(',')}` : 'no-context'),
@@ -2324,7 +2379,7 @@
   // books look exactly as if they had worked all along. Save keys: mgr/staff, mgr/last, mgr/day/<day>, mgr/log, mgr/away.
   const MSTEP = 5 * 60000, MCATCH = 7 * 864e5, MWORK = [6, 18], MLOG = 160, MMAX = 12; // shift 6-18 (user 2026-11-09); later = overtime, x2 pay
   const ROLES = {
-    boss: { name: 'Quản lý', icon: '🧑‍💼', ap: 6, wage: 0, hire: 0, jobs: ['rescue', 'dead', 'boss', 'harvest', 'orders', 'field', 'ranch', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish'] },
+    boss: { name: 'Quản lý', icon: '🧑‍💼', ap: 6, wage: 0, hire: 0, jobs: ['rescue', 'dead', 'boss', 'harvest', 'orders', 'field', 'ranch', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish', 'shophelp'] },
     farmer: { name: 'Trồng trọt', icon: '🧑‍🌾', ap: 9, wage: 30, hire: 120, jobs: ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'field', 'water'] },
     poultry: { name: 'Nuôi gia cầm', icon: '🐔', ap: 6, wage: 35, hire: 180, jobs: ['rescue', 'dead', 'ranch'] },
     cattle: { name: 'Nuôi gia súc', icon: '🐄', ap: 6, wage: 40, hire: 220, jobs: ['rescue', 'dead', 'ranch'] },
@@ -2605,7 +2660,7 @@
   const MOFF = {
     repay: ['🏦', 'tự trả nợ TJBank'], borrow: ['💳', 'tự vay TJBank'], hire: ['🤝', 'tự thuê người'], fire: ['👋', 'tự cho nhân viên nghỉ'],
     ot: ['⏱️', 'tự cho tăng ca'], bar: ['🍹', 'tự mở quán bar đêm'], cancel: ['❌', 'tự huỷ đơn hàng'], fert: ['💩', 'tự bón phân cho kịp đơn'],
-    sell: ['🛒', 'tự bán hàng trong kho'], cook: ['🍳', 'tự nấu món để bán'], lake: ['🎣', 'mua vé câu ở hồ'],
+    sell: ['🛒', 'tự bán hàng trong kho'], cook: ['🍳', 'tự nấu món để bán'], lake: ['🎣', 'mua vé câu ở hồ'], idlefish: ['🪝', 'sai người đang rảnh đi câu cá'], cover: ['🔁', 'tự điều người làm thay ở quầy ăn'], shophelp: ['🧑‍💼', 'quản lý bán hộ ở quầy không có người'],
   };
   const mOff = (k) => !!(mCmd().off || {})[k];
   const mCanInvest = (cost, o = {}) => !mPaused() && mLineOk(o.line) && mAskState(cost, o) !== 'no' && (mOwnCash(cost) || mBoldCheck(cost, o).ok);
@@ -2801,7 +2856,7 @@
         const can = BAR_MENU.filter((m) => menuLv('bar', m) > 0).map((m) => [m, venueMake(m, held, used, bprep), menuLv('bar', m)]).filter(([, c]) => c);
         const [m, c] = can.length ? menuPick(can, hash01(t + i * 977, 6161 + i, 5)) : [BAR_MENU[0], { k: null, cost: BAR_MENU[0].base }];
         if (c.k) { if ((bprep[c.k] || 0) >= 1) bprep[c.k] -= 1; else { used[c.k] = (used[c.k] || 0) + c.uPer; bprep[c.k] = (bprep[c.k] || 0) + c.sPer - 1; } }
-        total += venuePrice('bar', m, c.cost); cost += c.cost; cash += m.base; names.push(m.i);
+        total += venuePrice('bar', m, c.cost); cost += c.cost; cash += m.base; names.push(m.i); rec.items = rec.items || {}; rec.items[m.n] = (rec.items[m.n] || 0) + 1;
       }
       if (((rec.sold || 0) + i) % 3 === 2) { const dk = barDishes(t, used)[0]; if (dk) { used[dk] = (used[dk] || 0) + 1; total += Math.round(priceOf(dk) * 1.5); cost += priceOf(dk); dishes++; } } // đồ nhắm
     }
@@ -2883,19 +2938,29 @@
   });
   const penIds = (sc) => (sc.pen === 'any' ? animalIds() : sc.pen ? animalIds(sc.pen) : []);
   // the job list of a worker right now (the manager also covers every trade nobody was hired for)
+  const mIdleFishOk = (w) => !mOff('idlefish') && !(ROLES[w.role] || {}).night && w.role !== 'guide' && mStaff().some((x) => (x.role === 'boss' || x.role === 'hr') && x.id !== w.id);
+  const fishTag = (w) => (w && !(ROLES[w.role] || {}).jobs.includes('fish') && mIdleFishOk(w) ? `rảnh việc, ${mStaff().some((x) => x.role === 'hr') ? 'nhân sự' : 'quản lý'} sai đi câu: ` : '');
+  // ── stand-ins (user 2026-11-16): the owner or the manager sends a hand to another trade for the day (someone is ill,
+  // or a stall with nobody to sell earns more than what they do). They keep their wage and their own 6-18 shift; their
+  // own line waits (the manager looks in on fields / pens / ponds when she is free).
+  const coverOf = (w, t = farmNow()) => (w && w.role !== 'boss' ? save.get(`cover/${dayNo(t)}/${w.id}`, null) : null);
+  const effRole = (w, t = farmNow()) => { const c = coverOf(w, t); return c && ROLES[c] ? c : w.role; };
   function mJobs(w, t = farmNow()) {
+    if (w && w.role !== 'boss' && w.role !== 'boss!' && coverOf(w, t)) w = { ...w, role: effRole(w, t) };
     const broke = mBroke();
     if (w.role === 'boss') {
       mBrokeNote(farmNow(), w.id);
       if (mStaff().some((x) => x.role === 'accountant')) { const L = mJobs({ ...w, role: 'boss!' }, t); return L; }
-      return broke ? ['payroll', 'rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'market', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
-        : ['payroll', 'rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish'];
+      return broke ? ['payroll', 'rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'market', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water', 'shophelp']
+        : ['payroll', 'rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish', 'shophelp'];
     }
-    if (w.role === 'boss!') { const broke = mBroke(); return (broke ? ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'market', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water']
-      : ['rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish']); } // the manager without payroll (the accountant has it)
+    if (w.role === 'boss!') { const broke = mBroke(); return (broke ? ['rescue', 'dead', 'rush', 'harvest', 'xfarm', 'orders', 'market', 'sell', 'field', 'ranch', 'zoo', 'pond', 'fish', 'cook', 'water', 'shophelp']
+      : ['rescue', 'dead', 'rush', 'boss', 'harvest', 'xfarm', 'orders', 'field', 'ranch', 'zoo', 'pond', 'cook', 'mill', 'market', 'sell', 'water', 'wood', 'fish', 'shophelp']); } // the manager without payroll (the accountant has it)
     if (barTender(t) === w.id && (mLocalH(t) >= MWORK[1] || mLocalH(t) < MWORK[0])) return ['bar'];
     const j = HELP[w.role] ? ROLES[w.role].jobs.concat('help') : ROLES[w.role].jobs;
-    return broke && !j.includes('fish') && w.role !== 'woodcutter' && !ROLES[w.role].shift ? j.concat('fish') : j; // shop sellers stay at their counter
+    // user 2026-11-14: the manager / HR send a hand with nothing to do to fish; the job list is tried in order every
+    // action, so the moment their own work turns up they leave the rod and do it, and go back fishing when idle again
+    return (broke || mIdleFishOk(w)) && !j.includes('fish') && w.role !== 'woodcutter' && !ROLES[w.role].shift ? j.concat('fish') : j; // shop sellers stay at their counter
   }
   const feedDay = (A) => A.feed * TOOLS.feed.price;
   const incomeDay = (A) => (A.meat ? (A.yield * PRODUCTS[A.meat].price) / ((A.grow + 12) / 24) : (A.yield * PRODUCTS[A.product].price * 24) / A.every);
@@ -3063,10 +3128,12 @@
     const st = mStaff(), guide = st.find((w) => w.role === 'guide'), day = dayNo(t), idx = VISIT_HOURS.indexOf(h);
     if (!guide && idx % 2 === 1) return;
     const aF = farmAppeal(), aZ = zooAppeal(), rr = (n) => hash01(day * 864e5, 4100 + idx * 13 + n, 7);
-    if (rr(0) > Math.min(0.9, 0.2 + (aF + aZ) / 100)) return;
+    const ads = adsBoost(t);
+    if (rr(0) > Math.min(0.95, 0.2 + (aF + aZ) / 100 + ads * 0.3)) return;
     let n = Math.max(1, Math.min(10, Math.round(2 + (aF + aZ) / 20 + rr(1) * 3)));
     if (!guide) n = Math.max(1, Math.round(n * 0.6));
     if (aZ > 0) n = Math.min(16, Math.round(n * facFx('zooCrowd', 'zoo'))); // a bigger zoo draws bigger groups
+    if (ads) n = Math.min(22, Math.round(n * (1 + ads))); // the marketers' pull
     const toZoo = aZ > 0 && rr(2) < 0.3 + 0.12 * zooStars();
     const farmFee = n * FARM_FEE, zooTicket = toZoo ? n * zooFee() : 0, tip = guide ? n * TIP : 0, total = farmFee + zooTicket + tip;
     ledger(total, 0, {});
@@ -3078,7 +3145,7 @@
     const d = mDayRec(t); d.visit = d.visit || { groups: 0, people: 0 }; d.visit.groups++; d.visit.people += n; if (toZoo) d.visit.zoo = (d.visit.zoo || 0) + n; save.set(`mgr/day/${day}`, d);
     const rv = toZoo ? zooReview(t) : null;
     const buys = tourShops(t, n, idx), buyTxt = buys.length ? ` · mua ở phố ăn uống ${buys.map((b) => `${SHOP[b.id].icon}×${b.k}`).join(' ')} +${money(buys.reduce((a, b) => a + b.total, 0))} xu` : '';
-    mLog(t, who ? who.id : '', `🚶 Đoàn ${n} khách tham quan farm${toZoo ? ' + sở thú' : ''}: +${money(total)} xu${guide ? ` (${guide.name} hướng dẫn)` : ' (chưa có hướng dẫn viên)'}${buyTxt}${rv ? ` · chấm sở thú ${'★'.repeat(Math.floor(rv.s))}${rv.s % 1 ? '½' : ''} "${rv.note}"` : ''}`, 0);
+    mLog(t, who ? who.id : '', `🚶 Đoàn ${n} khách tham quan farm${toZoo ? ' + sở thú' : ''}: +${money(total)} xu${guide ? ` (${guide.name} hướng dẫn)` : ' (chưa có hướng dẫn viên)'}${ads ? ` · 📣 quảng cáo +${Math.round(ads * 100)}%` : ''}${buyTxt}${rv ? ` · chấm sở thú ${'★'.repeat(Math.floor(rv.s))}${rv.s % 1 ? '½' : ''} "${rv.note}"` : ''}`, 0);
     if (mRun && mRun.sum) mRun.sum.kinds.tour = (mRun.sum.kinds.tour || 0) + 1;
     if (mRun && mRun.live) mTourArrive(n, toZoo, buys);
   }
@@ -3136,6 +3203,7 @@
       : !count('gardener') && xBuilt('orchard', t) ? ['gardener', 'vườn quả có người chuyên chăm: quả thêm 30%, nông dân đỡ phải ra đảo']
       : !count('host') && innLv() >= 1 ? ['host', 'homestay có lễ tân thì khách đến đủ (không có chỉ một nửa)']
       : !count('artisan') && millLv() >= 2 ? ['artisan', 'xưởng chế biến đã có 4 thùng, cần thợ chuyên ủ và coi hầm']
+      : !count('marketer') && level() >= 3 && (guideAllowed() || xBuilt('banhmi', t) || xBuilt('cafe', t) || xBuilt('restaurant', t)) ? ['marketer', 'quảng cáo kéo thêm đoàn du khách (vé, tip, ăn uống ở phố)']
       : late >= 4 && count('farmer') < Math.ceil(land() / 6) ? ['farmer', 'ruộng làm không xuể (cây chín quá/chết)']
       : count('poultry') === 1 && small >= 12 ? ['poultry', 'chuồng gia cầm quá đông']
       : null;
@@ -3293,17 +3361,10 @@
       for (const id of penIds(sc)) { const s = simAnimal(id); if (s && s.yield && s.status !== 'sick' && mFree('a:' + id)) { const item = s.A.meat || s.A.product, n = s.yield; if (farm.collect(id)) return { kind: 'collect', text: `${s.A.meat ? 'xuất chuồng' : 'thu'} ${n} ${PRODUCTS[item].icon}`, at: penAt(s.A.pen), value: n * PRODUCTS[item].price, icon: '🧺' }; } }
       // feed a little before they go hungry (a full day of feed at once)
       for (const id of penIds(sc)) { const s = simAnimal(id); if (s && s.status !== 'dead' && s.fedLeft <= 6 * HOUR && mFree('a:' + id) && buySome('feed', s.A.feed) && farm.feedAnimal(id)) return { kind: 'feed', text: `cho ${s.A.icon} ăn`, at: penAt(s.A.pen), icon: '🥣' }; }
-      // eggs into the incubator: free chicks (unless an order needs the eggs)
       const want = {}; for (const o of orderBook(dayNo(t))) if (!o.done) for (const [k, q] of Object.entries(o.want)) want[k] = (want[k] || 0) + q;
       const incN = [0, 1].filter((x) => save.get(`incub/${x}`)).length;
-      if (small && penFree('small') - incN > 0 && animalIds().length + incN < animalCap()) for (let s = 0; s < 2; s++) {
-        if (save.get(`incub/${s}`) || !mFree('inc:' + s)) continue;
-        const egg = ['egg', 'duckegg'].find((e) => have(e) > (want[e] || 0));
-        if (egg && farm.incubate(s, egg)) return { kind: 'incubate', text: `ấp ${egg === 'egg' ? 'trứng gà' : 'trứng vịt'} (nở sau 1 ngày)`, at: penAt('small'), icon: '🥚' };
-        break;
-      }
       // buy the animal that pays itself back fastest (within 5 days), with 3x its price (and feed) in the purse
-      if (animalIds().length + incN >= animalCap() || !mFree('buyAnimal')) return null;
+      if (animalIds().length + incN < animalCap() && mFree('buyAnimal')) {
       // first an animal whose produce an order / the kitchen is short of (if it pays back within 8 days), else the
       // fastest payback within 5 days; always with 3x the price (and its feed) in the purse
       const L = level(), D = mDemand(t), ok = Object.entries(ANIMALS).filter(([, A]) => A.lvl <= L && (sc.pen === 'any' || A.pen === sc.pen) && penFree(A.pen) > 0 && mCanInvest(A.price + feedDay(A) * 2, { line: 'ranch', key: 'animal', payback: payback(A) }));
@@ -3312,6 +3373,16 @@
       if (pick && mFund(pick[1].price + feedDay(pick[1]) * 2, { line: 'ranch', key: 'animal', what: `mua ${pick[1].name}`, payback: payback(pick[1]) }) && farm.buyAnimal(pick[0])) {
         const A = pick[1], it = A.meat || A.product;
         return { kind: 'buyAnimal', line: 'ranch', text: forUse ? `mua ${A.icon} ${A.name} để có ${PRODUCTS[it].icon}${mFor({ src: D.src[it] })}` : `mua ${A.icon} ${A.name} (hoàn vốn ~${Math.ceil(payback(A))} ngày)`, at: penAt(A.pen), icon: A.icon, big: true };
+      }
+      }
+      // eggs into the incubator only when no chick / animal could be bought (short of coins): user 2026-11-15
+      // "ưu tiên thấp, không có tiền mua giống mới lấy trứng ra ấp, còn không thì cứ mua ở cửa hàng"
+      const broke = (e) => { const A = ANIMALS[e === 'egg' ? 'chicken' : 'duck']; return !mCanInvest(A.price + feedDay(A) * 2, { line: 'ranch', key: 'animal', payback: payback(A) }); };
+      if (small && penFree('small') - incN > 0 && animalIds().length + incN < animalCap()) for (let s = 0; s < 2; s++) {
+        if (save.get(`incub/${s}`) || !mFree('inc:' + s)) continue;
+        const egg = ['egg', 'duckegg'].find((e) => have(e) > (want[e] || 0) && broke(e));
+        if (egg && farm.incubate(s, egg)) return { kind: 'incubate', text: `ấp ${egg === 'egg' ? 'trứng gà' : 'trứng vịt'} (nở sau 1 ngày)`, at: penAt('small'), icon: '🥚' };
+        break;
       }
       return null;
     },
@@ -3355,12 +3426,12 @@
       // now the worker takes the spot nearest to where they stand and keeps it for the day (b.spotW / b.spotL)
       if (best.place === 'lake') { const L = FARM.lake.spots; if (!(b.spotL >= 0 && b.spotL < L.length)) b.spotL = nearSpotIdx(L.map((s) => ({ c: s.c, r: s.r })), w.id); const s = L[b.spotL]; at = { x: s.tc * 16 + 8, y: s.tr * 16 + 8 }; stand = { c: s.c, r: s.r }; where = 'hồ câu'; }
       else { const spots = SPOTS.filter((s) => s.kind === 'fish'); if (spots.length && !(b.spotW >= 0 && b.spotW < spots.length)) b.spotW = nearSpotIdx(spots.map((s) => ({ c: s.col, r: s.row })), w.id); const s = spots[b.spotW]; at = s ? { x: s.tc * 16 + 8, y: s.tr * 16 + 8 } : pondAt(1); stand = s ? { c: s.col, r: s.row } : null; where = s && spotIsSea(s) ? 'biển' : 'suối'; }
-      if (Math.random() > best.p) { save.set(`mgr/day/${today}`, d); return { kind: 'fishMiss', text: `câu hụt ở ${where}, mất 1 ${bait.icon} ${bait.name.toLowerCase()}`, at, stand, icon: '🎣' }; }
+      if (Math.random() > best.p) { save.set(`mgr/day/${today}`, d); return { kind: 'fishMiss', text: `${fishTag(w)}câu hụt ở ${where}, mất 1 ${bait.icon} ${bait.name.toLowerCase()}`, at, stand, icon: '🎣' }; }
       const r = Math.random(), item = best.place === 'lake' ? lakePick(best.bk) : (r < 0.06 ? 'boot' : r < 0.2 ? 'crab' : r < 0.55 ? 'perch' : 'fish');
       b.caught = (b.caught || 0) + 1; save.set(`mgr/day/${today}`, d);
       ledger(0, 1, { [item]: 1 });
       const big = CATCH_GOODS[item].price >= 40; // a rare catch goes in the journal on its own line
-      return { kind: 'fish', text: `${big ? '🎉 ' : ''}câu được ${CATCH_GOODS[item].icon} ${CATCH_GOODS[item].name.toLowerCase()} (${CATCH_GOODS[item].price} xu) ở ${where}, mồi ${bait.icon}`, at, stand, value: CATCH_GOODS[item].price, icon: big ? CATCH_GOODS[item].icon : '🎣', big };
+      return { kind: 'fish', text: `${fishTag(w)}${big ? '🎉 ' : ''}câu được ${CATCH_GOODS[item].icon} ${CATCH_GOODS[item].name.toLowerCase()} (${CATCH_GOODS[item].price} xu) ở ${where}, mồi ${bait.icon}`, at, stand, value: CATCH_GOODS[item].price, icon: big ? CATCH_GOODS[item].icon : '🎣', big };
     },
     // the zoo keeper (and the head manager): bury what died, feed whoever is getting hungry
     zoo(t) {
@@ -3751,6 +3822,74 @@
     mLog(t, boss ? boss.id : '', `✂️ Trừ lương ngày hôm qua vì lười: ${cuts.join(', ')}`, back);
     if (mRun && mRun.sum) mRun.sum.cuts = (mRun.sum.cuts || []).concat(cuts);
   }
+  // user 2026-11-14: "mỗi tuần tổng kết review tăng lương 1 lần, ai chăm ai lười tăng hoặc giảm lương cơ bản, thêm tiền
+  // chăm chỉ": every Monday morning HR (else the manager) goes over the last 7 days of each paid hand (attendance =
+  // share of the shift actually worked): ≥ 97% → +5% base pay and a diligence bonus (half a day's pay) that also puts
+  // them in good spirits for 3 days; 90-97% → a smaller bonus only; under 75% → −5% base pay (never below 80% of the
+  // trade's wage) and a little gloomy. The result shows on the worker card and in the log.
+  const WEEK_UP = 0.97, WEEK_OK = 0.9, WEEK_DOWN = 0.75;
+  function roleDay(role, t = farmNow(), not) {
+    const id = SHOP_OF[role]; if (id && SHOP[id]) return xBuilt(id, t) ? Math.round(shopExpectDay(id, facLv(id), t).margin * 0.6) : 0; // the stall's day, as seen by a 6-18 stand-in
+    const ws = mStaff().filter((w) => w.role === role && w.id !== not); if (!ws.length) return 0;
+    let v = 0, n = 0; for (const w of ws) for (let k = 1; k <= 7; k++) { const x = mStaffDay(w, t - k * 864e5); if (x.acts) { v += x.value - x.cost; n++; } }
+    return n ? Math.round(v / n) : 0;
+  }
+  const workerDay = (w, t = farmNow()) => { let v = 0, n = 0; for (let k = 1; k <= 7; k++) { const x = mStaffDay(w, t - k * 864e5); if (x.acts) { v += x.value - x.cost; n++; } } return n ? Math.round(v / n) : 0; };
+  // who looks after a line while its worker stands in elsewhere
+  function coverGap(w) {
+    const own = (ROLES[w.role] || {}).jobs || [], bossJobs = ROLES.boss.jobs, others = mStaff().filter((x) => x.id !== w.id && x.role === w.role && !coverOf(x));
+    if (others.length) return `còn ${others.map((x) => x.name).join(', ')} làm ${ROLES[w.role].name.toLowerCase()}`;
+    if (SHOP_OF[w.role]) return mOff('shophelp') ? 'quầy đóng cửa hôm nay' : 'quầy không người: quản lý bán hộ khi rảnh';
+    const kept = own.filter((j) => bossJobs.includes(j) && !['rescue', 'dead'].includes(j));
+    return kept.length ? `không ai chuyên: quản lý ghé ${kept.map((j) => JOB_VI[j] || j).join(', ')} khi rảnh` : `việc ${ROLES[w.role].name.toLowerCase()} tạm dừng hôm nay`;
+  }
+  function setCover(id, role, by, t = farmNow()) {
+    const w = mStaff().find((x) => x.id === id); if (!w || w.role === 'boss') return false;
+    const k = `cover/${dayNo(t)}/${id}`;
+    if (!role || role === w.role) { if (!save.get(k)) return false; save.set(k, null); mLog(t, by === 'owner' ? id : bossId(), `🔁 ${w.name} về lại việc ${ROLES[w.role].name.toLowerCase()}`, 0); return true; }
+    if (!ROLES[role]) return false;
+    save.set(k, role);
+    mLog(t, by === 'owner' ? id : bossId(), `🔁 ${by === 'owner' ? 'Chủ trại' : 'Quản lý'} điều ${w.name} (${ROLES[w.role].name.toLowerCase()}) sang ${ROLES[role].name.toLowerCase()} hôm nay: dự tính ~${money(roleDay(role, t, id))} xu/ngày, việc cũ ~${money(workerDay(w, t))} xu/ngày · ${coverGap(w)}`, 0);
+    return true;
+  }
+  // the manager, once a morning: a stall with nobody to sell today (ill / not hired) gets the hand whose own day earns
+  // least, when the stall earns clearly more (and that hand's own line is looked after or worth less)
+  function mCoverPlan(t) {
+    const day = dayNo(t); if (mLocalH(t) < 6.5 || save.get('coverplan', 0) >= day) return;
+    save.set('coverplan', day);
+    if (mOff('cover')) return;
+    for (const id of Object.keys(SHOP)) {
+      if (!XISLE[id] || !xBuilt(id, t) || shopSeller(id, t)) continue;
+      const role = SHOP[id].role, gain = roleDay(role, t);
+      const pick = mStaff().filter((w) => w.role !== 'boss' && !SHOP_OF[w.role] && !(ROLES[w.role] || {}).night && !coverOf(w, t) && !lifeOff(w, t) && mOnShift(w, t) && w.role !== 'guide')
+        .map((w) => ({ w, v: workerDay(w, t) })).sort((a, b) => a.v - b.v)[0];
+      if (pick && gain > pick.v * 1.2 + 10) setCover(pick.w.id, role, 'boss', t);
+    }
+  }
+  function mWeekReview(t) {
+    const day = dayNo(t), last = save.get('mgr/weekrev', 0);
+    if (new Date(t).getDay() !== 1 || last >= day) return;
+    save.set('mgr/weekrev', day);
+    const st = mStaff(), hr = st.find((w) => w.role === 'hr'), by = hr || st.find((w) => w.role === 'boss'); if (!by) return;
+    const lines = [];
+    for (const w of st) {
+      const R = ROLES[w.role]; if (!R || !R.wage || w.role === 'boss' || t - (w.hired || t) < 5 * 864e5) continue;
+      let att = 0, n = 0, net = 0; for (let k = 1; k <= 7; k++) { const x = mStaffDay(w, t - k * 864e5); net += x.net; if (x.att != null && x.acts) { att += x.att; n++; } }
+      if (n < 3) continue;
+      att /= n;
+      const base = R.wage, pay = save.get('life/pay/' + w.id, 0) || 0, step = Math.max(2, Math.round(base * 0.05));
+      let d = 0, bonus = 0;
+      if (att >= WEEK_UP) { d = step; bonus = Math.round(wageOf(w) * 0.5); }
+      else if (att >= WEEK_OK) bonus = Math.round(wageOf(w) * 0.25);
+      else if (att < WEEK_DOWN) d = -Math.min(step, Math.max(0, pay + base * 0.2));
+      if (d) save.set('life/pay/' + w.id, pay + d);
+      if (bonus) { evBook(t, -bonus, 'Thưởng chuyên cần'); save.set('life/bonus/' + w.id, { until: t + 3 * 864e5, mul: 1.1 }); }
+      else if (d < 0) save.set('life/bonus/' + w.id, { until: t + 2 * 864e5, mul: 0.92 });
+      save.set('life/review/' + w.id, { t, att, d, bonus, net: Math.round(net), wage: wageOf(w) });
+      lines.push(`${w.name} ${Math.round(att * 100)}%${d > 0 ? ` ⬆️ +${d} xu/ngày` : d < 0 ? ` ⬇️ ${d} xu/ngày` : ''}${bonus ? ` 🎁 thưởng ${money(bonus)}` : ''}`);
+    }
+    if (lines.length) mLog(t, by.id, `📋 ${hr ? 'Nhân sự' : 'Quản lý'} tổng kết tuần (độ chăm chỉ 7 ngày): ${lines.join(' · ')}`, 0);
+  }
   function mPayday(t) {
     const day = dayNo(t), paid = save.get('mgr/payday', 0);
     if (paid >= day) return;
@@ -3764,6 +3903,8 @@
     mLazyCut(t);
     mOTPay(t);
     mManagerReview(t);
+    mWeekReview(t);
+    mRankStep(t);
     mRepDay(t - 864e5);
     mBrakeCheck(t);
     let st = mStaff();
@@ -3832,6 +3973,7 @@
     mEvening(t); // 17:30: overtime for orders that can still be made, or cancel; cancel what is left when the shift ends
     barDecide(t); // 17:30, after the order crews: open the night bar tonight or not (2026-11-10)
     try { lifeStep(t); evStep(t); bizStep(t); } catch (e) { console.warn('[Claude Forest] stories: ' + e); } // 2026-11-12
+    try { mCoverPlan(t); } catch (e) { console.warn('[Claude Forest] cover: ' + e); }
     xStep(t); // campfire, campers, the traveller's story, finished islet buildings
     if (!mStaff().some((w) => mOnShift(w, t))) return;
     const st = mStaff().map((w) => ({ ...w })), stepH = MSTEP / HOUR;
@@ -4167,9 +4309,10 @@
   function lifeMood(w, t = farmNow()) {
     let m = 1; const g = save.get('life/gift/' + w.id), s = save.get('life/sad/' + w.id);
     if (g && g.until > t) m *= g.mul; if (s && s.until > t) m *= 0.85;
+    const bn = save.get('life/bonus/' + w.id); if (bn && bn.until > t) m *= bn.mul; // the weekly diligence bonus / a cut
     return m;
   }
-  const wageOf = (w) => ((ROLES[w.role] || {}).wage || 0) + (save.get('life/pay/' + w.id, 0) || 0);
+  const wageOf = (w) => Math.round(((ROLES[w.role] || {}).wage || 0) * (w.role === 'marketer' ? RANK.pay[rankOf(w)] : 1)) + (save.get('life/pay/' + w.id, 0) || 0);
   function lifeGift(w, mul, days, amt, t, by) {
     save.set('life/gift/' + w.id, { until: t + days * 864e5, mul, by, day: dayNo(t), amt });
     if (amt) evBook(t, -amt, 'Quà nhân viên');
@@ -4282,15 +4425,51 @@
   const INN = { names: ['Homestay', 'Nhà nghỉ ven hồ', 'Khách sạn TJ'], cost: [3000, 7000, 15000], lvl: [5, 7, 9], rooms: [4, 8, 12], price: [60, 90, 140] };
   ROLES.host = { name: 'Lễ tân', icon: '🛎️', ap: 3, wage: 35, hire: 180, jobs: ['inn'] };
   LINES.inn = { name: '🏨 Homestay, khách sạn', roles: ['host'] }; ROLE_LINE.host = 'inn';
+  // the day's tour groups fill rooms too (2026-11-16: "nhà nghỉ, khách sạn cho khách du lịch"): +1% per visitor, up to +25%
+  const innTourists = (t) => Math.min(0.25, ((mDayRec(t).visit || {}).people || 0) / 100);
   const innLv = () => Math.max(0, Math.min(3, save.get('inn/lv', 0)));
-  const innOcc = (t) => { const L = innLv(); if (!L) return 0; const host = mStaff().some((w) => w.role === 'host'); return Math.max(0.1, Math.min(0.95, (0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12) * (host ? 1 : 0.5))); };
-  const innExpect = (L, t = farmNow()) => { const occ = Math.max(0.1, Math.min(0.95, 0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12)); return INN.rooms[L - 1] * occ * (INN.price[L - 1] + 12); };
+  const innOcc = (t) => { const L = innLv(); if (!L) return 0; const host = mStaff().some((w) => w.role === 'host'); return Math.max(0.1, Math.min(0.95, (0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t)) * (host ? 1 : 0.5))); };
+  const innExpect = (L, t = farmNow()) => { const occ = Math.max(0.1, Math.min(0.95, 0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t))); return INN.rooms[L - 1] * occ * (INN.price[L - 1] + 12); };
+  JOBS.shophelp = (t, w) => shopHelp(t, w);
   JOBS.inn = (t, w) => { // the receptionist: make the beds, greet guests (an action every 2 hours, for the books and the map)
     if (!innLv()) return null;
     const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 }); if (t - (b.innAt || 0) < 2 * HOUR) return null;
     b.innAt = t; save.set(`mgr/day/${dayNo(t)}`, d);
     return { kind: 'sweep', line: 'inn', text: mLocalH(t) < 12 ? 'dọn phòng, thay ga gối' : 'đón khách nhận phòng', ...isleSpot('inn'), icon: '🛎️', value: 0 };
   };
+  // ── advertising (user 2026-11-14): a 📣 marketer hands out leaflets at the pier, posts online, hangs banners in town;
+  // every marketer brings more tour groups and bigger ones. Ranks like a real job: trial → regular → professional →
+  // team lead, each a training fee and some days in the job; a higher rank draws more visitors and earns more.
+  ROLES.marketer = { name: 'Quảng cáo', icon: '📣', ap: 3, wage: 30, hire: 150, jobs: ['ads'] };
+  LINES.visit.roles.push('marketer'); ROLE_LINE.marketer = 'visit';
+  const RANK = { names: ['Thử việc', 'Chính thức', 'Chuyên nghiệp', 'Trưởng nhóm'], pay: [1, 1.3, 1.7, 2.2], draw: [0.15, 0.3, 0.5, 0.75], days: [0, 3, 7, 14], cost: [0, 200, 600, 1500] };
+  const rankOf = (w) => Math.max(0, Math.min(3, save.get('rank/' + w.id, 0) || 0));
+  const adsBoost = (t = farmNow()) => mStaff().filter((w) => w.role === 'marketer' && !lifeOff(w, t)).reduce((s, w) => s + RANK.draw[rankOf(w)], 0);
+  // can this worker go up a rank now: { to, cost, need (days in the job), ok }
+  function rankNext(w, t = farmNow()) {
+    const r = rankOf(w); if (w.role !== 'marketer' || r >= 3) return null;
+    const days = (t - (w.hired || t)) / 864e5, to = r + 1;
+    return { to, cost: RANK.cost[to], need: RANK.days[to], days, ok: days >= RANK.days[to] };
+  }
+  function rankUp(id, by, t = farmNow()) {
+    const w = mStaff().find((x) => x.id === id), n = w && rankNext(w, t); if (!n || !n.ok || coins() < n.cost) return false;
+    evBook(t, -n.cost, 'Đào tạo nhân viên'); save.set('rank/' + id, n.to);
+    mLog(t, by === 'owner' ? id : bossId(), `🎓 ${by === 'owner' ? 'Chủ trại' : 'Quản lý'} cho ${w.name} lên ${RANK.names[n.to]} (${ROLES[w.role].name.toLowerCase()}, phí đào tạo ${money(n.cost)} xu): kéo khách +${Math.round(RANK.draw[n.to] * 100)}%, lương ${wageOf(w)} xu/ngày`, 0);
+    return true;
+  }
+  JOBS.ads = (t, w) => {
+    const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 }); if (t - (b.adsAt || 0) < 1.5 * HOUR) return null;
+    b.adsAt = t; save.set(`mgr/day/${dayNo(t)}`, d);
+    const r = rankOf(w), what = [['phát tờ rơi ở bến tàu', 'mời khách qua đường ghé trại'], ['đăng bài khoe trại lên mạng', 'treo băng rôn ở thị trấn'], ['chạy quảng cáo theo mùa', 'làm video giới thiệu trại'], ['ký hợp đồng với công ty du lịch', 'dẫn dắt nhóm làm chiến dịch lớn']][r];
+    const p = FARM.pier, spot = p ? { at: { x: p.c * 16 + 8, y: p.r * 16 + 4 }, stand: { c: p.c, r: p.r } } : { at: barnAt() };
+    return { kind: 'sweep', line: 'visit', text: `${what[Math.floor(hash01(t, 515, 3) * 2)]} (${RANK.names[r]}, kéo khách +${Math.round(RANK.draw[r] * 100)}%)`, ...spot, icon: '📣', value: 0 };
+  };
+  // the manager promotes a marketer once the days are in and the purse allows (same investing rule as everything)
+  function mRankStep(t) {
+    if (mOff('hire')) return;
+    for (const w of mStaff()) { const n = rankNext(w, t); if (!n || !n.ok || hash01(dayNo(t) * 100, wNum(w), 717) > 0.5) continue; const o = { line: 'visit', key: 'rank:' + w.id, what: `cho ${w.name} lên ${RANK.names[n.to]}` }; if (mCanInvest(n.cost, o) && mFund(n.cost, o)) { rankUp(w.id, 'boss', t); break; } }
+  }
+  window.__forestFb = { setCover: (id, r, by, t) => setCover(id, r, by || 'owner', t), coverOf: (w, t) => coverOf(w, t), coverPlan: (t) => { save.set('coverplan', 0); mCoverPlan(t); }, roleDay: (r) => roleDay(r), shopSeller: (id, t) => shopSeller(id, t), coins: () => coins(), lifeOff: (w, t) => lifeOff(w, t), canInvest: (c, o) => mCanInvest(c, o || {}), ask: (c, o) => mAskState(c, o || {}), lineOk: (l) => mLineOk(l), weekReview: (t) => mWeekReview(t), rankUp, rankOf, adsBoost, rankNext, jobs: (w, t) => mJobs(w, t), shopServe: (id, t, n) => shopServe(id, t, n, 999), venueHot: (id) => venueHot(id), playing: () => sfx.playing(), carols: () => sfx.carols(), musicKey: () => themeNow() }; // tests (2026-11-16)
   function innNight(t) {
     const L = innLv(), day = dayNo(t); if (!L || mLocalH(t) < 21 || save.get('inn/' + day)) return;
     const rooms = INN.rooms[L - 1], g = Math.max(0, Math.min(rooms, Math.round(rooms * innOcc(t) + (evRnd(day, 401) - 0.5) * 2)));
@@ -5333,7 +5512,7 @@
   const MONEY_FMT = new Intl.NumberFormat('vi-VN'); // one formatter (toLocaleString built a new one per call: ~20 ms/s)
   const money = (n) => (n < 0 ? '−' : '') + MONEY_FMT.format(Math.abs(Math.round(n)));
   const staffName = (id) => { const w = mStaff().find((x) => x.id === id); return w ? `${ROLES[w.role].icon} ${w.name}` : 'Người cũ'; };
-  const JOB_VI = { market: 'chợ phiên cuối tuần', inn: 'lễ tân homestay', mill: 'xưởng chế biến, hầm ủ', shop: 'bán hàng ở quầy 6h–22h', acct: 'ghi sổ quỹ, đối chiếu thu chi', bees: 'lấy mật, chăm tổ ong', orchard: 'hái quả, chăm vườn', camp: 'dọn lều, xếp củi đón khách cắm trại', bar: 'pha chế, phục vụ quán bar đêm', rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
+  const JOB_VI = { ads: 'quảng cáo, phát tờ rơi kéo du khách', market: 'chợ phiên cuối tuần', inn: 'lễ tân homestay', mill: 'xưởng chế biến, hầm ủ', shop: 'bán hàng ở quầy 6h–22h', acct: 'ghi sổ quỹ, đối chiếu thu chi', bees: 'lấy mật, chăm tổ ong', orchard: 'hái quả, chăm vườn', camp: 'dọn lều, xếp củi đón khách cắm trại', bar: 'pha chế, phục vụ quán bar đêm', rush: 'bón phân cho kịp đơn hàng (khi có lãi)', xfarm: 'lấy mật ong, hái quả', zoo: 'cho thú sở thú ăn, dọn chuồng', guide: 'dẫn đoàn du khách', payroll: 'trả lương, vay/trả TJBank khi cần', hr: 'chấm công, ghi sổ nhân sự', dead: 'dọn cái chết rồi trồng/nuôi lại', water: 'tưới/cho cá ăn khi cần', rescue: 'cứu cây/thú sắp chết', wood: 'chặt củi', harvest: 'thu hoạch', field: 'ruộng', ranch: 'chuồng', pond: 'ao', fish: 'câu cá', cook: 'bếp', orders: 'đơn hàng', sell: 'bán hàng', boss: 'thuê người, mở rộng' };
   // ── The manager's spoken report (user 2026-11-10: "quản lý báo cáo với tôi mọi thứ giống kiểu kính thưa chủ nhân,
   // doanh thu, ai lười ai chăm, có nên sa thải ai, kế hoạch sắp tới… chứ không phải quăng cho tôi cái bảng thông số";
   // her portrait: hand-drawn in portrait.js, face_boss in forest-extra.png). She speaks as "em", the owner is "chủ nhân".
@@ -5405,7 +5584,7 @@
     if (asks.length) html += `<p style="margin:8px 0 4px">Có ${asks.length} việc em cần chủ nhân duyệt ạ:</p>` + asks.map((a) => `<div style="margin:4px 0">${a.what} (${money(a.cost)} xu) ${B('mok:' + a.k, '✅ Duyệt')}${B('mno:' + a.k, '❌ Không')}</div>`).join('');
     html += mCmdHtml(t, watchW);
     html += `<p style="margin:9px 0 0;line-height:1.55">Chủ nhân cứ nghỉ ngơi, có gì em báo ngay ạ 🌿</p></div></div>`
-      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}${B('open:find', '🔎 Ai đang ở đâu')}${B('open:mill', '🏭 Xưởng')}${B('open:biz', '🏨 Homestay, thuyền, lễ hội')}${B('open:col', '🏅 Sưu tập')}${B('open:story', '📸 Cột mốc')}</div>`;
+      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${B('open:biz', '🏨 Homestay, khách sạn')}${B('open:mill', '🏭 Xưởng chế biến')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}${B('open:find', '🔎 Ai đang ở đâu')}${B('open:mill', '🏭 Xưởng')}${B('open:biz', '🏨 Homestay, thuyền, lễ hội')}${B('open:col', '🏅 Sưu tập')}${B('open:story', '📸 Cột mốc')}</div>`;
     return head(`💬 ${boss.name} báo cáo`) + html;
   }
   // ── The weekly report (2026-11-12): on Mondays the morning report opens with it; any day from the button. Lan speaks:
@@ -5553,7 +5732,7 @@
   function mgrPanelHtml(v, head, c, L) {
     const tab = v.tab || 'home', st = mStaff(), now = farmNow(), today = mDayRec(now);
     const tb = (id, label) => B('tab:' + id, label, true, tab === id ? 'border-color:#7fd65a;' : '');
-    const tabs = tb('home', 'Tổng quan') + tb('plan', '📈 Đầu tư') + tb('money', '📊 Doanh thu') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký') + tb('mail', '📮 Góp ý') + B('open:night', '🌙 Đêm') + B('open:find', '🔎 Tìm nhân viên');
+    const tabs = tb('home', 'Tổng quan') + tb('plan', '📈 Đầu tư') + tb('money', '📊 Doanh thu') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký') + tb('mail', '📮 Góp ý') + B('open:night', '🌙 Đêm') + B('open:find', '🔎 Tìm nhân viên') + B('open:biz', '🏨 Homestay') + B('open:mill', '🏭 Xưởng');
     let body = '';
     if (tab === 'home') {
       const days = [...Array(7).keys()].reverse().map((k) => { const t = now - k * 864e5, d = mDayRec(t), dt = new Date(t); return { d, p: d.in - d.out, lab: k ? `${dt.getDate()}/${dt.getMonth() + 1}` : 'Nay' }; });
@@ -5634,7 +5813,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '08:55 16-11';
+    const build = '10:14 16-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -5651,7 +5830,20 @@
       + (mOnShift(w, now) ? row(mHustled(w.id, now) ? '💪 Làm liền tay đến hết ca' : 'Làm theo nhịp thường', mHustled(w.id, now) ? B(`hustle:${w.id}:0`, 'Cho nghỉ tay như thường') : B(`hustle:${w.id}:1`, '💪 Làm liền tay')) : '')
       + ((R.jobs || []).includes('fish') && w.role !== 'boss' && FARM.lake ? row('Câu cá', lakeGoing(w.id, now) ? '<b style="color:#7fd65a">🎣 Hôm nay câu ở hồ ✓</b>' : B(`lakego:${w.id}`, `🎣 Ra hồ câu hôm nay · vé ${LAKE_TICKET} xu`, coins() >= LAKE_TICKET) + (coins() < LAKE_TICKET ? '<div style="font-size:11px;opacity:.75">Két chưa đủ tiền vé</div>' : '')) : '')
       + row('Hôm nay', `${b.acts} việc · ~${money(b.value)} xu`) + row('7 ngày tạo ra', `~${money(wk)} xu`)
-      + row('Lương', R.wage ? `${R.wage} xu/ngày` : 'chia lời')
+      + (w.role !== 'boss' && !R.night ? (() => {
+        const cur = coverOf(w, now), sick = mStaff().filter((x) => x.id !== w.id && lifeOff(x, now) === 'sick').map((x) => x.role);
+        const targets = [...new Set(Object.keys(SHOP).filter((id) => XISLE[id] && xBuilt(id, now)).map((id) => SHOP[id].role).concat(sick))].filter((r) => r !== w.role && ROLES[r]);
+        if (!targets.length && !cur) return '';
+        const mine = workerDay(w, now);
+        let x = '<div style="margin:6px 0 2px;border-top:1px solid #33334a;padding-top:4px"><b>🔁 Điều sang làm thay hôm nay</b></div>';
+        if (cur) x += `<div style="color:#ffd84a">Đang làm thay: <b>${ROLES[cur].icon} ${ROLES[cur].name}</b> · ${coverGap(w)}</div>` + B(`cover:${w.id}:`, `↩️ Về việc ${R.name.toLowerCase()}`);
+        x += `<div style="font-size:11px;opacity:.75">Việc của ${w.name} (${R.name.toLowerCase()}) làm ra ~${money(mine)} xu/ngày (7 ngày qua). Giữ lương và ca 6h–18h của mình.</div>`;
+        x += targets.filter((r) => r !== cur).map((r) => { const g = roleDay(r, now, w.id), d = g - mine; return `<div style="display:flex;align-items:center;gap:6px;margin:3px 0"><span style="flex:1;font-size:12px">${ROLES[r].icon} ${ROLES[r].name}${sick.includes(r) ? ' <span style="color:#ffb08a">(có người ốm)</span>' : ''}: ~${money(g)} xu/ngày <b style="color:${d >= 0 ? '#7fd65a' : '#e08a5a'}">${d >= 0 ? '+' : '−'}${money(Math.abs(d))}</b></span>${B(`cover:${w.id}:${r}`, 'Điều sang')}</div>`; }).join('');
+        return x + `<div style="font-size:11px;opacity:.7">Khi ${w.name} đi: ${coverGap(w)}.</div>`;
+      })() : '')
+      + (w.role === 'marketer' ? (() => { const r = rankOf(w), n = rankNext(w, now); return row('🎓 Bậc', `<b>${RANK.names[r]}</b> · kéo khách +${Math.round(RANK.draw[r] * 100)}%`) + (n ? `<div style="margin:-2px 0 6px">${B('rank:' + w.id, `⬆️ Lên ${RANK.names[n.to]} · ${money(n.cost)} xu`, n.ok && coins() >= n.cost)}${n.ok ? '' : `<span style="font-size:11px;opacity:.75"> cần làm đủ ${n.need} ngày (mới ${Math.floor(n.days)})</span>`}<div style="font-size:11px;opacity:.7">Lên ${RANK.names[n.to]}: kéo khách +${Math.round(RANK.draw[n.to] * 100)}%, lương ${Math.round(R.wage * RANK.pay[n.to])} xu/ngày.</div></div>` : ''); })() : '')
+      + row('Lương', R.wage ? `${wageOf(w)} xu/ngày${wageOf(w) !== R.wage ? ` <span style="opacity:.7">(gốc ${R.wage})</span>` : ''}` : 'chia lời')
+      + (() => { const rv = save.get('life/review/' + w.id); return R.wage && w.role !== 'boss' ? row('📋 Tổng kết tuần', rv ? `chăm ${Math.round(rv.att * 100)}%${rv.d > 0 ? ` · ⬆️ +${rv.d} xu/ngày` : rv.d < 0 ? ` · ⬇️ ${rv.d} xu/ngày` : ' · giữ lương'}${rv.bonus ? ` · 🎁 ${money(rv.bonus)} xu` : ''}` : 'thứ Hai tới') + '<div style="font-size:11px;opacity:.7;margin:-2px 0 4px">Mỗi sáng thứ Hai: chăm ≥ 97% được +5% lương và thưởng nửa ngày lương, 90–97% thưởng 1/4 ngày lương, dưới 75% bị giảm 5% lương.</div>' : ''; })()
       + (() => { // shift + overtime (owner's buttons; the manager decides at 17:30 otherwise)
         const o = mOT(w.id, now), rate = otRate(w), end = shiftEndH(w), hNow = mLocalH(now), off = !mOnShift(w, now), cur = o && o.until > end ? `⏱️ tăng ca đến ${o.until > 24 ? (o.until - 24) + "h sáng" : o.until + "h"} (${o.by === 'owner' ? 'bạn cho' : 'quản lý cho: ' + (o.why || '')}) · ~${money(otCost(w, o.until))} xu` : o && o.by === 'boss' ? 'quản lý cho nghỉ đúng giờ' : 'không tăng ca';
         if (R.night) return row('Ca làm', 'ca đêm (quầy bar)');
@@ -5672,7 +5864,7 @@
         + (p.full ? `Đã đủ ${mMax()} người.` : p.hiredToday ? 'Hôm nay đã thuê 1 người, mai thuê tiếp.'
           : !p.cash ? `Chờ két đủ ~${money(p.need)} xu (phí thuê + 1 ngày lương, sau khi tính đủ lương mai).`
           : !p.paid ? `Chờ lãi mỗi ngày vượt lương ${p.R.wage} xu (hiện ~${money(p.prof)}).` : 'Sẽ thuê ngay trong ca làm.');
-    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter', 'artisan', 'host'];
+    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter', 'artisan', 'host', 'marketer'];
     return `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>🤝 Tuyển thêm</b> <span style="opacity:.7">(${st.length}/${mMax()} người)</span></div>`
       + `<div style="font-size:12px;margin:4px 0">${status}</div>`
       + roles.map((r) => { const R = ROLES[r], n = st.filter((x) => x.role === r).length;
@@ -5827,6 +6019,8 @@
     if (act === 'hustle') mHustle(a1, Number(a2));
     if (act === 'lakego') mLakeGo(a1);
     if (act === 'ot') { const w = mStaff().find((x) => x.id === a1), back = w && !mOnShift(w, farmNow()) && mLocalH(farmNow()) >= shiftEndH(w); mSetOT(a1, Number(a2), 'owner', back ? 'chủ trại gọi lại' : 'chủ trại cho'); if (w) mLog(farmNow(), a1, Number(a2) ? back ? `📣 Chủ trại gọi ${w.name} đang nghỉ quay lại làm tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} nghỉ đúng giờ (không tăng ca)`, 0); }
+    if (act === 'rank') { rankUp(a1, 'owner'); }
+    if (act === 'cover') { setCover(a1, a2, 'owner'); }
     if (act === 'wcard') { openPanel({ kind: 'worker', id: a1 }); return; }
     if (act === 'ocancel' && confirm('Huỷ đơn này? Uy tín −1 (để trễ đến hết ngày là −3).')) orderCancel(dayNo(), Number(a1), farmNow(), '', 'chủ trại huỷ');
     if (act === 'cook') { let slot = 0; while (slot < kitchenSlots() && simCook(slot).status !== 'empty') slot++; farm.cook(slot, a1, Number(a2)); }
@@ -5887,7 +6081,7 @@
     if (FARM.lake && inR({ x: FARM.lake.x - 8, y: FARM.lake.y - 8, w: FARM.lake.w + 16, h: FARM.lake.h + 16 })) return { kind: 'lake' };
     if (inR(FARM.bank)) return { kind: 'bank' };
     if (FARM.zoo && inR({ x: FARM.zoo.x + 8, y: FARM.zoo.y + 16, w: FARM.zoo.w - 16, h: FARM.zoo.h - 32 })) return { kind: 'zoo' };
-    { const I = FARM.isles || {}, foot = (f, w, h) => !!f && inR({ x: f.x - w / 2, y: f.y - h, w, h }); if (millLv() && foot(I.mill && I.mill.foot, 64, 48)) return { kind: 'mill' }; if (innLv() && foot(I.inn && I.inn.foot, 64, 80)) return { kind: 'biz' }; } // 2026-11-13
+    { const I = FARM.isles || {}, foot = (f, w, h) => !!f && inR({ x: f.x - w / 2, y: f.y - h, w, h }); if (foot(I.mill && I.mill.foot, 64, 48)) return { kind: 'mill' }; if (foot(I.inn && I.inn.foot, 64, 80)) return { kind: 'biz' }; } // built or not: the empty lot's sign opens the panel with its Build button (2026-11-16) // 2026-11-13
     for (const id of ['bees', 'orchard', 'camp', 'bar', 'banhmi', 'cafe', 'restaurant']) if (FARM.isles && inR(FARM.isles[id])) return VENUE_IDS.includes(id) && xBuilt(id) ? { kind: 'venue', id } : { kind: 'night', tab: 'isles' };
     if (inR(FARM.shop)) return { kind: 'shop' };
     if (inR(FARM.barn)) return { kind: 'barn' };
@@ -6558,21 +6752,25 @@
       slider.addEventListener('input', () => { soundPref[volKey] = Number(slider.value) / 100; soundPref[key] = soundPref[volKey] > 0; soundPref.muted = false; sfx.resume(); sfx.setPref(); paintAll(); });
       return { r, paintRow };
     };
-    const forest = row('🌲 Rừng', 'on', 'vol', 300), music = row('🎵 Lo-fi', 'music', 'musicVol', 100);
+    const forest = row('🌲 Rừng', 'on', 'vol', 300), music = row('🎵 Nhạc', 'music', 'musicVol', 100);
+    const themeTog = document.createElement('button'); themeTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin-top:4px;' + PIX;
+    themeTog.addEventListener('click', (e) => { e.stopPropagation(); soundPref.themeMusic = soundPref.themeMusic === false; sfx.setPref(); paintAll(); });
     const hint = document.createElement('div');
     hint.style.cssText = 'opacity:0.6;font-size:11px;margin-top:4px;';
     hint.textContent = 'Bấm 🔊 để tắt/mở tất cả';
-    soundPanel.append(forest.r, music.r, hint);
+    soundPanel.append(forest.r, music.r, themeTog, hint);
     function paintAll() {
       const audible = !soundPref.muted && (soundPref.on || soundPref.music);
       soundBtn.textContent = audible ? '🔊' : '🔇';
       soundBtn.title = 'Âm thanh: rê chuột để chỉnh, bấm để tắt/mở tất cả';
       soundBtn.style.opacity = audible ? '1' : '0.6';
       forest.paintRow(); music.paintRow();
+      themeTog.textContent = `🎄 Nhạc theo theme ${soundPref.themeMusic !== false ? 'bật' : 'tắt'}`; themeTog.style.opacity = soundPref.themeMusic !== false ? '1' : '0.55';
+      const pl = sfx.playing && sfx.playing(); hint.textContent = pl ? `Đang phát: ${pl} · bấm 🔊 để tắt/mở tất cả` : 'Bấm 🔊 để tắt/mở tất cả';
     }
     soundBtn.addEventListener('click', (e) => { e.stopPropagation(); soundPref.muted = !soundPref.muted; sfx.resume(); sfx.setPref(); paintAll(); });
     let hideTimer = null;
-    const show = () => { clearTimeout(hideTimer); soundPanel.style.display = 'block'; };
+    const show = () => { clearTimeout(hideTimer); soundPanel.style.display = 'block'; paintAll(); };
     const hide = () => { hideTimer = setTimeout(() => (soundPanel.style.display = 'none'), 400); };
     [soundBtn, soundPanel].forEach((el) => { el.addEventListener('mouseenter', show); el.addEventListener('mouseleave', hide); });
     soundPanel.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -6736,7 +6934,7 @@
   function staffSync(now) {
     if (!VCREW || !VCREW.doors.length) return;
     const st = mStaff(), tn = farmNow();
-    for (const v of villagers) if (v.staff && v.step !== 'home') { const w = st.find((x) => x.id === v.staff); if (!w || !mOnShift(w, tn)) goHome(v); }
+    for (const v of villagers) if (v.staff && v.step !== 'home') { const w = st.find((x) => x.id === v.staff); if (!w || !mOnShift(w, tn)) goHome(v); else v.role = effRole(w, tn); }
     for (const w of st) {
       if (!mOnShift(w, tn)) continue;
       if (villagers.some((v) => v.staff === w.id)) continue;
@@ -6744,7 +6942,7 @@
       (staffSync.next || (staffSync.next = {}))[w.id] = now + 1500 + Math.random() * 2500; // stagger arrivals
       const v = spawnVillager(now, 'staff');
       if (!v) return;
-      v.sheet = w.sheet % VCREW.n; v.staff = w.id; v.role = w.role; v.name = w.name; v.jobsLeft = 0; v.step = 'idle'; v.until = 0;
+      v.sheet = w.sheet % VCREW.n; v.staff = w.id; v.role = effRole(w, tn); v.name = w.name; v.jobsLeft = 0; v.step = 'idle'; v.until = 0;
     }
   }
   // between real actions (a few per hour) each worker keeps busy in their own trade, so the farm always looks worked:
@@ -8109,6 +8307,19 @@
   const venueIcon = (id) => (id === 'bar' ? '🍹' : SHOP[id].icon);
   const venueBuilt = (id, t = farmNow()) => xBuilt(id, t);
   // inside the place: the shelf of what is on the menu, today's takings, the venue's level, the menu board
+  // what sold most at a venue over the last 3 days (sorted [name, servings])
+  function venueHot(id, t = farmNow()) {
+    const tot = {};
+    for (let k = 0; k < 3; k++) { const tk = t - k * 864e5, r = id === 'bar' ? save.get(`bar/${barDay(tk)}`, null) : save.get(shopKey(id, tk), null); for (const [n, q] of Object.entries((r && r.items) || {})) tot[n] = (tot[n] || 0) + q; }
+    return Object.entries(tot).sort((a, b) => b[1] - a[1]);
+  }
+  // the map label's 🔥 + the best seller's icon (looked up once a minute)
+  const hotCache = {};
+  function hotIcon(id) {
+    const c = hotCache[id], now = Date.now(); if (c && now - c.at < 60000) return c.s;
+    const h = venueHot(id)[0], m = h && h[1] >= 3 && menuItems(id).find((x) => x.n === h[0]);
+    return (hotCache[id] = { at: now, s: m ? ` · 🔥${m.i}` : '' }).s;
+  }
   function venueHtml(v, head) {
     const id = v.id, t = farmNow(); if (!VENUE_IDS.includes(id)) return head('Quán') + '';
     const L = facLv(id), items = menuItems(id), on = items.filter((m) => menuLv(id, m) > 0), c = coins();
@@ -8118,8 +8329,11 @@
       + `<div style="padding:8px 10px 4px;display:flex;flex-wrap:wrap;gap:4px;min-height:40px;align-items:flex-end;border-bottom:5px solid #7a4f2a;background:linear-gradient(${wall},${id === 'bar' ? '#3a2a50' : '#7a5636'})">${on.map((m) => `<span title="${m.n}" style="font-size:24px;filter:drop-shadow(0 2px 0 rgba(0,0,0,.35))">${m.i}</span>`).join('')}</div>`
       + `<div style="padding:8px 10px;background:repeating-linear-gradient(90deg,${floor} 0 18px,${id === 'bar' ? '#44365f' : '#a87a50'} 18px 36px);color:#fff;font-size:13px;text-shadow:0 1px 0 #000">`
       + `${open ? '🟢 Đang mở cửa' : '🔴 Đang đóng'} · hôm nay <b>${rec.sold || 0}</b> khách, thu <b>${money(rec.in || 0)}</b> xu${id === 'bar' && rec.dishes ? ` · ${rec.dishes} đĩa đồ nhắm` : ''}</div></div>`;
+    const hot = venueHot(id, t), hotTop = hot[0] && hot[0][1] >= 3 ? hot[0][0] : '';
+    if (hot.length) x += `<div style="margin:4px 0 8px;padding:6px 8px;border-radius:9px;background:rgba(255,140,40,.16)"><b>🔥 Bán chạy</b> <span style="opacity:.7;font-size:12px">(3 ngày gần đây)</span><br>${hot.slice(0, 3).map(([n, q], i) => `${['🥇', '🥈', '🥉'][i]} ${(items.find((m) => m.n === n) || {}).i || ''} <b>${n}</b> ${q} phần`).join('<br>')}</div>`;
     x += `<div style="font-size:13px;margin:2px 0 4px">⭐ Cấp quán <b>${L}/3</b>: món nâng được tối đa cấp ${Math.min(5, menuMax(id))}.</div>` + (typeof facHtml === 'function' ? facHtml(id) : '');
     x += `<div style="margin-top:8px;border-top:2px solid #44445a;padding-top:6px"><b>📜 Thực đơn</b> <span style="opacity:.7">${on.length}/${items.length} món đã mở</span></div>`;
+    if (id !== 'bar') x += `<div style="font-size:12px;opacity:.8;margin:2px 0 4px">🛒 Kho trại hết nguyên liệu (số đỏ) thì quán mua ở cửa hàng, giá đắt hơn ~30%, giá bán món vẫn ≥ 1,5 lần vốn${rec.bought ? ` · hôm nay đã mua <b>${money(rec.bought)}</b> xu` : ''}.</div>`;
     x += items.map((m) => {
       const lv = menuLv(id, m), [need, ul] = menuMeta(id, m), cost = venueCost(m), cap = Math.min(5, menuMax(id));
       const price = venuePrice(id, m, cost, Math.max(1, lv)), next = lv && lv < 5 ? venuePrice(id, m, cost, lv + 1) : 0;
@@ -8128,7 +8342,7 @@
       const btn = !lv ? (L < need ? `<span style="opacity:.7;font-size:12px">🔒 Cần quán cấp ${need}</span>` : B(`mu:${id}:${slug(m.n)}`, `🔓 Mở · ${money(ul)} xu`, c >= ul))
         : lv >= 5 ? '<span style="opacity:.7">Tối đa</span>' : lv >= cap ? `<span style="opacity:.7;font-size:12px">Nâng quán lên cấp ${L + 1}</span>` : B(`mu:${id}:${slug(m.n)}`, `⬆️ Cấp ${lv + 1} · ${money(menuUpCost(id, m, lv))} xu`, c >= menuUpCost(id, m, lv));
       return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0;padding:6px 8px;border-radius:9px;background:rgba(255,255,255,${lv ? 0.08 : 0.03});${lv ? '' : 'opacity:.85;'}">`
-        + `<div style="font-size:26px;${lv ? '' : 'filter:grayscale(1);'}">${m.i}</div><div style="flex:1;min-width:0;font-size:13px;line-height:1.4"><b>${m.n}</b> ${stars}`
+        + `<div style="font-size:26px;${lv ? '' : 'filter:grayscale(1);'}">${m.i}</div><div style="flex:1;min-width:0;font-size:13px;line-height:1.4"><b>${m.n}</b> ${stars}${m.n === hotTop ? ' <span style="background:#e8602a;color:#fff;border-radius:6px;padding:0 5px;font-size:11px">🔥 bán chạy nhất</span>' : ''}`
         + `<br>bán <b>${money(price)}</b> xu${next ? ` → <span style="color:#9fe070">${money(next)}</span> ở cấp ${lv + 1}` : ''} · lời ~${money(price - cost)}/phần<br><span style="font-size:12px">${ing}</span></div><div>${btn}</div></div>`;
     }).join('');
     return head(`${venueIcon(id)} Bên trong ${venueName(id)}`) + x;
@@ -8152,18 +8366,28 @@
   // the prepared stock: servings left from a unit already cut (persistent, per shop)
   const shopPrep = (id) => save.get('shopprep/' + id, {});
   // the cheapest way to make menu item m now (held = goods the orders keep): { k, units, cost, veg } or null
-  function shopCanMake(id, m, held, used, prep) {
+  // buy = the barn has none: the stall buys it at the shop in town (user 2026-11-14), dearer than the farm sells it
+  const SHOP_BUY = 1.3, shopBuyable = (k) => !!GOODS[k] && priceOf(k) > 0 && !k.startsWith('d:') && !k.startsWith('m:');
+  const shopBuyPrice = (k) => Math.ceil(priceOf(k) * SHOP_BUY);
+  function shopCanMake(id, m, held, used, prep, buy) {
     const keys = mainKeys(m), uPer = m.per >= 1 ? 1 : Math.round(1 / m.per), sPer = m.per >= 1 ? m.per : 1;
     const free = (k) => have(k) - (held[k] || 0) - (used[k] || 0);
-    const k = keys.filter((x) => (prep[x] || 0) >= 1 || free(x) >= uPer).sort((a, b) => free(b) - free(a))[0]; if (!k) return null;
-    let veg = null; if (m.side) { veg = (prep.veg || 0) >= 1 ? prep.vegK || VEG.find((x) => GOODS[x]) : VEG.filter((x) => free(x) >= 1).sort((a, b) => free(b) - free(a))[0]; if (!veg) return null; }
-    const cost = (priceOf(k) * uPer) / sPer + (veg ? priceOf(veg) / m.side : 0) + m.base;
-    return { k, uPer, sPer, veg, cost };
+    let k = keys.filter((x) => (prep[x] || 0) >= 1 || free(x) >= uPer).sort((a, b) => free(b) - free(a))[0], buyK = false;
+    if (!k && buy) { k = keys.filter(shopBuyable).sort((a, b) => priceOf(a) - priceOf(b))[0]; buyK = !!k; }
+    if (!k) return null;
+    let veg = null, buyVeg = false;
+    if (m.side) {
+      veg = (prep.veg || 0) >= 1 ? prep.vegK || VEG.find((x) => GOODS[x]) : VEG.filter((x) => free(x) >= 1).sort((a, b) => free(b) - free(a))[0];
+      if (!veg && buy) { veg = VEG.filter(shopBuyable).sort((a, b) => priceOf(a) - priceOf(b))[0]; buyVeg = !!veg; }
+      if (!veg) return null;
+    }
+    const cost = ((buyK ? shopBuyPrice(k) : priceOf(k)) * uPer) / sPer + (veg ? (buyVeg ? shopBuyPrice(veg) : priceOf(veg)) / m.side : 0) + m.base;
+    return { k, uPer, sPer, veg, cost, buyK, buyVeg };
   }
   // the menu as it stands (what can be made now), with prices
   function shopMenuNow(id) {
     const held = barHeld(farmNow()), prep = shopPrep(id), mk = shopMark(id), S = SHOP[id], out = [];
-    for (const m of S.menu) { if (!menuLv(id, m)) continue; const c = shopCanMake(id, m, held, {}, prep); if (c) out.push({ n: m.n, i: m.i, cost: c.cost, price: Math.ceil(c.cost * mk * itemMul(id, m)) }); }
+    for (const m of S.menu) { if (!menuLv(id, m)) continue; const c = shopCanMake(id, m, held, {}, prep) || shopCanMake(id, m, held, {}, prep, true); if (c) out.push({ n: m.n, i: m.i, cost: c.cost, price: Math.ceil(c.cost * mk * itemMul(id, m)) }); }
     out.push({ n: S.basic.n, i: S.basic.i, cost: S.basic.base, price: Math.ceil(S.basic.base * mk * itemMul(id, S.basic)) });
     return out;
   }
@@ -8172,7 +8396,7 @@
   const SHOP_OPEN = [6, 22];
   const shopKey = (id, t = farmNow()) => `shop/${id}/${dayNo(t)}`;
   const shopRec = (id, t = farmNow()) => save.get(shopKey(id, t), null) || { sold: 0, in: 0 };
-  const shopSeller = (id, t = farmNow()) => mStaff().find((w) => w.role === SHOP[id].role && mOnShift(w, t));
+  const shopSeller = (id, t = farmNow()) => mStaff().find((w) => effRole(w, t) === SHOP[id].role && mOnShift(w, t) && !lifeOff(w, t));
   const shopOpenNow = (id, t = farmNow()) => { const h = mLocalH(t); return xBuilt(id, t) && h >= SHOP_OPEN[0] && !!shopSeller(id, t); }; // after 22h only while the seller stays on overtime
   function shopRate(id, t = farmNow(), L = facLv(id)) {
     const h = mLocalH(t), S = SHOP[id]; if (h < SHOP_OPEN[0] || (h >= SHOP_OPEN[1] && !shopSeller(id, t))) return 0; // late (overtime): the curve's fallback 0.5
@@ -8192,9 +8416,17 @@
   // the seller's round: serve the customers that came since the last round. Each one gets something from the menu
   // that can be made (a random pick among them, so the menu turns over), else the basic item; ingredients come out of
   // the barn (what the orders hold stays), the bought part (bread, rice, ice…) is paid in cash; price ≥ 1.5x the cost.
-  function shopJob(t, w) {
-    const id = SHOP_OF[w.role], I = id && XISLE[id], S = SHOP[id];
-    if (!I || !xBuilt(id, t) || !shopOpenNow(id, t)) return null;
+  function shopJob(t, w) { return shopRound(t, w, SHOP_OF[effRole(w, t)]); }
+  // the manager, when free, sells at a stall nobody is selling at today (user 2026-11-16 "quản lí rảnh thì bán hộ")
+  function shopHelp(t, w) {
+    if (mOff('shophelp')) return null;
+    const h = mLocalH(t); if (h < SHOP_OPEN[0] || h >= SHOP_OPEN[1]) return null;
+    for (const id of Object.keys(SHOP)) { if (!XISLE[id] || !xBuilt(id, t) || shopSeller(id, t)) continue; const r = shopRound(t, w, id, true); if (r && r.kind === 'sell') { r.text = 'bán hộ ở ' + SHOP[id].cat.toLowerCase() + ': ' + r.text; return r; } }
+    return null;
+  }
+  function shopRound(t, w, id, help) {
+    const I = id && XISLE[id], S = SHOP[id];
+    if (!I || !xBuilt(id, t) || (!help && !shopOpenNow(id, t))) return null;
     const key = shopKey(id, t), rec = shopRec(id, t), d0 = new Date(t); d0.setHours(SHOP_OPEN[0], 0, 0, 0);
     const last = Math.max(rec.last || 0, d0.getTime()), dt = Math.min(HOUR, t - last), mk = shopMark(id);
     const at = { x: I.stall.x, y: I.stall.y - 12 }, stand = I.stand;
@@ -8204,30 +8436,34 @@
     if (n <= 0) { save.set(key, rec); return { kind: 'count', line: 'shops', text: `${S.wait}, chờ khách`, at, stand, icon: S.icon, value: 0 }; }
     save.set(key, rec);
     const s = shopServe(id, t, n, 4141);
-    return { kind: 'sell', cat: 'shop:' + id, line: 'shops', text: `bán cho ${n} khách (${s.names.join('')}) thu ${money(s.total)} xu, vốn ~${money(Math.round(s.cost))} xu`, at, stand, icon: S.icon, value: Math.round(s.total - s.cost) };
+    return { kind: 'sell', cat: 'shop:' + id, line: 'shops', text: `bán cho ${n} khách (${s.names.join('')}) thu ${money(s.total)} xu, vốn ~${money(Math.round(s.cost))} xu${s.bought ? ` (mua nguyên liệu ở cửa hàng ${money(s.bought)} xu)` : ''}`, at, stand, icon: S.icon, value: Math.round(s.total - s.cost) };
   }
   // serve n customers at a shop (the seller's round, or a tour group stopping by): each one gets something from the
   // menu that can be made (a random pick, so the menu turns over), else the basic item; books the sale on the day
   function shopServe(id, t, n, salt) {
     const S = SHOP[id], key = shopKey(id, t), mk = shopMark(id);
-    const held = barHeld(t), used = {}, prep = { ...shopPrep(id) }, names = [];
-    let total = 0, cost = 0, cash = 0;
+    const held = barHeld(t), used = {}, prep = { ...shopPrep(id) }, names = [], sold = {};
+    let total = 0, cost = 0, cash = 0, bought = 0;
     for (let i = 0; i < n; i++) {
-      const can = S.menu.filter((m) => menuLv(id, m) > 0).map((m) => [m, shopCanMake(id, m, held, used, prep), menuLv(id, m)]).filter(([, c]) => c); // unlocked items only (2026-11-13)
+      const mk0 = (b) => S.menu.filter((m) => menuLv(id, m) > 0).map((m) => [m, shopCanMake(id, m, held, used, prep, b), menuLv(id, m)]).filter(([, c]) => c); // unlocked items only (2026-11-13)
+      let can = mk0(false); if (!can.length) can = mk0(true); // the barn first, else bought in town
       const pick = can.length ? menuPick(can, hash01(t + i * 977, salt + i, id.length)) : null;
       if (pick) {
         const [m, c] = pick;
-        if ((prep[c.k] || 0) >= 1) prep[c.k] -= 1; else { used[c.k] = (used[c.k] || 0) + c.uPer; prep[c.k] = (prep[c.k] || 0) + c.sPer - 1; }
-        if (c.veg) { if ((prep.veg || 0) >= 1) prep.veg -= 1; else { used[c.veg] = (used[c.veg] || 0) + 1; prep.veg = (prep.veg || 0) + m.side - 1; prep.vegK = c.veg; } }
-        const price = Math.ceil(c.cost * mk * itemMul(id, m)); total += price; cost += c.cost; cash += m.base; names.push(m.i);
-      } else { const price = Math.ceil(S.basic.base * mk * itemMul(id, S.basic)); total += price; cost += S.basic.base; cash += S.basic.base; names.push(S.basic.i); }
+        if ((prep[c.k] || 0) >= 1) prep[c.k] -= 1; else { if (c.buyK) { const p = shopBuyPrice(c.k) * c.uPer; cash += p; bought += p; } else used[c.k] = (used[c.k] || 0) + c.uPer; prep[c.k] = (prep[c.k] || 0) + c.sPer - 1; }
+        if (c.veg) { if ((prep.veg || 0) >= 1) prep.veg -= 1; else { if (c.buyVeg) { const p = shopBuyPrice(c.veg); cash += p; bought += p; } else used[c.veg] = (used[c.veg] || 0) + 1; prep.veg = (prep.veg || 0) + m.side - 1; prep.vegK = c.veg; } }
+        const price = Math.ceil(c.cost * mk * itemMul(id, m)); total += price; cost += c.cost; cash += m.base; names.push(m.i); sold[m.n] = (sold[m.n] || 0) + 1;
+      } else { const price = Math.ceil(S.basic.base * mk * itemMul(id, S.basic)); total += price; cost += S.basic.base; cash += S.basic.base; names.push(S.basic.i); sold[S.basic.n] = (sold[S.basic.n] || 0) + 1; }
     }
     ledger(total - cash, 1, Object.fromEntries(Object.entries(used).map(([k, q]) => [k, -q])));
     save.set('shopprep/' + id, prep);
     const rec = shopRec(id, t);
-    rec.sold = (rec.sold || 0) + n; rec.in = (rec.in || 0) + total - cash; rec.cost = (rec.cost || 0) + cost; save.set(key, rec);
+    rec.sold = (rec.sold || 0) + n; rec.in = (rec.in || 0) + total - cash; rec.cost = (rec.cost || 0) + cost;
+    if (bought) rec.bought = (rec.bought || 0) + bought;
+    rec.items = rec.items || {}; for (const [k, q] of Object.entries(sold)) rec.items[k] = (rec.items[k] || 0) + q; // the best sellers (user 2026-11-14)
+    save.set(key, rec);
     for (const k0 of save.keys(`shop/${id}/`)) if (Number(k0.split('/')[2]) < dayNo(t) - 2) save.set(k0, null);
-    return { total, cost, cash, names };
+    return { total, cost, cash, names, bought };
   }
   // a tour group stops at the food street before the boat: who buys what depends on the hour (bread in the morning,
   // a drink any time, a rice plate at lunch / dinner); only the stalls open with their seller on shift
@@ -8815,7 +9051,14 @@
       if (busy) depth(SKY, (g) => puff(g, f.x + 14, f.y - q[3] + 2));
       depth(SKY, (g) => xLabel(g, f.x, f.y - q[3] - 6, `🏭 ${MILL_UP[L - 1].name} · ${busy}/${millVats()} thùng đang làm`));
     }
+    // not built yet: a wooden sign on the empty lot, tap it to build (user 2026-11-14 couldn't find the workshop / an inn)
+    const lot = (f, text) => {
+      depth(f.y, (g) => { g.fillStyle = '#6a4424'; g.fillRect(f.x - 1, f.y - 14, 2, 14); g.fillStyle = '#c89254'; g.fillRect(f.x - 9, f.y - 20, 18, 9); g.fillStyle = '#8a5a2c'; g.fillRect(f.x - 9, f.y - 12, 18, 1); g.fillStyle = '#3a2410'; g.fillRect(f.x - 6, f.y - 17, 12, 1); g.fillRect(f.x - 6, f.y - 15, 9, 1); });
+      depth(SKY, (g) => xLabel(g, f.x, f.y - 26, text));
+    };
+    if (I.mill && !L) lot(I.mill.foot, `🏗️ Đất xây xưởng chế biến · ${money(MILL_UP[0].cost)} xu`);
     const IL = innLv();
+    if (I.inn && !IL) lot(I.inn.foot, `🏗️ Đất xây homestay · ${money(INN.cost[0])} xu`);
     if (I.inn && IL) {
       const f = I.inn.foot, k = IL >= 2 ? 'inn_2' : 'inn_1', r = X[k], a = X.inn_1, last = save.get('inn/' + dayNo(t)) || save.get('inn/' + (dayNo(t) - 1));
       const lit = (x, y, w, hh) => { if (!night || !r) return; depth(SKY, (g) => { g.fillStyle = 'rgba(255,214,120,0.85)'; for (const [dx, dy] of [[-w * 0.28, -hh * 0.42], [w * 0.22, -hh * 0.42]]) g.fillRect(Math.round(x + dx), Math.round(y + dy), 4, 3); }); };
@@ -8890,7 +9133,7 @@
       depth(sy, (g) => xSprite(g, 'shop_' + id, cx - q[2] / 2, sy - q[3], q[2], q[3], built ? 1 : 0.25 + 0.45 * Math.min(1, (t - p.t0) / (p.done - p.t0))));
       if (!built) continue;
       if (open && id === 'restaurant') depth(SKY, (g) => { for (let i = 0; i < 3; i++) { const k = ((now / 1400) + i / 3) % 1; g.fillStyle = `rgba(255,255,255,${0.45 * (1 - k)})`; g.beginPath(); g.arc(cx - 10 + i * 10 + Math.sin(now / 300 + i) * 2, sy - q[3] - k * 14, 2 + k * 2, 0, Math.PI * 2); g.fill(); } });
-      depth(SKY, (g) => xLabel(g, cx, sy - q[3] - 2, open ? `${SHOP[id].icon} ${nm} · ${shopRec(id, t).sold || 0} khách` : `${SHOP[id].icon} ${nm} · ${mStaff().some((w) => w.role === SHOP[id].role) ? 'đóng' : 'chưa có người bán'}`));
+      depth(SKY, (g) => xLabel(g, cx, sy - q[3] - 2, open ? `${SHOP[id].icon} ${nm} · ${shopRec(id, t).sold || 0} khách${hotIcon(id)}` : `${SHOP[id].icon} ${nm} · ${mStaff().some((w) => w.role === SHOP[id].role) ? 'đóng' : 'chưa có người bán'}`));
     }
     // the night bar: the stall; when open, guests in front and the price board. User 2026-11-12: "mở rộng ra có cả vũ
     // trường đèn nháy các thứ người ngồi uống rượu người đứng nhảy nhộn nhịp": level 2 adds a dance floor of flashing
