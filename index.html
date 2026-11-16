@@ -5590,6 +5590,7 @@
     if (n && n.camp) night.push(`${n.camp} khách cắm trại (+${money(n.camp * campFee())} xu)`);
     if (bar && bar.open) night.push(`quầy bar bán ${bar.sold || 0} ly (+${money(bar.in || 0)} xu)`);
     if (night.length || dd) say((night.length ? `Đêm qua ${night.join(', ')}. ` : '') + (dd ? `Hôm nay trời ${WX_NAME(dd.weather_code[0]).toLowerCase()} ${WX_ICON(dd.weather_code[0])}, ${Math.round(dd.temperature_2m_min[0])}–${Math.round(dd.temperature_2m_max[0])}°C, khả năng mưa ${dd.precipitation_probability_max[0]}%.` : ''));
+    { const en = enReport(t); if (en) say(en); }
     // 6. the plan
     const plan = mPlanToday(t).filter((x) => !/^Mức:|^🧮/.test(x));
     let html = `<div style="display:flex;gap:10px;align-items:flex-start;margin-top:6px">${bossFace() ? `<img src="${bossFace()}" alt="" style="width:76px;height:76px;image-rendering:pixelated;border-radius:10px;border:2px solid #f0c8d8;flex:none;background:#2a2238">` : '<div style="font-size:44px">👩‍💼</div>'}`
@@ -5614,6 +5615,7 @@
     const A = wk(1), Bw = wk(8), d0 = new Date(t - 7 * 864e5), d1 = new Date(t - 864e5), dm = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
     if (!A.n) return head(`📅 ${boss.name} báo cáo tuần`) + '<p>Dạ, trại chưa chạy đủ ngày để em làm báo cáo tuần ạ.</p>';
     say(`Kính thưa chủ nhân, em là <b>${boss.name}</b>, em xin báo cáo <b>tuần qua</b> (${dm(d0)}–${dm(d1)}, ${A.n} ngày trại chạy).`);
+    { const en = enReport(t); if (en) say(en); }
     say(`Cả tuần trại thu <b style="color:#7fd65a">${money(A.in)} xu</b>, chi <b style="color:#e08a5a">${money(A.out)} xu</b>${A.inv ? ` (trong đó ${money(A.inv)} xu là đầu tư: thuê người, mở rộng, mua giống)` : ''}. Riêng việc kinh doanh ${A.net >= 0 ? 'lãi' : 'lỗ'} <b>${money(Math.abs(A.net))} xu</b>, trung bình ${money(Math.round(A.net / A.n))} xu mỗi ngày${Bw.n ? `, ${A.net >= Bw.net ? 'hơn' : 'kém'} tuần trước ${Bw.net ? Math.abs(vnPct(A.net, Bw.net)) + '%' : money(Math.abs(A.net - Bw.net)) + ' xu'}` : ''}. Ngày khá nhất là ${dm(new Date(A.best.t))} (${A.best.v >= 0 ? '+' : ''}${money(A.best.v)} xu).`);
     const lines = Object.keys(LINES).map((k) => ({ k, s: mLineStats(k, 7, t) })).filter((x) => x.s.days && (x.s.v || x.s.c || x.s.wage)).sort((a, b) => b.s.net - a.s.net);
     if (lines.length) { const top = lines[0], low = lines[lines.length - 1]; say(`Mảng làm ăn tốt nhất là <b>${LINES[top.k].name}</b> (${top.s.net >= 0 ? '+' : ''}${money(top.s.net)} xu sau lương)${low !== top ? `, yếu nhất là <b>${LINES[low.k].name}</b> (${low.s.net >= 0 ? '+' : ''}${money(low.s.net)} xu)${low.s.net < 0 ? ', tuần tới em không đổ thêm tiền vào đó cho đến khi có lãi' : ''}` : ''}.`); }
@@ -5828,7 +5830,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:23 16-11';
+    const build = '10:41 16-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6773,13 +6775,21 @@
     const hint = document.createElement('div');
     hint.style.cssText = 'opacity:0.6;font-size:11px;margin-top:4px;';
     hint.textContent = 'Bấm 🔊 để tắt/mở tất cả';
-    soundPanel.append(forest.r, music.r, themeTog, hint);
+    const lsx = (k, d) => { try { const v = localStorage.getItem('forest-x-' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, lsxs = (k, v) => { try { localStorage.setItem('forest-x-' + k, JSON.stringify(v)); } catch {} };
+    const enTog = document.createElement('button'); enTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 4px 0 0;' + PIX;
+    enTog.addEventListener('click', (e) => { e.stopPropagation(); lsxs('en', !lsx('en', true)); paintAll(); });
+    const enSpk = document.createElement('button'); enSpk.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin-top:4px;' + PIX;
+    enSpk.addEventListener('click', (e) => { e.stopPropagation(); lsxs('enSpeak', !lsx('enSpeak', false)); paintAll(); });
+    const enRow = document.createElement('div'); enRow.append(enTog, enSpk);
+    soundPanel.append(forest.r, music.r, themeTog, enRow, hint);
     function paintAll() {
       const audible = !soundPref.muted && (soundPref.on || soundPref.music);
       soundBtn.textContent = audible ? '🔊' : '🔇';
       soundBtn.title = 'Âm thanh: rê chuột để chỉnh, bấm để tắt/mở tất cả';
       soundBtn.style.opacity = audible ? '1' : '0.6';
       forest.paintRow(); music.paintRow();
+      enTog.textContent = `📘 Tiếng Anh ${lsx('en', true) ? 'bật' : 'tắt'}`; enTog.style.opacity = lsx('en', true) ? '1' : '0.55';
+      enSpk.textContent = `🔈 Tự đọc to ${lsx('enSpeak', false) ? 'bật' : 'tắt'}`; enSpk.style.opacity = lsx('enSpeak', false) ? '1' : '0.55';
       themeTog.textContent = `🎄 Nhạc theo theme ${soundPref.themeMusic !== false ? 'bật' : 'tắt'}`; themeTog.style.opacity = soundPref.themeMusic !== false ? '1' : '0.55';
       const pl = sfx.playing && sfx.playing(); hint.textContent = pl ? `Đang phát: ${pl} · bấm 🔊 để tắt/mở tất cả` : 'Bấm 🔊 để tắt/mở tất cả';
     }
@@ -9101,11 +9111,162 @@
       });
     }
   }
+
+  // ── English, learnt without trying (user 2026-11-16: "tôi lười, không hay chủ động… bị động được học tiếng anh qua
+  // câu đó"): nothing to tap or answer. (1) The staff, the tourists and the diners on screen now and then say a short
+  // English sentence about what they are doing; the English shows first, the Vietnamese fades in 2 s later (a moment
+  // to guess). (2) A small word strip at the bottom changes every 30 s, picked from what is on the farm, the least seen
+  // words first; tap it to hear it. (3) Lan's report ends with one English sentence about yesterday. Per device
+  // switches in the 🔊 panel: 📘 English on/off, 🔈 read aloud (the browser's English voice; off by default).
+  const EN_DICT = {
+    'Củ cải': 'radish', 'Dưa leo': 'cucumber', 'Cà rốt': 'carrot', 'Khoai tây': 'potato', 'Cà tím': 'eggplant', 'Cà chua': 'tomato', 'Ngô': 'corn',
+    'Dâu tây': 'strawberry', 'Lúa': 'rice', 'Dứa': 'pineapple', 'Hướng dương': 'sunflower', 'Hoa tulip': 'tulip', 'Lúa mì': 'wheat', 'Sắn': 'cassava',
+    'Hoa hồng': 'rose', 'Chanh': 'lemon', 'Nho': 'grapes', 'Cam': 'orange', 'Cà phê': 'coffee', 'Bơ': 'avocado', 'Dưa lưới': 'melon',
+    'Phân bón': 'fertilizer', 'Giun đất': 'earthworm', 'Tôm tươi': 'fresh shrimp', 'Thuốc trừ sâu': 'pesticide', 'Cám': 'animal feed', 'Thuốc thú y': 'animal medicine',
+    'Thức ăn cá': 'fish food', 'Củi': 'firewood', 'Cá rô phi': 'tilapia', 'Cá trê': 'catfish', 'Cá chép ao': 'carp', 'Cá chép': 'carp', 'Tôm càng': 'prawn',
+    'Cá koi Nhật': 'koi', 'Cá koi': 'koi', 'Cá tầm nuôi': 'sturgeon', 'Cá tầm': 'sturgeon', 'Gà': 'chicken', 'Vịt': 'duck', 'Thỏ': 'rabbit', 'Dê': 'goat', 'Heo': 'pig',
+    'Cừu': 'sheep', 'Bò sữa': 'dairy cow', 'Lạc đà alpaca': 'alpaca', 'Đà điểu': 'ostrich', 'Ngựa': 'horse', 'Trứng gà': 'egg', 'Trứng vịt': 'duck egg',
+    'Sữa dê': 'goat milk', 'Lông cừu': 'wool', 'Sữa bò': 'milk', 'Thịt thỏ': 'rabbit meat', 'Thịt heo': 'pork', 'Thịt gà': 'chicken meat', 'Thịt vịt': 'duck meat',
+    'Thịt dê': 'goat meat', 'Thịt cừu': 'mutton', 'Thịt bò': 'beef', 'Cá rô': 'perch', 'Cua': 'crab', 'Cá vàng': 'goldfish', 'Ủng cũ': 'old boot', 'Cá lóc': 'snakehead fish',
+    'Cá rồng': 'arowana', 'Trứng rán': 'fried egg', 'Cá nướng': 'grilled fish', 'Salad rau củ': 'vegetable salad', 'Khoai tây chiên': 'French fries', 'Bột mì': 'flour',
+    'Bỏng ngô': 'popcorn', 'Bánh mì': 'bread', 'Cơm chiên': 'fried rice', 'Mứt dâu': 'strawberry jam', 'Bó hoa': 'bouquet', 'Phô mai': 'cheese', 'Bơ sữa': 'butter',
+    'Nước chanh': 'lemonade', 'Nước cam': 'orange juice', 'Cà phê sữa': 'milk coffee', 'Sinh tố bơ': 'avocado smoothie', 'Bánh kem dâu': 'strawberry cake', 'Pizza': 'pizza',
+    'Mật ong': 'honey', 'Táo': 'apple', 'Lê': 'pear', 'Đào': 'peach',
+    'Sóc': 'squirrel', 'Khỉ': 'monkey', 'Ếch': 'frog', 'Rùa': 'turtle', 'Vịt trời': 'wild duck', 'Nhím': 'hedgehog', 'Cú mèo': 'owl', 'Hổ': 'tiger',
+    'Chim cánh cụt': 'penguin', 'Gấu Bắc Cực': 'polar bear', 'Gấu nâu': 'brown bear', 'Sư tử': 'lion', 'Hươu cao cổ': 'giraffe', 'Voi': 'elephant',
+  };
+  // words of the farm that are not goods: [english, vietnamese, icon]
+  const EN_MORE = [['barn', 'nhà kho', '🏚️'], ['shop', 'cửa hàng', '🏪'], ['pier', 'bến tàu', '⚓'], ['lake', 'cái hồ', '🏞️'], ['zoo', 'sở thú', '🦁'], ['bank', 'ngân hàng', '🏦'],
+    ['field', 'cánh đồng', '🌾'], ['pond', 'cái ao', '🐟'], ['kitchen', 'nhà bếp', '🍳'], ['bridge', 'cây cầu', '🌉'], ['island', 'hòn đảo', '🏝️'], ['sea', 'biển', '🌊'],
+    ['mountain', 'núi', '⛰️'], ['tree', 'cái cây', '🌳'], ['flower', 'bông hoa', '🌸'], ['seed', 'hạt giống', '🌱'], ['harvest', 'mùa thu hoạch', '🧺'], ['coin', 'đồng xu', '🪙'],
+    ['rain', 'mưa', '🌧️'], ['sunny', 'trời nắng', '☀️'], ['cloud', 'đám mây', '☁️'], ['moon', 'mặt trăng', '🌙'], ['star', 'ngôi sao', '⭐'], ['snow', 'tuyết', '❄️'],
+    ['wind', 'gió', '🌬️'], ['campfire', 'lửa trại', '🔥'], ['tent', 'cái lều', '⛺'], ['boat', 'con thuyền', '🚤'], ['tourist', 'khách du lịch', '📷'], ['customer', 'khách hàng', '🧑'],
+    ['farmer', 'nông dân', '🧑‍🌾'], ['manager', 'quản lý', '🧑‍💼'], ['cook', 'đầu bếp', '👩‍🍳'], ['waiter', 'người phục vụ', '🍽️'], ['salary', 'tiền lương', '💵'],
+    ['loan', 'khoản vay', '🏦'], ['profit', 'tiền lời', '📈'], ['busy', 'bận rộn', '🏃'], ['tired', 'mệt', '😮‍💨'], ['delicious', 'ngon', '😋'], ['beautiful', 'đẹp', '😍']];
+  const enOn = () => XL.get('en', true), enSpeakOn = () => XL.get('enSpeak', false);
+  let enWords = null;
+  function enPool() {
+    if (enWords) return enWords;
+    const seen = new Set(), out = [];
+    const add = (en, vi, icon, key) => { if (!en || seen.has(en)) return; seen.add(en); out.push({ en, vi: vi.toLowerCase(), icon: icon || '', key }); };
+    for (const [k, G] of Object.entries(GOODS)) add(EN_DICT[G.name], G.name, G.icon, k);
+    for (const [k, G] of Object.entries(XGOODS)) add(EN_DICT[G.name], G.name, G.icon, k);
+    for (const [k, A] of Object.entries(ANIMALS)) add(EN_DICT[A.name], A.name, A.icon, 'a:' + k);
+    for (const S of Object.values(ZOO_SPECIES)) add(EN_DICT[S.name], S.name, S.icon);
+    for (const [en, vi, icon] of EN_MORE) add(en, vi, icon);
+    return (enWords = out);
+  }
+  const enSeen = () => XL.get('enSeen', {});
+  function enMark(en) { const m = enSeen(); m[en] = (m[en] || 0) + 1; XL.set('enSeen', m); }
+  // the next word: what the farm has / grows counts 3x, words seen less come first
+  function enPick() {
+    const pool = enPool(), m = enSeen(), plots = new Set(); for (let i = 0; i < land(); i++) { const p = save.get('plot/' + i); if (p && p.crop) plots.add(p.crop); }
+    const w = pool.map((x) => ((x.key && (have(x.key) > 0 || plots.has(x.key) || (x.key.startsWith('a:') && animalIds().some((id) => (save.get('animal/' + id) || {}).kind === x.key.slice(2))))) ? 3 : 1) / (1 + (m[x.en] || 0)));
+    let r = Math.random() * w.reduce((a, b) => a + b, 0); for (let i = 0; i < pool.length; i++) if ((r -= w[i]) <= 0) return pool[i];
+    return pool[0];
+  }
+  const enWordOf = (vi) => { const en = EN_DICT[vi]; return en ? { en, vi: vi.toLowerCase() } : null; };
+  // what someone says: [english, vietnamese]
+  function enLine(v) {
+    const pick = (a) => a[Math.floor(Math.random() * a.length)];
+    if (v.diner) return pick({ banhmi: [['This bread is really good!', 'Bánh mì này ngon thật!'], ['One more sandwich, please.', 'Cho tôi thêm một ổ nữa nhé.']],
+      cafe: [["I'd like an iced coffee, please.", 'Cho tôi một ly cà phê đá nhé.'], ['This juice is so fresh!', 'Nước ép này tươi quá!']],
+      restaurant: [['The food here is delicious.', 'Đồ ăn ở đây ngon lắm.'], ['Can I have some more rice?', 'Cho tôi thêm ít cơm được không?']] }[v.diner.id] || [['Yummy!', 'Ngon quá!']]);
+    if (v.tourist) { const at = v.tourist.stops[v.tourist.si]; if (at && at.shop) return pick([['How much is this?', 'Cái này bao nhiêu tiền?'], ['I am so hungry.', 'Tôi đói quá.'], ['Two drinks, please.', 'Cho hai ly nước nhé.']]);
+      return pick([['What a beautiful farm!', 'Trang trại đẹp quá!'], ['Can I take a photo?', 'Tôi chụp ảnh được không?'], ['Look at that!', 'Nhìn kìa!'], ['I love this place.', 'Tôi thích nơi này quá.']]); }
+    const T = v.task; if (!T) return null;
+    let crop = null; if (T.plot != null) { const p = save.get('plot/' + T.plot); if (p && CROPS[p.crop]) crop = enWordOf(CROPS[p.crop].name); }
+    const c = crop || { en: 'vegetables', vi: 'rau' };
+    switch (T.kind) {
+      case 'harvest': return [`The ${c.en} crop is ready to harvest!`, `${c.vi[0].toUpperCase() + c.vi.slice(1)} chín rồi, thu hoạch thôi!`];
+      case 'plant': case 'sow': return [`I'm planting ${c.en} seeds.`, `Em đang gieo hạt ${c.vi}.`];
+      case 'water': return pick([['The plants need water.', 'Cây cần nước.'], ["It's so hot today.", 'Hôm nay nóng quá.']]);
+      case 'hoe': return ["I'm digging the soil.", 'Em đang xới đất.'];
+      case 'weed': return ["I'm pulling the weeds.", 'Em đang nhổ cỏ.'];
+      case 'clear': return ["Let's clean up this plot.", 'Dọn ô đất này thôi.'];
+      case 'feed': case 'feedFish': return pick([['Time to eat, everyone!', 'Đến giờ ăn rồi các bạn ơi!'], ['The animals are hungry.', 'Các con vật đói rồi.']]);
+      case 'collect': return ["I'm collecting the eggs and milk.", 'Em đang nhặt trứng, vắt sữa.'];
+      case 'fish': case 'fishMiss': return pick([['I hope I catch a big fish!', 'Mong câu được con cá to!'], ['The fish are biting today.', 'Hôm nay cá cắn câu nhiều.']]);
+      case 'cook': case 'serve': return ["I'm cooking something delicious.", 'Em đang nấu món gì đó ngon lắm.'];
+      case 'sell': case 'order': return ['This order is ready to go.', 'Đơn hàng này xong rồi, giao thôi.'];
+      case 'chop': case 'wood': return ["I'm chopping firewood.", 'Em đang chẻ củi.'];
+      case 'rest': return ['I need a short break.', 'Em nghỉ tay một chút.'];
+      case 'guide': return ['Welcome! Please follow me.', 'Xin chào! Mời mọi người đi theo tôi.'];
+      case 'zooFeed': return ['Here is your lunch, little friend.', 'Bữa trưa của bạn đây, bạn nhỏ.'];
+      case 'sweep': return v.role === 'marketer' ? ['Come and visit our farm!', 'Mời mọi người ghé thăm trang trại!'] : ["Let's keep everything clean.", 'Giữ mọi thứ sạch sẽ nào.'];
+      case 'count': case 'shop': return ['Good morning! What would you like?', 'Chào buổi sáng! Bạn muốn dùng gì?'];
+      default: return pick([["Let's get to work!", 'Bắt tay vào việc thôi!'], ['What a busy day!', 'Hôm nay bận rộn quá!'], ['We are doing great.', 'Mình đang làm tốt lắm.']]);
+    }
+  }
+  function enSay(text) {
+    if (!enSpeakOn() || document.hidden || !window.speechSynthesis || soundPref.muted) return;
+    try { const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 0.88; u.volume = 0.8; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) {}
+  }
+  // captions above the people on screen: a new one every ~9 s, 7 s each
+  const enCaps = new Map(); let enNext = 0;
+  function enDraw(now) {
+    if (!enOn()) { enCaps.clear(); return; }
+    const v = window.__forestView; if (!v) return;
+    if (now > enNext) {
+      enNext = now + 8000 + Math.random() * 3000;
+      const W = v.canvas.width, H = v.canvas.height, onScreen = (p) => { const sx = v.x + p.x * v.z, sy = v.y + p.y * v.z; return sx > 40 && sx < W - 40 && sy > 60 && sy < H - 40; };
+      const cand = villagers.filter((p) => p.step === 'doing' && (p.diner || p.tourist || (p.staff && p.task)) && !enCaps.has(p) && onScreen(p));
+      const who = cand[Math.floor(Math.random() * cand.length)], L = who && enLine(who);
+      if (L) { enCaps.set(who, { en: L[0], vi: L[1], t0: now }); XL.set('enLines', (XL.get('enLines', 0) || 0) + 1); enSay(L[0]); }
+    }
+    for (const [p, c] of enCaps) {
+      const age = now - c.t0; if (age > 7000 || !villagers.includes(p)) { enCaps.delete(p); continue; }
+      const a = Math.min(1, age / 300, (7000 - age) / 500), vi = Math.max(0, Math.min(1, (age - 2000) / 500));
+      depth(SKY, (g) => {
+        g.save(); g.globalAlpha = a;
+        g.font = 'bold 7px sans-serif'; const w1 = g.measureText(c.en).width; g.font = '6px sans-serif'; const w2 = g.measureText(c.vi).width;
+        const w = Math.ceil(Math.max(w1, w2)) + 8, h = 20, x = Math.round(p.x - w / 2), y = Math.round(p.y - 64);
+        g.fillStyle = 'rgba(255,253,240,0.96)'; g.fillRect(x, y, w, h); g.fillRect(Math.round(p.x) - 1, y + h, 3, 3);
+        g.fillStyle = '#c8462a'; g.fillRect(x, y, 2, h);
+        g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        g.font = 'bold 7px sans-serif'; g.fillStyle = '#1e3a8a'; g.fillText(c.en, p.x + 1, y + 8);
+        g.globalAlpha = a * vi; g.font = '6px sans-serif'; g.fillStyle = '#5a4630'; g.fillText(c.vi, p.x + 1, y + 16);
+        g.restore();
+      });
+    }
+  }
+  // the word strip (DOM, bottom centre)
+  let enStrip = null, enWordAt = 0, enCur = null;
+  function enStripTick() {
+    if (!enOn() || !document.body) { if (enStrip) enStrip.style.display = 'none'; return; }
+    if (!enStrip || !enStrip.isConnected) {
+      enStrip = document.createElement('button'); enStrip.type = 'button'; enStrip.className = 'fz-en';
+      enStrip.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom, 0px));z-index:38;max-width:calc(100vw - 32px);padding:6px 12px;border-radius:999px;border:2px solid #f0c25a;background:rgba(40,26,14,.86);color:#fff4dd;font:14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 #3a2210;';
+      enStrip.addEventListener('click', (e) => { e.stopPropagation(); if (enCur && window.speechSynthesis) { try { const u = new SpeechSynthesisUtterance(enCur.en); u.lang = 'en-US'; u.rate = 0.85; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (er) {} } });
+      enStrip.addEventListener('pointerdown', (e) => e.stopPropagation());
+      document.body.append(enStrip);
+    }
+    enStrip.style.display = 'block';
+    const now = Date.now();
+    if (!enCur || now - enWordAt > 30000) { enCur = enPick(); enWordAt = now; enMark(enCur.en); }
+    const vi = now - enWordAt > 2000;
+    const html = `${enCur.icon} <b style="color:#ffe9a8">${enCur.en}</b> <span style="opacity:${vi ? 0.85 : 0};transition:opacity .5s">· ${enCur.vi}</span> <span style="opacity:.6">🔈</span>`;
+    if (enStrip.__h !== html) { enStrip.innerHTML = html; enStrip.__h = html; }
+  }
+  setInterval(() => { try { enStripTick(); } catch (e) {} }, 500);
+  // one English sentence about yesterday for Lan's report
+  function enReport(t) {
+    if (!enOn()) return '';
+    const yd = mDayRec(t - 864e5), vis = (yd.visit || {}).people || 0, seen = Object.keys(enSeen()).length, pick = [];
+    if (yd.in) pick.push([`Yesterday the farm earned ${money(yd.in)} coins.`, `Hôm qua trang trại kiếm được ${money(yd.in)} xu.`]);
+    if (vis) pick.push([`${vis} tourists visited our farm yesterday.`, `Hôm qua có ${vis} du khách ghé thăm trang trại.`]);
+    if (yd.acts) pick.push([`Our team finished ${yd.acts} jobs.`, `Đội mình đã làm xong ${yd.acts} việc.`]);
+    pick.push(['Have a nice day, boss!', 'Chúc chủ nhân một ngày vui vẻ!']);
+    const [en, vi] = pick[dayNo(t) % pick.length];
+    return `📘 <b>${en}</b> <span style="opacity:.75">(${vi})</span>${seen ? ` · chủ nhân đã gặp <b>${seen}</b> từ tiếng Anh` : ''}`;
+  }
+  window.__forestEn = { line: (v) => enLine(v), pick: () => enPick(), pool: () => enPool(), report: (t) => enReport(t), caps: () => [...enCaps.values()], cur: () => enCur, force: () => { enNext = 0; } };
   function xDraw(now, ph) {
     const t = farmNow(), night = ph.night > 0.55;
     if (FARM.pier) boatDraw(now);
     try { bizDraw(now, ph); } catch (e) {}
     try { findDraw(now); } catch (e) {}
+    try { enDraw(now); } catch (e) {}
     for (const [id, P] of Object.entries(XPROJ)) {
       const I = XISLE[id]; if (!I) continue;
       const p = xProj(id), built = !!p && t >= p.done, k = p ? Math.min(1, (t - p.t0) / (p.done - p.t0)) : 0;
