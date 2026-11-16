@@ -392,7 +392,7 @@
   // Ambient bed by time of day (stream, wind, birds, crickets, owls, campfire) + one-shot effects.
   // Toggle button under the zoom controls; mouse wheel on it = volume. Saved in localStorage.
   const SOUND_KEY = 'claude-forest-sound';
-  let soundPref = { muted: false, on: true, vol: 1.2, music: true, musicVol: 0.35, themeMusic: true, v: 3 };
+  let soundPref = { muted: false, on: true, vol: 1.2, music: true, musicVol: 0.35, themeMusic: true, country: 'day', v: 3 };
   try {
     const saved = JSON.parse(localStorage.getItem(SOUND_KEY) || '{}');
     // v3: rebalanced mix (headphones) -> volumes back to the new defaults; keep the on/off choices
@@ -695,23 +695,72 @@
         mel: [[67, 3], [69, 1], [67, 2], [64, 6], [67, 3], [69, 1], [67, 2], [64, 6], [74, 4], [74, 2], [71, 6], [72, 4], [72, 2], [67, 6], [69, 4], [69, 2], [72, 3], [71, 1], [69, 2], [67, 3], [69, 1], [67, 2], [64, 6],
           [69, 4], [69, 2], [72, 3], [71, 1], [69, 2], [67, 3], [69, 1], [67, 2], [64, 6], [74, 4], [74, 2], [77, 3], [74, 1], [71, 2], [72, 6], [76, 6], [72, 3], [67, 1], [64, 2], [67, 3], [65, 1], [62, 2], [60, 12]],
         ch: [['C', 24], ['G7', 12], ['C', 12], ['F', 12], ['C', 12], ['F', 12], ['C', 12], ['G7', 12], ['C', 12], ['C', 6], ['G7', 6], ['C', 12]] },
-    ].map((S) => { // index where each note / chord starts, once
+    ].map((S) => prepSong(S));
+    function prepSong(S) { // index where each note / chord starts, once
       const at = (list) => { const m = {}; let e = 0; for (const [n, d] of list) { if (n != null) m[e] = [n, d]; e += d; } return { m, len: e }; };
       const M = at(S.mel), C = at(S.ch); return { ...S, mAt: M.m, cAt: C.m, len: Math.max(M.len, C.len) };
-    });
-    let cSong = 0, cPos = -4, cNext = 0, playing = '';
+    }
+    // ── country / farm tunes for ordinary days (user 2026-11-16: "nhạc đồng quê, farm vui nhộn"): public-domain folk
+    // songs arranged here as a little hoedown band (banjo melody, boom-chick bass + strum, shaker), no voices.
+    CH.D = [50, 54, 57];
+    const FARM = [
+      { name: 'Oh! Susanna', step: 0.2,
+        mel: [[72, 1], [74, 1],
+          [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [72, 2], [74, 6], [72, 1], [74, 1],
+          [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [74, 2], [72, 8],
+          [77, 4], [77, 4], [81, 2], [81, 4], [81, 2], [79, 2], [79, 2], [76, 2], [72, 2], [74, 6], [72, 1], [74, 1],
+          [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [74, 2], [72, 8]],
+        ch: [[null, 2], ['C', 24], ['G', 8], ['C', 16], ['G', 8], ['C', 8], ['F', 16], ['C', 8], ['G', 8], ['C', 16], ['G', 8], ['C', 8]] },
+      { name: 'Old MacDonald Had a Farm', step: 0.19,
+        mel: [[79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 6], [74, 2],
+          [79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 6], [74, 1], [74, 1],
+          [79, 2], [79, 2], [79, 2], [74, 1], [74, 1], [79, 2], [79, 2], [79, 4], [79, 1], [79, 1], [79, 2], [79, 1], [79, 1], [79, 2], [79, 1], [79, 1], [79, 1], [79, 1], [79, 2], [79, 2],
+          [79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 8]],
+        ch: [['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8], ['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8],
+          ['G', 32], ['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8]] },
+      { name: 'Yankee Doodle', step: 0.2,
+        mel: [[79, 1], [79, 1], [81, 1], [83, 1], [79, 1], [83, 1], [81, 1], [74, 1], [79, 1], [79, 1], [81, 1], [83, 1], [79, 2], [78, 2],
+          [79, 1], [79, 1], [81, 1], [83, 1], [84, 1], [83, 1], [81, 1], [79, 1], [78, 1], [74, 1], [76, 1], [78, 1], [79, 2], [79, 2],
+          [76, 2], [76, 1], [78, 1], [76, 1], [74, 1], [76, 1], [78, 1], [79, 2], [76, 1], [74, 1], [76, 2], [74, 1], [72, 1], [71, 2], [72, 2], [74, 4],
+          [76, 2], [76, 1], [78, 1], [76, 1], [74, 1], [76, 1], [78, 1], [79, 1], [76, 1], [74, 1], [78, 1], [79, 2], [79, 2]],
+        ch: [['G', 4], ['D', 4], ['G', 4], ['D', 4], ['G', 4], ['C', 4], ['D', 4], ['G', 4], ['C', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['C', 8], ['D', 4], ['G', 4]] },
+      { name: 'Skip to My Lou', step: 0.21,
+        mel: [[76, 4], [72, 4], [76, 4], [79, 4], [74, 4], [71, 4], [74, 4], [77, 4], [76, 4], [72, 4], [76, 4], [79, 4], [74, 2], [76, 1], [77, 1], [76, 2], [74, 2], [72, 8],
+          [76, 2], [76, 2], [72, 2], [72, 2], [76, 2], [76, 2], [79, 4], [74, 2], [74, 2], [71, 2], [71, 2], [74, 2], [74, 2], [77, 4],
+          [76, 2], [76, 2], [72, 2], [72, 2], [76, 2], [76, 2], [79, 4], [74, 2], [76, 1], [77, 1], [76, 2], [74, 2], [72, 8]],
+        ch: [['C', 16], ['G7', 16], ['C', 16], ['G7', 8], ['C', 8], ['C', 16], ['G7', 16], ['C', 16], ['G7', 8], ['C', 8]] },
+    ].map((S) => prepSong(S));
+    let cSong = 0, cPos = -4, cNext = 0, cList = '', cChord = null, playing = '';
+    const countryOn = (ph) => soundPref.country === 'all' || (soundPref.country !== 'off' && ph.night < 0.5); // night stays lo-fi for sleep
+    function pluck(fq, t, d, gain, pan) { // a banjo-ish pluck: bright saw through a closing filter + a little body
+      tone({ type: 'sawtooth', f: [fq, fq], dur: d, gain: gain * 0.55, attack: 0.003, when: t, bus: musicBus, pan, filter: { type: 'lowpass', f: 2600, q: 0.8 } });
+      tone({ type: 'triangle', f: [fq, fq], dur: d * 1.2, gain: gain * 0.6, attack: 0.002, when: t, bus: musicBus, pan });
+    }
     function themeMusicKey() {
       if (soundPref.themeMusic === false) return null;
       let th = {}; try { th = themeNow(); } catch (e) {}
       return th.noel || th.santa ? 'noel' : th.halloween ? 'spooky' : th.tet || th.trungthu ? 'tet' : null;
     }
-    function carolTick(ph) {
-      const now = ctx.currentTime;
+    function carolTick(ph, list = 'noel') {
+      const now = ctx.currentTime, LIST = list === 'farm' ? FARM : CAROLS;
+      if (cList !== list) { cList = list; cSong = list === 'farm' ? Math.floor(Math.random() * FARM.length) : 0; cPos = -4; cChord = null; }
       if (!cNext || cNext < now) cNext = now + 0.15;
       while (cNext < now + (document.hidden ? 1.6 : 0.35)) {
-        const t = cNext, e = cPos, T = CAROLS[cSong % CAROLS.length];
+        const t = cNext, e = cPos, T = LIST[cSong % LIST.length];
         playing = T.name;
-        if (e >= 0) {
+        if (e >= 0 && list === 'farm') { // hoedown band
+          const swing = e % 2 ? 0.035 : 0, tt = t + swing;
+          const m = T.mAt[e];
+          if (m) pluck(mtof(m[0]), tt, Math.max(0.28, Math.min(0.9, m[1] * T.step * 1.3)), 0.075, 0.12);
+          const c = T.cAt[e]; if (c) cChord = CH[c[0]];
+          if (cChord) {
+            if (e % 4 === 0) tone({ f: [mtof(cChord[0] - 12), mtof(cChord[0] - 12)], dur: 0.3, gain: 0.11, attack: 0.004, when: tt, bus: musicBus, pan: 0, filter: { type: 'lowpass', f: 600 } }); // boom (root)
+            if (e % 8 === 4) tone({ f: [mtof(cChord[2] - 12), mtof(cChord[2] - 12)], dur: 0.3, gain: 0.09, attack: 0.004, when: tt, bus: musicBus, pan: 0, filter: { type: 'lowpass', f: 600 } }); // alternating fifth
+            if (e % 4 === 2) cChord.slice(0, 3).forEach((n, k) => tone({ type: 'triangle', f: [mtof(n + 12), mtof(n + 12)], dur: 0.14, gain: 0.022, attack: 0.002, when: tt + k * 0.012, bus: musicBus, pan: -0.25 })); // chick (strum)
+            if (!m && e % 2 && Math.random() < 0.45) { const n = cChord[Math.floor(Math.random() * 3)] + 24; pluck(mtof(n), tt, 0.25, 0.03, -0.3); } // banjo roll fill
+          }
+          noise({ dur: 0.035, gain: (e % 2 ? 0.006 : 0.011) * (0.6 + 0.4 * (1 - ph.night)), type: 'highpass', f: 6000, when: tt, bus: musicBus }); // shaker
+        } else if (e >= 0) {
           const m = T.mAt[e];
           if (m) { // a music-box bell: the note + soft partials
             const fq = mtof(m[0]), d = Math.max(0.5, m[1] * T.step * 1.6);
@@ -730,10 +779,11 @@
     const SPOOKY = { ch: [[57, 60, 64, 67], [53, 57, 60, 64], [50, 53, 57, 60], [52, 56, 59, 62]], pen: [69, 72, 74, 75, 76, 79, 81, 84] }; // Am7 Fmaj7 Dm7 E7, a minor blues scale
     const TETM = { ch: [[48, 55, 62, 69], [50, 57, 62, 69], [53, 60, 65, 69], [45, 52, 57, 64]], pen: [72, 74, 77, 79, 81, 84, 86, 89] }; // open fifths, do-re-fa-sol-la
     function musicTick(ph) {
-      if (!soundPref.music) { mNext = 0; cNext = 0; playing = ''; return; }
+      if (!soundPref.music) { mNext = 0; cNext = 0; cList = ''; playing = ''; return; }
       const key = themeMusicKey();
-      if (key === 'noel') { mNext = 0; carolTick(ph); return; }
-      cNext = 0; playing = key === 'spooky' ? 'Halloween' : key === 'tet' ? 'nhạc Tết' : '';
+      if (key === 'noel') { mNext = 0; carolTick(ph, 'noel'); return; }
+      if (!key && countryOn(ph)) { mNext = 0; carolTick(ph, 'farm'); return; }
+      cNext = 0; cList = ''; playing = key === 'spooky' ? 'Halloween' : key === 'tet' ? 'nhạc Tết' : '';
       const CHORDS = key === 'spooky' ? SPOOKY.ch : key === 'tet' ? TETM.ch : CHORDS0, PENTA = key === 'spooky' ? SPOOKY.pen : key === 'tet' ? TETM.pen : PENTA0;
       const now = ctx.currentTime;
       if (!mNext || mNext < now) { mNext = now + 0.15; mStep = 0; }
@@ -5830,7 +5880,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:41 16-11';
+    const build = '13:38 16-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6772,6 +6822,8 @@
     const forest = row('🌲 Rừng', 'on', 'vol', 300), music = row('🎵 Nhạc', 'music', 'musicVol', 100);
     const themeTog = document.createElement('button'); themeTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin-top:4px;' + PIX;
     themeTog.addEventListener('click', (e) => { e.stopPropagation(); soundPref.themeMusic = soundPref.themeMusic === false; sfx.setPref(); paintAll(); });
+    const countryTog = document.createElement('button'); countryTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 0 0 4px;' + PIX;
+    countryTog.addEventListener('click', (e) => { e.stopPropagation(); const o = ['day', 'all', 'off'], c = soundPref.country || 'day'; soundPref.country = o[(o.indexOf(c) + 1) % o.length]; soundPref.muted = false; sfx.resume(); sfx.setPref(); paintAll(); });
     const hint = document.createElement('div');
     hint.style.cssText = 'opacity:0.6;font-size:11px;margin-top:4px;';
     hint.textContent = 'Bấm 🔊 để tắt/mở tất cả';
@@ -6781,7 +6833,7 @@
     const enSpk = document.createElement('button'); enSpk.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin-top:4px;' + PIX;
     enSpk.addEventListener('click', (e) => { e.stopPropagation(); lsxs('enSpeak', !lsx('enSpeak', false)); paintAll(); });
     const enRow = document.createElement('div'); enRow.append(enTog, enSpk);
-    soundPanel.append(forest.r, music.r, themeTog, enRow, hint);
+    soundPanel.append(forest.r, music.r, themeTog, countryTog, enRow, hint);
     function paintAll() {
       const audible = !soundPref.muted && (soundPref.on || soundPref.music);
       soundBtn.textContent = audible ? '🔊' : '🔇';
@@ -6791,6 +6843,7 @@
       enTog.textContent = `📘 Tiếng Anh ${lsx('en', true) ? 'bật' : 'tắt'}`; enTog.style.opacity = lsx('en', true) ? '1' : '0.55';
       enSpk.textContent = `🔈 Tự đọc to ${lsx('enSpeak', false) ? 'bật' : 'tắt'}`; enSpk.style.opacity = lsx('enSpeak', false) ? '1' : '0.55';
       themeTog.textContent = `🎄 Nhạc theo theme ${soundPref.themeMusic !== false ? 'bật' : 'tắt'}`; themeTog.style.opacity = soundPref.themeMusic !== false ? '1' : '0.55';
+      { const c = soundPref.country || 'day'; countryTog.textContent = `🤠 Nhạc đồng quê: ${c === 'all' ? 'cả ngày' : c === 'off' ? 'tắt' : 'ban ngày'}`; countryTog.style.opacity = c === 'off' ? '0.55' : '1'; }
       const pl = sfx.playing && sfx.playing(); hint.textContent = pl ? `Đang phát: ${pl} · bấm 🔊 để tắt/mở tất cả` : 'Bấm 🔊 để tắt/mở tất cả';
     }
     soundBtn.addEventListener('click', (e) => { e.stopPropagation(); soundPref.muted = !soundPref.muted; sfx.resume(); sfx.setPref(); paintAll(); });
