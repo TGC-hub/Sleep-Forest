@@ -2774,7 +2774,7 @@
   const mRisk = () => RISK[mRiskKey()];
   const mReserve = () => { const F = mForecast(), R = mRisk(); return Math.max(20 + Math.round(F.wages * R.floor), Math.round(F.outflow - F.inflow * R.inMul)); };
   // how diligent a worker is (fixed per person, from their id): 1 = never slacks; the head manager always 1
-  const dilOf = (w) => (w.role === 'boss' ? 1 : (0.62 + 0.45 * hash01(parseInt(w.id.slice(1), 36) || 7, 911, 3)) * lifeMood(w)); // 2026-11-12: presents / sadness
+  const dilOf = (w) => (w.role === 'boss' && !w.from ? 1 : (0.62 + 0.45 * hash01(parseInt(w.id.slice(1), 36) || 7, 911, 3)) * lifeMood(w)); // 2026-11-12: presents / sadness
   const mSlackNow = {}; // live: who is slacking off this step (they rest instead of working)
   // investments are the owner's capital, not a worker's running cost
   const INVEST = new Set(['land', 'upgrade', 'hire', 'buyAnimal', 'zooBuy', 'zooOpen']);
@@ -2934,11 +2934,18 @@
     repay: ['🏦', 'tự trả nợ TJBank'], borrow: ['💳', 'tự vay TJBank'], hire: ['🤝', 'tự thuê người'], fire: ['👋', 'tự cho nhân viên nghỉ'],
     ot: ['⏱️', 'tự cho tăng ca'], bar: ['🍹', 'tự mở quán bar đêm'], cancel: ['❌', 'tự huỷ đơn hàng'], fert: ['💩', 'tự bón phân cho kịp đơn'],
     sell: ['🛒', 'tự bán hàng trong kho'], cook: ['🍳', 'tự nấu món để bán'], lake: ['🎣', 'mua vé câu ở hồ'], idlefish: ['🪝', 'sai người đang rảnh đi câu cá'], cover: ['🔁', 'tự điều người làm thay ở quầy ăn'], shophelp: ['🧑‍💼', 'quản lý bán hộ ở quầy không có người'],
+    // user 2026-11-17 "popup riêng của quản lý để tôi setup quyền": two more, so every big thing she does is switchable
+    invest: ['📈', 'tự đầu tư (mở đất, nâng cấp, mua thú, xây mới)'], rank: ['🎓', 'tự cho nhân viên quảng cáo lên bậc'],
   };
+  // the permission popup groups them (every key of MOFF must be in one group)
+  const MOFF_GROUPS = [['💰 Tiền & ngân hàng', ['repay', 'borrow', 'invest', 'sell']], ['👥 Nhân sự', ['hire', 'fire', 'ot', 'rank', 'cover', 'idlefish']],
+    ['🏪 Kinh doanh', ['bar', 'cook', 'cancel', 'fert', 'lake', 'shophelp']]];
+  // investing switched off blocks everything except hiring / a marketer's rank (they have their own switches)
+  const mInvOff = (o) => mOff('invest') && !/^(hire|rank):/.test((o && o.key) || '');
   const mOff = (k) => !!(mCmd().off || {})[k];
-  const mCanInvest = (cost, o = {}) => !mPaused() && mLineOk(o.line) && mAskState(cost, o) !== 'no' && (mOwnCash(cost) || mBoldCheck(cost, o).ok);
+  const mCanInvest = (cost, o = {}) => !mPaused() && !mInvOff(o) && mLineOk(o.line) && mAskState(cost, o) !== 'no' && (mOwnCash(cost) || mBoldCheck(cost, o).ok);
   function mFund(cost, o = {}) {
-    if (mPaused()) return false;
+    if (mPaused() || mInvOff(o)) return false;
     if (mAsk(cost, o) !== 'ok') return false;
     const t = farmNow();
     if (mOwnCash(cost)) { mAskDone(o); return true; }
@@ -4187,6 +4194,7 @@
     mOTPay(t);
     mManagerReview(t);
     mWeekReview(t);
+    if (new Date(t).getDay() === 1 && save.get('mgr/bossrev', 0) < day) { save.set('mgr/bossrev', day); mBossReview(t); }
     mRankStep(t);
     mRepDay(t - 864e5);
     mBrakeCheck(t);
@@ -4237,6 +4245,51 @@
     mRemoveWorker(w.id, 'fired-by-manager');
     mLog(t, boss ? boss.id : '', `👋 Quản lý cho ${w.name} (${ROLES[w.role].name}) nghỉ việc: ${why}${e && e.amt > 0 ? ` (còn nợ lương ${money(e.amt)} xu, sẽ trả khi có tiền)` : ''}`, 0);
     if (mRun && mRun.sum) mRun.sum.left.push(w.name);
+  }
+  // ── Who runs the farm (user 2026-11-17: "quản lí cũng có thể bị giáng cấp, nhân viên khác cũng có thể lên làm quản lí
+  // nếu làm được việc hơn, tốt hơn"). A score out of 100 over the last 7 days: 45 diligence (share of the shift
+  // worked) + 40 results (a worker: own profit vs own wage; the manager: the whole farm's running profit vs the
+  // payroll) + 15 seniority (full at 14 days). Back-office trades that earn nothing by design count as break-even.
+  const clamp01 = (x) => Math.max(0, Math.min(1, x));
+  function mgrScore(w, t = farmNow()) {
+    let att = 0, an = 0, net = 0, val = 0, nd = 0;
+    for (let k = 1; k <= 7; k++) { const x = mStaffDay(w, t - k * 864e5); if (x.att != null && x.acts) { att += x.att; an++; } if (x.acts) { net += x.net; val += x.value; nd++; } }
+    att = an ? att / an : w.role === 'boss' ? 1 : 0.8;
+    let eff, effTxt;
+    if (w.role === 'boss') {
+      let p = 0, n = 0; for (let k = 1; k <= 7; k++) { const d = mDayRec(t - k * 864e5); if (d.acts) { p += mOpNet(d); n++; } }
+      const per = n ? p / n : 0; eff = clamp01((per / Math.max(30, mWages()) + 1) / 3); effTxt = `trại ${per >= 0 ? 'lời' : 'lỗ'} ${money(Math.abs(per))} xu/ngày`;
+    } else if (nd && !val) { eff = 1 / 3; effTxt = 'việc văn phòng, không tính lời lỗ'; }
+    else { const per = nd ? net / nd : 0; eff = clamp01((per / Math.max(20, wageOf(w) || 20) + 1) / 3); effTxt = nd ? `tự làm ${per >= 0 ? 'lời' : 'lỗ'} ${money(Math.abs(per))} xu/ngày` : 'chưa có số liệu'; }
+    const days = Math.max(0, (t - (w.hired || t)) / 864e5), sen = clamp01(days / 14);
+    return { score: Math.round(45 * att + 40 * eff + 15 * sen), att, eff, effTxt, days: Math.floor(days) };
+  }
+  // a worker may step up after 5 days on the job (not someone the owner set aside, not a night-only hand)
+  const mgrEligible = (w, t = farmNow()) => w.role !== 'boss' && ROLES[w.role] && !ROLES[w.role].night && t - (w.hired || t) >= 5 * 864e5;
+  // swap the seats: the new manager leaves their trade to the old one (who keeps working, at that trade's wage)
+  function mSwapBoss(id, by, why, t = farmNow()) {
+    const st = mStaff(), old = st.find((w) => w.role === 'boss'), nw = st.find((w) => w.id === id);
+    if (!nw || nw.role === 'boss' || !ROLES[nw.role]) return false;
+    const seat = nw.role, strip = (w) => { const { acc, from, bossSince, ...x } = w; return x; };
+    if (old) save.set('mgr/w/' + old.id, { ...strip(old), role: seat, exBoss: t });
+    save.set('mgr/w/' + nw.id, { ...strip(nw), role: 'boss', from: seat, bossSince: t });
+    for (const x of [old, nw]) if (x) { save.set('life/review/' + x.id, null); save.set(`cover/${dayNo(t)}/${x.id}`, null); }
+    mRosterCache = null; bossFaceUrl = ''; save.set('mgr/plan', null);
+    const rec = { t, by, why, to: nw.id, toName: nw.name, toFrom: seat, from: old ? old.id : '', fromName: old ? old.name : '' };
+    save.set('mgr/swaps', [rec, ...save.get('mgr/swaps', [])].slice(0, 12));
+    save.set('mgr/swapNews', rec);
+    mLog(t, nw.id, `🔄 ${by === 'owner' ? 'Chủ trại' : 'Tổng kết tuần'}: ${nw.name} (${ROLES[seat].name.toLowerCase()}) lên làm quản lý${old ? `, ${old.name} xuống làm ${ROLES[seat].name.toLowerCase()}` : ''}${why ? ` · ${why}` : ''}`, 0);
+    if (mRun && mRun.live) xToast(`🔄 <b>${nw.name}</b> giờ là quản lý trại${old ? ` · ${old.name} chuyển sang ${ROLES[seat].name.toLowerCase()}` : ''}`);
+    return true;
+  }
+  // every Monday morning (cfg/mgrswap, on by default): a worker who scores 10+ points above the manager, and at least
+  // 60, takes over. The manager gets 7 days in the seat before being judged.
+  function mBossReview(t) {
+    if (save.get('cfg/mgrswap', true) === false) return;
+    const st = mStaff(), boss = st.find((w) => w.role === 'boss'); if (!boss || t - (boss.bossSince || boss.hired || t) < 7 * 864e5) return;
+    const me = mgrScore(boss, t), best = st.filter((w) => mgrEligible(w, t)).map((w) => ({ w, s: mgrScore(w, t) })).sort((a, b) => b.s.score - a.s.score)[0];
+    if (best && best.s.score >= 60 && best.s.score >= me.score + 10) mSwapBoss(best.w.id, 'auto', `${best.w.name} ${best.s.score} điểm, ${boss.name} ${me.score} điểm`, t);
+    else mLog(t, boss.id, `🧑‍💼 Tổng kết tuần: ${boss.name} giữ ghế quản lý (${me.score} điểm${best ? `, người cao nhất ${best.w.name} ${best.s.score}` : ''})`, 0);
   }
   function mHrReport(t) {
     const rows = mStaff().filter((w) => w.role !== 'boss').map((w) => ({ w, s: mStaffDay(w, t) })).filter((x) => x.s.att != null);
@@ -4595,7 +4648,9 @@
     const bn = save.get('life/bonus/' + w.id); if (bn && bn.until > t) m *= bn.mul; // the weekly diligence bonus / a cut
     return m;
   }
-  const wageOf = (w) => Math.round(((ROLES[w.role] || {}).wage || 0) * (w.role === 'marketer' ? RANK.pay[rankOf(w)] : 1)) + (save.get('life/pay/' + w.id, 0) || 0);
+  // a promoted manager (2026-11-17) is paid: 1.5x the old trade's wage, at least 50; the first manager (Lan) shares the profit as before
+  const mgrPay = (w) => Math.max(50, Math.round(((ROLES[w.from] || {}).wage || 30) * 1.5));
+  const wageOf = (w) => (w.role === 'boss' ? (w.from ? mgrPay(w) : 0) + (save.get('life/pay/' + w.id, 0) || 0) : 0) + (w.role === 'boss' ? 0 : Math.round(((ROLES[w.role] || {}).wage || 0) * (w.role === 'marketer' ? RANK.pay[rankOf(w)] : 1)) + (save.get('life/pay/' + w.id, 0) || 0));
   function lifeGift(w, mul, days, amt, t, by) {
     save.set('life/gift/' + w.id, { until: t + days * 864e5, mul, by, day: dayNo(t), amt });
     if (amt) evBook(t, -amt, 'Quà nhân viên');
@@ -4749,7 +4804,7 @@
   };
   // the manager promotes a marketer once the days are in and the purse allows (same investing rule as everything)
   function mRankStep(t) {
-    if (mOff('hire')) return;
+    if (mOff('rank')) return;
     for (const w of mStaff()) { const n = rankNext(w, t); if (!n || !n.ok || hash01(dayNo(t) * 100, wNum(w), 717) > 0.5) continue; const o = { line: 'visit', key: 'rank:' + w.id, what: `cho ${w.name} lên ${RANK.names[n.to]}` }; if (mCanInvest(n.cost, o) && mFund(n.cost, o)) { rankUp(w.id, 'boss', t); break; } }
   }
   window.__forestFb = { borrow: (n) => mBorrow(n, farmNow(), '(chủ trại vay)'), interest: () => { const Ln = mLoan(); if (Ln.owed > 0) tallyAdd('loan', Math.max(1, Math.round(Ln.owed * loanRate()))); }, loanRate: () => loanRate(), tally: (n, d) => tallyAdd(n, d), tjbOwn: () => tjbOwn(), setCover: (id, r, by, t) => setCover(id, r, by || 'owner', t), coverOf: (w, t) => coverOf(w, t), coverPlan: (t) => { save.set('coverplan', 0); mCoverPlan(t); }, roleDay: (r) => roleDay(r), shopSeller: (id, t) => shopSeller(id, t), coins: () => coins(), lifeOff: (w, t) => lifeOff(w, t), canInvest: (c, o) => mCanInvest(c, o || {}), ask: (c, o) => mAskState(c, o || {}), lineOk: (l) => mLineOk(l), weekReview: (t) => mWeekReview(t), rankUp, rankOf, adsBoost, rankNext, jobs: (w, t) => mJobs(w, t), shopServe: (id, t, n) => shopServe(id, t, n, 999), venueHot: (id) => venueHot(id), playing: () => sfx.playing(), carols: () => sfx.carols(), musicKey: () => themeNow() }; // tests (2026-11-16)
@@ -5214,7 +5269,7 @@
       openPanel({ kind: mBriefKind() });
     }
   }
-  window.__forestMgr = { forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z, b) => mTourArrive(n, z, b), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
+  window.__forestMgr = { boss: { score: (id, t) => mgrScore(mStaff().find((w) => w.id === id), t), swap: (id, by, why, t) => mSwapBoss(id, by || 'owner', why || '', t), review: (t) => mBossReview(t), eligible: (id, t) => mgrEligible(mStaff().find((w) => w.id === id), t), pay: (w) => wageOf(w), perm: (a, b) => mPermAct(a, b), invOff: (o) => mInvOff(o) }, forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z, b) => mTourArrive(n, z, b), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
   window.__forestReset = { summary: () => runSummary(), runs: () => pastRuns(), html: (ask) => resetHtml({ ask }, (x) => x), go: () => gameReset() };
   window.__forestPondBox = null; window.__forestPond = { lv: () => facLv('pond'), gain: () => facGain('pond'), sim: (i) => simPond(i), fishes: () => FISHES };
@@ -5789,6 +5844,7 @@
     if (v.kind === 'venue') return venueHtml(v, head);
     if (v.kind === 'reset') return resetHtml(v, head);
     if (v.kind === 'find') return findHtml(head);
+    if (v.kind === 'mperm') return mPermHtml(head);
     if (v.kind === 'biz') return bizPanelHtml(head);
     if (v.kind === 'col') return colPanelHtml(head);
     if (v.kind === 'story') return storyPanelHtml(head);
@@ -5804,6 +5860,7 @@
   // her portrait: hand-drawn in portrait.js, face_boss in forest-extra.png). She speaks as "em", the owner is "chủ nhân".
   let bossFaceUrl = '';
   function bossFace() {
+    { const b = mStaff().find((w) => w.role === 'boss'); if (b && b.from) return ''; } // the hand-drawn portrait is Lan's; a promoted manager has none
     if (bossFaceUrl) return bossFaceUrl;
     const r = (FARM.extra || {}).face_boss; if (!r || !extraImg.complete || !extraImg.naturalWidth) return '';
     const cv = document.createElement('canvas'); cv.width = r[2] * 3; cv.height = r[3] * 3;
@@ -5818,6 +5875,7 @@
     const yd = mDayRec(t - 864e5), td = mDayRec(t), away = save.get('mgr/away');
     // 1. greeting + while away
     let open = `Kính thưa chủ nhân, em là <b>${boss.name}</b>, ${greet}!`;
+    { const sn = save.get('mgr/swapNews'); if (sn && sn.to === boss.id && t - sn.t < 2 * 864e5) open += ` Em vừa ${sn.by === 'owner' ? 'được chủ nhân cho' : 'qua tổng kết tuần được'} lên làm quản lý${sn.fromName ? `, ${sn.fromName} chuyển sang ${ROLES[sn.toFrom] ? ROLES[sn.toFrom].name.toLowerCase() : 'việc khác'}` : ''}. Em xin hứa làm hết sức ạ!`; }
     if (away && away.to && away.to > t - 6 * HOUR && away.to - away.from >= 30 * 60000) {
       const delta = (away.coins1 != null ? away.coins1 : coins()) - away.coins0, hrs = Math.round((away.to - away.from) / HOUR);
       open += ` Trong ${hrs >= 1 ? hrs + ' giờ' : 'lúc'} chủ nhân vắng, cả đội làm ${away.acts || 0} việc, két ${delta >= 0 ? 'tăng' : 'giảm'} <b>${money(Math.abs(delta))} xu</b>${(away.hired || []).length ? `, em thuê thêm ${away.hired.join(', ')}` : ''}${(away.left || []).length ? `, ${away.left.join(', ')} đã nghỉ` : ''}.`;
@@ -5947,9 +6005,57 @@
     if (h >= 12 && h < MWORK[1]) btn.push(B('cot', '🌙 Nông dân + bán hàng tăng ca đến 21h'));
     const rk = mRiskPick(); btn.push(...Object.entries(RISK).filter(([k]) => k !== rk).map(([k, R]) => B('mrisk:' + k, `Đổi sang ${R.name}`)));
     const offs = c.off || {}, nOff = Object.keys(MOFF).filter((k) => offs[k]).length;
-    const sw = Object.entries(MOFF).map(([k, [ic, nm]]) => B('coff:' + k, `${offs[k] ? '⛔' : '✅'} ${ic} ${nm[0].toUpperCase() + nm.slice(1)}`, true, offs[k] ? 'border-color:#e08a5a;opacity:.85;' : 'border-color:#7fd65a;')).join('');
     return x + `<div>${btn.filter(Boolean).join('')}</div>`
-      + `<details style="margin-top:6px"${nOff ? ' open' : ''}><summary style="cursor:pointer;opacity:.9">⚙️ Việc em được tự làm${nOff ? ` · chủ nhân đang tắt ${nOff} việc` : ''}</summary><div style="font-size:12px;opacity:.75;margin:4px 0">Bấm để bật / tắt. ✅ = em tự quyết, ⛔ = em không tự làm (chủ nhân vẫn làm tay được). Giữ nguyên đến khi chủ nhân bật lại.</div><div>${sw}</div></details>`;
+      + `<div style="margin-top:6px">${B('open:mperm', `🛡️ Quyền của quản lý · thăng / giáng chức${nOff ? ` · đang tắt ${nOff} quyền` : ''}`, true, 'width:100%;min-height:36px;')}</div>`;
+  }
+  // ── 🛡️ the manager's own popup (user 2026-11-17 "nên có 1 popup riêng của quản lý để tôi setup quyền cho quản lí,
+  // ví dụ bật quyền này, tắt quyền này… quản lí cũng có thể bị giáng cấp… nhân viên khác cũng có thể lên làm quản lí"):
+  // who the manager is + her score, every permission by group, the candidates ranked, the weekly auto-swap switch.
+  function mPermHtml(head) {
+    const t = farmNow(), st = mStaff(), boss = st.find((w) => w.role === 'boss'), offs = mCmd().off || {}, auto = save.get('cfg/mgrswap', true) !== false;
+    const pct = (x) => Math.round(x * 100) + '%', col = (n) => (n >= 70 ? '#7fd65a' : n >= 50 ? '#ffb02e' : '#e08a5a');
+    let x = '';
+    if (boss) {
+      const s = mgrScore(boss, t), since = boss.bossSince || boss.hired || t, nd = Math.floor((t - since) / 864e5);
+      x += `<div style="display:flex;gap:10px;align-items:center;margin:4px 0 8px"><span style="font-size:34px">🧑‍💼</span><div style="flex:1;line-height:1.45"><b style="font-size:16px">${boss.name}</b> · quản lý ${nd ? `${nd} ngày` : 'từ hôm nay'}${boss.from ? ` <span style="opacity:.7">(trước làm ${ROLES[boss.from].name.toLowerCase()})</span>` : ''}`
+        + `<br><span style="font-size:13px">Điểm quản lý <b style="color:${col(s.score)};font-size:15px">${s.score}</b>/100 · chăm ${pct(s.att)} · ${s.effTxt}</span>`
+        + `<br><span style="font-size:12px;opacity:.8">Lương ${wageOf(boss) ? `${wageOf(boss)} xu/ngày` : 'chia lời (quản lý đầu tiên)'}${s.score < 50 ? ' · ⚠️ điểm thấp, có thể bị thay' : ''}</span></div></div>`;
+    }
+    const rep = save.get('mgr/cmdReply'); // her answer to the last switch, right here (not only in the report)
+    if (rep && Date.now() - rep.at < 15 * 60000) x += `<div style="margin:2px 0 6px;padding:6px 8px;border-left:3px solid #f0c8d8;background:rgba(240,200,216,0.08);font-size:13px">💬 ${rep.text}</div>`;
+    // permissions
+    const nOff = Object.keys(MOFF).filter((k) => offs[k]).length;
+    x += `<div style="opacity:.9;margin-top:6px"><b>🛡️ Quyền của quản lý</b> <span style="font-size:12px;opacity:.75">${nOff ? `đang tắt ${nOff}/${Object.keys(MOFF).length}` : 'đang bật hết'}</span></div>`
+      + '<div style="font-size:12px;opacity:.75;margin:2px 0 4px">✅ = quản lý tự quyết · ⛔ = không tự làm (bạn vẫn làm tay được). Giữ nguyên đến khi bạn bật lại, cả PC lẫn điện thoại.</div>'
+      + `<div>${B('mpall:on', '✅ Bật hết', nOff > 0)}${B('mpall:off', '⛔ Tắt hết', nOff < Object.keys(MOFF).length)}</div>`;
+    for (const [g, keys] of MOFF_GROUPS) x += `<div style="font-size:13px;opacity:.85;margin:8px 0 2px">${g}</div><div>` + keys.filter((k) => MOFF[k]).map((k) => { const [ic, nm] = MOFF[k]; return B('coff:' + k, `${offs[k] ? '⛔' : '✅'} ${ic} ${nm[0].toUpperCase() + nm.slice(1)}`, true, offs[k] ? 'border-color:#e08a5a;opacity:.85;' : 'border-color:#7fd65a;'); }).join('') + '</div>';
+    // candidates
+    const cands = st.filter((w) => w.role !== 'boss' && ROLES[w.role]).map((w) => ({ w, s: mgrScore(w, t), ok: mgrEligible(w, t) })).sort((a, b) => b.ok - a.ok || b.s.score - a.s.score);
+    const bs = boss ? mgrScore(boss, t).score : 0;
+    x += '<div style="opacity:.9;margin-top:12px"><b>🔄 Thăng chức · giáng chức</b></div>'
+      + '<div style="font-size:12px;opacity:.75;margin:2px 0 4px">Điểm 7 ngày: 45 chăm chỉ + 40 hiệu quả (nhân viên: tự làm lời bao nhiêu so với lương; quản lý: cả trại lời bao nhiêu so với quỹ lương) + 15 thâm niên. Lên làm quản lý thì đổi chỗ: quản lý cũ xuống làm đúng việc của người mới lên. Quản lý được trả 1,5 lần lương nghề cũ (ít nhất 50 xu/ngày).</div>'
+      + `<div style="margin:4px 0">${B('mswapauto:' + (auto ? 0 : 1), `${auto ? '✅' : '⛔'} Tự thay quản lý sáng thứ Hai nếu có người hơn ≥ 10 điểm (và ≥ 60)`, true, auto ? 'border-color:#7fd65a;' : 'border-color:#e08a5a;opacity:.85;')}</div>`;
+    if (!cands.length) x += '<div style="font-size:12px;opacity:.7">Trại chưa có nhân viên nào khác.</div>';
+    x += cands.slice(0, 12).map(({ w, s, ok }) => {
+      const R = ROLES[w.role], up = ok && s.score > bs;
+      return `<div class="fz-row" style="align-items:center"><span style="line-height:1.35">${R.icon} <b>${w.name}</b> <span style="opacity:.7">${R.name}</span><br><span style="font-size:12px">⭐ <b style="color:${col(s.score)}">${s.score}</b> · chăm ${pct(s.att)} · ${s.effTxt}${ok ? '' : ` · <span style="opacity:.7">${R.night ? 'làm ca đêm' : `mới ${s.days} ngày (cần 5)`}</span>`}</span></span>`
+        + `<span>${ok ? B('mpromote:' + w.id, up ? '⬆️ Lên quản lý' : 'Lên quản lý', true, up ? 'border-color:#7fd65a;' : '') : ''}</span></div>`;
+    }).join('');
+    const sw = save.get('mgr/swaps', []);
+    if (sw.length) x += '<div style="opacity:.85;margin-top:10px">📜 Lịch sử ghế quản lý</div>' + sw.slice(0, 6).map((r) => { const d = new Date(r.t); return `<div style="font-size:12px;margin:2px 0">${d.getDate()}/${d.getMonth() + 1}: ${r.toName} lên thay ${r.fromName || '(trống)'} · ${r.by === 'owner' ? 'chủ trại quyết' : 'tổng kết tuần'}${r.why ? ` · ${r.why}` : ''}</div>`; }).join('');
+    return head('🛡️ Quản lý · quyền & thăng chức') + x;
+  }
+  function mPermAct(act, a1) {
+    const t = farmNow();
+    if (act === 'mpall') { const c = mCmd(), off = {}; if (a1 === 'off') for (const k of Object.keys(MOFF)) off[k] = true; save.set('mgr/cmd', { ...c, off }); save.set('mgr/plan', null); mLog(t, '', a1 === 'off' ? '⛔ Chủ trại tắt hết quyền tự quyết của quản lý' : '✅ Chủ trại bật lại hết quyền của quản lý', 0); return true; }
+    if (act === 'mswapauto') { save.set('cfg/mgrswap', a1 === '1'); return true; }
+    if (act === 'mpromote') {
+      const w = mStaff().find((x) => x.id === a1), boss = mStaff().find((x) => x.role === 'boss'); if (!w || !mgrEligible(w, t)) return true;
+      if (!confirm(`Cho ${w.name} lên làm quản lý?\n\n${boss ? `${boss.name} sẽ xuống làm ${ROLES[w.role].name.toLowerCase()} thay ${w.name}.\n` : ''}${w.name} được trả ${mgrPay({ from: w.role })} xu/ngày.`)) return true;
+      const a = mgrScore(w, t).score, b = boss ? mgrScore(boss, t).score : 0;
+      mSwapBoss(w.id, 'owner', `${w.name} ${a} điểm${boss ? `, ${boss.name} ${b} điểm` : ''}`, t); return true;
+    }
+    return false;
   }
   // the owner sends someone to the lake for today: the ticket is paid now from the purse, they walk there right away
   function mLakeGo(id, t = farmNow()) {
@@ -6020,7 +6126,7 @@
   function mgrPanelHtml(v, head, c, L) {
     const tab = v.tab || 'home', st = mStaff(), now = farmNow(), today = mDayRec(now);
     const tb = (id, label) => B('tab:' + id, label, true, tab === id ? 'border-color:#7fd65a;' : '');
-    const tabs = tb('home', 'Tổng quan') + tb('plan', '📈 Đầu tư') + tb('money', '📊 Doanh thu') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký') + tb('mail', '📮 Góp ý') + B('open:night', '🌙 Đêm') + B('open:find', '🔎 Tìm nhân viên') + B('open:biz', '🏨 Homestay') + B('open:mill', '🏭 Xưởng');
+    const tabs = tb('home', 'Tổng quan') + tb('plan', '📈 Đầu tư') + tb('money', '📊 Doanh thu') + tb('staff', 'Nhân viên') + tb('log', 'Nhật ký') + tb('mail', '📮 Góp ý') + B('open:night', '🌙 Đêm') + B('open:mperm', '🛡️ Quyền quản lý') + B('open:find', '🔎 Tìm nhân viên') + B('open:biz', '🏨 Homestay') + B('open:mill', '🏭 Xưởng');
     let body = '';
     if (tab === 'home') {
       const days = [...Array(7).keys()].reverse().map((k) => { const t = now - k * 864e5, d = mDayRec(t), dt = new Date(t); return { d, p: d.in - d.out, lab: k ? `${dt.getDate()}/${dt.getMonth() + 1}` : 'Nay' }; });
@@ -6083,7 +6189,7 @@
           const days = Math.max(1, Math.ceil((now - w.hired) / 864e5)), e = debt[w.id];
           const tag = !hasHr || w.role === 'boss' ? '' : wk < 0 ? '<span style="color:#e08a5a"> · đang lỗ</span>' : attN && att / attN < 0.8 ? '<span style="color:#ffd84a"> · hay lười</span>' : '<span style="color:#7fd65a"> · làm tốt</span>';
           return `<div style="margin:6px 0;border-top:1px solid #33334a;padding-top:4px"><b>${R.icon} ${w.name}</b> <span style="opacity:.7">${R.name} · làm được ${days} ngày</span>${tag}`
-            + `<div style="font-size:12px;opacity:.9">Lương <b>${R.wage ? R.wage + ' xu/ngày' : 'chia lời'}</b>${e && e.amt ? ` · <span style="color:#e08a5a">đang nợ ${money(e.amt)} xu</span>` : ''}</div>`
+            + `<div style="font-size:12px;opacity:.9">Lương <b>${wageOf(w) ? wageOf(w) + ' xu/ngày' : 'chia lời'}</b>${e && e.amt ? ` · <span style="color:#e08a5a">đang nợ ${money(e.amt)} xu</span>` : ''}</div>`
             + `<div style="font-size:12px;opacity:.9">Hôm nay: ${s.acts} việc · làm ra ${money(s.value)} · chi vật tư ${money(s.cost)} · lương ${money(s.wage)} → ${pn(s.net)}</div>`
             + (hasHr ? `<div style="font-size:12px;opacity:.9">7 ngày: lãi/lỗ ${pn(wk)} · chăm chỉ ${attN ? Math.round((att / attN) * 100) + '%' : '–'}</div>` : '')
             + `<div style="font-size:12px;opacity:.65">Lo: ${R.jobs.map((j) => JOB_VI[j] || j).join(', ')}</div>`
@@ -6101,7 +6207,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:36 17-11';
+    const build = '11:58 17-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6130,7 +6236,7 @@
         return x + `<div style="font-size:11px;opacity:.7">Khi ${w.name} đi: ${coverGap(w)}.</div>`;
       })() : '')
       + (w.role === 'marketer' ? (() => { const r = rankOf(w), n = rankNext(w, now); return row('🎓 Bậc', `<b>${RANK.names[r]}</b> · kéo khách +${Math.round(RANK.draw[r] * 100)}%`) + (n ? `<div style="margin:-2px 0 6px">${B('rank:' + w.id, `⬆️ Lên ${RANK.names[n.to]} · ${money(n.cost)} xu`, n.ok && coins() >= n.cost)}${n.ok ? '' : `<span style="font-size:11px;opacity:.75"> cần làm đủ ${n.need} ngày (mới ${Math.floor(n.days)})</span>`}<div style="font-size:11px;opacity:.7">Lên ${RANK.names[n.to]}: kéo khách +${Math.round(RANK.draw[n.to] * 100)}%, lương ${Math.round(R.wage * RANK.pay[n.to])} xu/ngày.</div></div>` : ''); })() : '')
-      + row('Lương', R.wage ? `${wageOf(w)} xu/ngày${wageOf(w) !== R.wage ? ` <span style="opacity:.7">(gốc ${R.wage})</span>` : ''}` : 'chia lời')
+      + row('Lương', wageOf(w) ? `${wageOf(w)} xu/ngày${R.wage && wageOf(w) !== R.wage ? ` <span style="opacity:.7">(gốc ${R.wage})</span>` : ''}` : 'chia lời')
       + (() => { const rv = save.get('life/review/' + w.id); return R.wage && w.role !== 'boss' ? row('📋 Tổng kết tuần', rv ? `chăm ${Math.round(rv.att * 100)}%${rv.d > 0 ? ` · ⬆️ +${rv.d} xu/ngày` : rv.d < 0 ? ` · ⬇️ ${rv.d} xu/ngày` : ' · giữ lương'}${rv.bonus ? ` · 🎁 ${money(rv.bonus)} xu` : ''}` : 'thứ Hai tới') + '<div style="font-size:11px;opacity:.7;margin:-2px 0 4px">Mỗi sáng thứ Hai: chăm ≥ 97% được +5% lương và thưởng nửa ngày lương, 90–97% thưởng 1/4 ngày lương, dưới 75% bị giảm 5% lương.</div>' : ''; })()
       + (() => { // shift + overtime (owner's buttons; the manager decides at 17:30 otherwise)
         const o = mOT(w.id, now), rate = otRate(w), end = shiftEndH(w), hNow = mLocalH(now), off = !mOnShift(w, now), cur = o && o.until > end ? `⏱️ tăng ca đến ${o.until > 24 ? (o.until - 24) + "h sáng" : o.until + "h"} (${o.by === 'owner' ? 'bạn cho' : 'quản lý cho: ' + (o.why || '')}) · ~${money(otCost(w, o.until))} xu` : o && o.by === 'boss' ? 'quản lý cho nghỉ đúng giờ' : 'không tăng ca';
@@ -6303,6 +6409,7 @@
     if (act === 'openv') return openPanel({ kind: 'venue', id: a1 });
     if (['rivalad', 'festno', 'innup', 'boatbuy', 'photo'].includes(act)) bizAct(act, a1, a2);
     if (['lgift', 'lwed', 'lraiseok', 'lraiseno'].includes(act)) lifeAct(act, a1);
+    if (act.startsWith('mp') && mPermAct(act, a1)) return renderPanel();
     if (act[0] === 'c' && act !== 'cook' && act !== 'close' && mCmdAct(act, a1)) return renderPanel();
     if (act === 'hustle') mHustle(a1, Number(a2));
     if (act === 'lakego') mLakeGo(a1);
