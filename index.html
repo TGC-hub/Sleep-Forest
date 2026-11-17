@@ -700,67 +700,282 @@
       const at = (list) => { const m = {}; let e = 0; for (const [n, d] of list) { if (n != null) m[e] = [n, d]; e += d; } return { m, len: e }; };
       const M = at(S.mel), C = at(S.ch); return { ...S, mAt: M.m, cAt: C.m, len: Math.max(M.len, C.len) };
     }
-    // ── country / farm tunes for ordinary days (user 2026-11-16: "nhạc đồng quê, farm vui nhộn"): public-domain folk
-    // songs arranged here as a little hoedown band (banjo melody, boom-chick bass + strum, shaker), no voices.
-    CH.D = [50, 54, 57];
-    const FARM = [
-      { name: 'Oh! Susanna', step: 0.2,
-        mel: [[72, 1], [74, 1],
-          [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [72, 2], [74, 6], [72, 1], [74, 1],
-          [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [74, 2], [72, 8],
-          [77, 4], [77, 4], [81, 2], [81, 4], [81, 2], [79, 2], [79, 2], [76, 2], [72, 2], [74, 6], [72, 1], [74, 1],
-          [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [74, 2], [72, 8]],
-        ch: [[null, 2], ['C', 24], ['G', 8], ['C', 16], ['G', 8], ['C', 8], ['F', 16], ['C', 8], ['G', 8], ['C', 16], ['G', 8], ['C', 8]] },
-      { name: 'Old MacDonald Had a Farm', step: 0.19,
-        mel: [[79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 6], [74, 2],
-          [79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 6], [74, 1], [74, 1],
-          [79, 2], [79, 2], [79, 2], [74, 1], [74, 1], [79, 2], [79, 2], [79, 4], [79, 1], [79, 1], [79, 2], [79, 1], [79, 1], [79, 2], [79, 1], [79, 1], [79, 1], [79, 1], [79, 2], [79, 2],
-          [79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 8]],
-        ch: [['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8], ['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8],
-          ['G', 32], ['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8]] },
-      { name: 'Yankee Doodle', step: 0.2,
-        mel: [[79, 1], [79, 1], [81, 1], [83, 1], [79, 1], [83, 1], [81, 1], [74, 1], [79, 1], [79, 1], [81, 1], [83, 1], [79, 2], [78, 2],
-          [79, 1], [79, 1], [81, 1], [83, 1], [84, 1], [83, 1], [81, 1], [79, 1], [78, 1], [74, 1], [76, 1], [78, 1], [79, 2], [79, 2],
-          [76, 2], [76, 1], [78, 1], [76, 1], [74, 1], [76, 1], [78, 1], [79, 2], [76, 1], [74, 1], [76, 2], [74, 1], [72, 1], [71, 2], [72, 2], [74, 4],
-          [76, 2], [76, 1], [78, 1], [76, 1], [74, 1], [76, 1], [78, 1], [79, 1], [76, 1], [74, 1], [78, 1], [79, 2], [79, 2]],
-        ch: [['G', 4], ['D', 4], ['G', 4], ['D', 4], ['G', 4], ['C', 4], ['D', 4], ['G', 4], ['C', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['C', 8], ['D', 4], ['G', 4]] },
-      { name: 'Skip to My Lou', step: 0.21,
-        mel: [[76, 4], [72, 4], [76, 4], [79, 4], [74, 4], [71, 4], [74, 4], [77, 4], [76, 4], [72, 4], [76, 4], [79, 4], [74, 2], [76, 1], [77, 1], [76, 2], [74, 2], [72, 8],
-          [76, 2], [76, 2], [72, 2], [72, 2], [76, 2], [76, 2], [79, 4], [74, 2], [74, 2], [71, 2], [71, 2], [74, 2], [74, 2], [77, 4],
-          [76, 2], [76, 2], [72, 2], [72, 2], [76, 2], [76, 2], [79, 4], [74, 2], [76, 1], [77, 1], [76, 2], [74, 2], [72, 8]],
-        ch: [['C', 16], ['G7', 16], ['C', 16], ['G7', 8], ['C', 8], ['C', 16], ['G7', 16], ['C', 16], ['G7', 8], ['C', 8]] },
-    ].map((S) => prepSong(S));
-    let cSong = 0, cPos = -4, cNext = 0, cList = '', cChord = null, playing = '';
+    // ── country band (user 2026-11-16): its OWN engine, apart from the lo-fi and the carols ("tách hẳn với các lofi, không
+    // dùng chung logic âm nhạc"). The first version shared tone()/noise(), the music bus and the master compressor: every
+    // animal call ducked that bus to 35 % and the compressor pumped ("lúc to lúc bé"), and the saw-wave banjo + noise
+    // shaker clicked ("tách tách", "như bị điện giật"). Now: plucked strings rendered once (Karplus-Strong) into buffers,
+    // played back on a separate bus -> a static soft clip -> the speakers. No compressor, no ducking, no noise bursts, no
+    // random gains, and its own timer (not tied to frames). Public-domain folk songs, no voices.
+    // Songs: [midi, length] melody + [chord, length] chords; `tick: true` = lengths in 16ths, else 8ths (doubled on load).
+    // pick = pickup length (same unit), meter = beats per bar (3 = waltz), swing = lazy off-beats.
+    const country = (() => {
+      const CHC = { C: [48, 52, 55], F: [53, 57, 60], G: [55, 59, 62], G7: [55, 59, 62, 65], D: [50, 54, 57], D7: [50, 54, 57, 60], Am: [57, 60, 64] };
+      const SONGS = [
+        { name: 'Oh! Susanna', step: 0.2, pick: 2,
+          mel: [[72, 1], [74, 1],
+            [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [72, 2], [74, 6], [72, 1], [74, 1],
+            [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [74, 2], [72, 8],
+            [77, 4], [77, 4], [81, 2], [81, 4], [81, 2], [79, 2], [79, 2], [76, 2], [72, 2], [74, 6], [72, 1], [74, 1],
+            [76, 2], [79, 2], [79, 3], [81, 1], [79, 2], [76, 2], [72, 3], [74, 1], [76, 2], [76, 2], [74, 2], [74, 2], [72, 8]],
+          ch: [[null, 2], ['C', 24], ['G', 8], ['C', 16], ['G', 8], ['C', 8], ['F', 16], ['C', 8], ['G', 8], ['C', 16], ['G', 8], ['C', 8]] },
+        { name: 'Old MacDonald Had a Farm', step: 0.19,
+          mel: [[79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 6], [74, 2],
+            [79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 6], [74, 1], [74, 1],
+            [79, 2], [79, 2], [79, 2], [74, 1], [74, 1], [79, 2], [79, 2], [79, 4], [79, 1], [79, 1], [79, 2], [79, 1], [79, 1], [79, 2], [79, 1], [79, 1], [79, 1], [79, 1], [79, 2], [79, 2],
+            [79, 2], [79, 2], [79, 2], [74, 2], [76, 2], [76, 2], [74, 4], [83, 2], [83, 2], [81, 2], [81, 2], [79, 8]],
+          ch: [['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8], ['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8],
+            ['G', 32], ['G', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['G', 8]] },
+        { name: 'Yankee Doodle', step: 0.2,
+          mel: [[79, 1], [79, 1], [81, 1], [83, 1], [79, 1], [83, 1], [81, 1], [74, 1], [79, 1], [79, 1], [81, 1], [83, 1], [79, 2], [78, 2],
+            [79, 1], [79, 1], [81, 1], [83, 1], [84, 1], [83, 1], [81, 1], [79, 1], [78, 1], [74, 1], [76, 1], [78, 1], [79, 2], [79, 2],
+            [76, 2], [76, 1], [78, 1], [76, 1], [74, 1], [76, 1], [78, 1], [79, 2], [76, 1], [74, 1], [76, 2], [74, 1], [72, 1], [71, 2], [72, 2], [74, 4],
+            [76, 2], [76, 1], [78, 1], [76, 1], [74, 1], [76, 1], [78, 1], [79, 1], [76, 1], [74, 1], [78, 1], [79, 2], [79, 2]],
+          ch: [['G', 4], ['D', 4], ['G', 4], ['D', 4], ['G', 4], ['C', 4], ['D', 4], ['G', 4], ['C', 8], ['C', 4], ['G', 4], ['G', 4], ['D', 4], ['C', 8], ['D', 4], ['G', 4]] },
+        { name: 'Skip to My Lou', step: 0.21,
+          mel: [[76, 4], [72, 4], [76, 4], [79, 4], [74, 4], [71, 4], [74, 4], [77, 4], [76, 4], [72, 4], [76, 4], [79, 4], [74, 2], [76, 1], [77, 1], [76, 2], [74, 2], [72, 8],
+            [76, 2], [76, 2], [72, 2], [72, 2], [76, 2], [76, 2], [79, 4], [74, 2], [74, 2], [71, 2], [71, 2], [74, 2], [74, 2], [77, 4],
+            [76, 2], [76, 2], [72, 2], [72, 2], [76, 2], [76, 2], [79, 4], [74, 2], [76, 1], [77, 1], [76, 2], [74, 2], [72, 8]],
+          ch: [['C', 16], ['G7', 16], ['C', 16], ['G7', 8], ['C', 8], ['C', 16], ['G7', 16], ['C', 16], ['G7', 8], ['C', 8]] },
+        { name: 'Camptown Races', tick: true, step: 0.085, swing: true,
+          mel: [[79, 2], [79, 2], [76, 2], [79, 2], [81, 2], [79, 2], [76, 4], [76, 4], [74, 4], [76, 4], [74, 4],
+            [79, 2], [79, 2], [76, 2], [79, 2], [81, 2], [79, 2], [76, 4], [74, 4], [76, 2], [74, 2], [72, 8],
+            [72, 3], [72, 1], [76, 2], [79, 2], [84, 8], [81, 3], [81, 1], [84, 2], [81, 2], [79, 8],
+            [79, 2], [79, 2], [76, 2], [76, 2], [79, 2], [79, 2], [76, 4], [74, 2], [76, 2], [74, 2], [74, 2], [72, 8]],
+          ch: [['C', 16], ['C', 8], ['G', 8], ['C', 16], ['G', 8], ['C', 8], ['C', 16], ['F', 16], ['C', 16], ['G', 8], ['C', 8]] },
+        { name: 'Oh My Darling, Clementine', tick: true, step: 0.1, meter: 3, pick: 4,
+          mel: [[72, 3], [72, 1], [72, 4], [67, 4], [76, 3], [76, 1], [76, 4], [72, 4], [72, 3], [76, 1], [79, 6], [79, 2], [77, 2], [76, 2], [74, 8],
+            [74, 3], [76, 1], [77, 4], [77, 4], [76, 3], [74, 1], [76, 4], [72, 4], [72, 3], [76, 1], [74, 6], [67, 2], [71, 2], [74, 2], [72, 8]],
+          ch: [[null, 4], ['C', 12], ['C', 12], ['C', 6], ['G7', 6], ['G7', 12], ['G7', 12], ['C', 12], ['G7', 12], ['C', 8]] },
+        { name: 'Red River Valley', tick: true, step: 0.1, pick: 4, swing: true,
+          mel: [[67, 2], [72, 2], [76, 4], [76, 2], [76, 2], [76, 4], [74, 2], [76, 2], [74, 4], [72, 8], [67, 2], [72, 2],
+            [76, 4], [72, 2], [76, 2], [79, 4], [77, 2], [76, 2], [74, 12], [79, 2], [77, 2],
+            [76, 4], [76, 2], [74, 2], [76, 4], [77, 2], [81, 2], [79, 12], [67, 2], [67, 2],
+            [71, 4], [72, 2], [74, 2], [77, 4], [76, 2], [74, 2], [72, 12], [null, 4]],
+          ch: [[null, 4], ['C', 16], ['C', 16], ['C', 16], ['G7', 16], ['C', 16], ['F', 16], ['G7', 16], ['C', 16]] },
+        { name: "She'll Be Coming 'Round the Mountain", tick: true, step: 0.085, pick: 4, swing: true,
+          mel: [[67, 2], [69, 2], [72, 4], [72, 2], [72, 2], [69, 2], [67, 2], [69, 2], [72, 2], [72, 12], [72, 2], [74, 2],
+            [76, 4], [76, 2], [76, 2], [76, 2], [79, 2], [76, 2], [74, 2], [74, 12], [79, 2], [77, 2],
+            [76, 4], [76, 2], [76, 2], [74, 2], [72, 2], [74, 2], [76, 2], [79, 4], [77, 2], [76, 2], [74, 4], [72, 2], [74, 2],
+            [76, 4], [74, 2], [72, 2], [71, 2], [72, 2], [74, 2], [71, 2], [72, 12], [null, 4]],
+          ch: [[null, 4], ['C', 16], ['C', 16], ['C', 16], ['G7', 16], ['C', 16], ['F', 16], ['G7', 16], ['C', 16]] },
+      ].map((S) => {
+        const k = S.tick ? 1 : 2, at = (list) => { const m = {}; let e = 0; for (const [n, d] of list) { if (n != null) m[e] = [n, d * k]; e += d * k; } return { m, len: e }; };
+        const M = at(S.mel), C = at(S.ch);
+        return { name: S.name, step: S.tick ? S.step : S.step / 2, meter: S.meter || 4, pick: (S.pick || 0) * k, swing: S.swing !== false && (S.meter || 4) === 4, mAt: M.m, cAt: C.m, len: Math.max(M.len, C.len) };
+      });
+      // ── instruments (user 2026-11-16: "nghe chán, đưa nhạc cụ khác vào"): plucked = banjo, mandolin, guitar, bass (Karplus-
+      // Strong); piano = additive partials with a honky-tonk second string; bowed / blown = fiddle, harmonica, accordion
+      // (soft periodic waves, smooth envelopes, delayed vibrato); drums = a soft kick and a brush swish (low band only — no
+      // high clicks). Everything is rendered or enveloped so it starts and ends at zero.
+      const KIND = { banjo: { dur: 1.6, bright: 0.55, decay: 0.994 }, mandolin: { dur: 1.2, bright: 0.5, decay: 0.992 }, bass: { dur: 1.5, bright: 0.2, decay: 0.998 }, guitar: { dur: 0.9, bright: 0.32, decay: 0.993 } };
+      const cache = new Map();
+      let bus = null, probe = null, on = false, pos = -12, next = 0, order = [], last = -1, chord = null, name = '', timer = 0, pass = 0, arr = null, plan = [];
+      const finish = (d, sr, peak) => { const n = d.length, fi = Math.round(sr * 0.002), fo = Math.round(sr * 0.08); for (let i = 0; i < n; i++) { let g = 1 / peak; if (i < fi) g *= i / fi; if (i > n - fo) g *= (n - i) / fo; d[i] *= g; } };
+      function pluckBuf(midi, kind) {
+        const key = kind + midi; if (cache.has(key)) return cache.get(key);
+        const sr = ctx.sampleRate, f = mtof(midi);
+        if (kind === 'piano') { // a few partials, higher ones die faster, the second string a hair sharp (honky-tonk)
+          const n = Math.floor(sr * 2.2), buf = ctx.createBuffer(1, n, sr), d = buf.getChannelData(0); let peak = 1e-6;
+          for (let i = 0; i < n; i++) {
+            const t = i / sr; let v = 0;
+            for (let h = 1; h <= 8; h++) { const fh = f * h * (1 + 0.0004 * h * h); if (fh > sr / 2.2) break; const a = Math.pow(h, -1.6) * Math.exp(-t * (1.6 + h * 0.9)); v += a * (Math.sin(2 * Math.PI * fh * t) + 0.8 * Math.sin(2 * Math.PI * fh * 1.0035 * t)); }
+            d[i] = v; peak = Math.max(peak, Math.abs(v));
+          }
+          finish(d, sr, peak); const r = { buf, rate: 1 }; cache.set(key, r); return r;
+        }
+        if (kind === 'kick' || kind === 'brush') {
+          const n = Math.floor(sr * (kind === 'kick' ? 0.32 : 0.24)), buf = ctx.createBuffer(1, n, sr), d = buf.getChannelData(0); let peak = 1e-6, ph = 0, lp1 = 0, lp2 = 0, hp = 0, prev = 0, seed = 12345;
+          for (let i = 0; i < n; i++) {
+            const t = i / sr;
+            if (kind === 'kick') { ph += (2 * Math.PI * (48 + 70 * Math.exp(-t * 28))) / sr; d[i] = Math.sin(ph) * Math.exp(-t * 11) * Math.min(1, t / 0.004); }
+            else { seed = (seed * 1103515245 + 12345) & 0x7fffffff; const w = seed / 0x3fffffff - 1; lp1 += 0.18 * (w - lp1); lp2 += 0.18 * (lp1 - lp2); hp = lp2 - prev + 0.97 * hp; prev = lp2; d[i] = hp * Math.min(1, t / 0.025) * Math.exp(-t * 14); } // ~1-2 kHz swish, slow 25 ms attack
+            peak = Math.max(peak, Math.abs(d[i]));
+          }
+          finish(d, sr, peak); const r = { buf, rate: 1 }; cache.set(key, r); return r;
+        }
+        const K = KIND[kind], P = Math.max(4, Math.floor(sr / f - 0.5)), real = sr / (P + 0.5);
+        const n = Math.floor(sr * K.dur), buf = ctx.createBuffer(1, n, sr), d = buf.getChannelData(0), line = new Float32Array(P);
+        let seed = (midi * 7919 + kind.length * 104729) | 0; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x3fffffff - 1;
+        let lp = 0, mean = 0; for (let i = 0; i < P; i++) { lp += K.bright * (rnd() - lp); line[i] = lp; mean += lp; }
+        mean /= P; for (let i = 0; i < P; i++) line[i] -= mean;
+        let i0 = 0, peak = 1e-6, prevIn = 0, dc = 0;
+        for (let i = 0; i < n; i++) {
+          const j = (i0 + 1) % P, y = line[i0]; line[i0] = K.decay * 0.5 * (y + line[j]); i0 = j;
+          const o = y - prevIn + 0.995 * dc; prevIn = y; dc = o; d[i] = o; if (Math.abs(o) > peak) peak = Math.abs(o);
+        }
+        finish(d, sr, peak); const r = { buf, rate: f / real }; cache.set(key, r); return r;
+      }
+      function play(midi, kind, t, len, gain, pan) {
+        const { buf, rate } = pluckBuf(midi, kind), s = ctx.createBufferSource(), g = ctx.createGain(), p = ctx.createStereoPanner();
+        s.buffer = buf; s.playbackRate.value = rate; p.pan.value = pan;
+        const end = Math.min(t + len, t + buf.duration / rate);
+        g.gain.setValueAtTime(gain, t); g.gain.setValueAtTime(gain, Math.max(t, end - 0.07)); g.gain.linearRampToValueAtTime(0, end);
+        s.connect(g); g.connect(p); p.connect(bus); s.start(t); s.stop(end + 0.02);
+      }
+      const waves = {};
+      function wave(kind) { // soft harmonic recipes (steep roll-off = no buzz)
+        if (waves[kind]) return waves[kind];
+        const N = 24, re = new Float32Array(N), im = new Float32Array(N);
+        for (let h = 1; h < N; h++) im[h] = kind === 'fiddle' ? Math.pow(h, -1.5) * (h === 2 ? 0.8 : 1) : kind === 'harmonica' ? Math.pow(h, -1.7) * (h % 2 ? 1 : 0.45) : Math.pow(h, -1.4) * (h % 2 ? 1 : 0.65);
+        return (waves[kind] = ctx.createPeriodicWave(re, im));
+      }
+      const BOW = { fiddle: { lp: 2600, att: 0.07, vib: 14, rate: 5.6 }, harmonica: { lp: 2200, att: 0.04, vib: 7, rate: 5.0 }, accordion: { lp: 1800, att: 0.05, vib: 0, rate: 5 } };
+      function bow(midi, kind, t, len, gain, pan) {
+        const B = BOW[kind], end = t + Math.max(len, B.att + 0.06), f = mtof(midi);
+        const fl = ctx.createBiquadFilter(), g = ctx.createGain(), p = ctx.createStereoPanner(), oscs = [];
+        fl.type = 'lowpass'; fl.frequency.value = B.lp; fl.Q.value = 0.4; p.pan.value = pan;
+        for (const det of kind === 'accordion' ? [-7, 7] : [0]) { const o = ctx.createOscillator(); o.setPeriodicWave(wave(kind)); o.frequency.value = f; o.detune.value = det; o.connect(fl); oscs.push(o); }
+        if (B.vib) { // vibrato fades in after the note has settled
+          const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = B.rate; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(B.vib, t + Math.min(0.4, len * 0.7));
+          lfo.connect(lg); for (const o of oscs) lg.connect(o.detune); oscs.push(lfo);
+        }
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + B.att); g.gain.setTargetAtTime(gain * 0.8, t + B.att, 0.2);
+        g.gain.setTargetAtTime(0, end, 0.04);
+        fl.connect(g); g.connect(p); p.connect(bus);
+        for (const o of oscs) { o.start(t); o.stop(end + 0.3); }
+      }
+      // diatonic third below (C major), for a second voice
+      const SCALE = [0, 2, 4, 5, 7, 9, 11];
+      const third = (m) => { const i = SCALE.indexOf(m % 12); if (i < 0) return m - 4; const j = i - 2, oct = Math.floor(m / 12) + (j < 0 ? -1 : 0); return oct * 12 + SCALE[(j + 7) % 7]; };
+      // arrangements: each song plays twice — a lighter pass, then a fuller one with another lead (and maybe a harmony)
+      const LIGHT = [
+        { lead: 'banjo', comp: 'guitar' }, { lead: 'mandolin', comp: 'guitar' }, { lead: 'harmonica', comp: 'guitar' },
+        { lead: 'piano', comp: 'bass-only' }, { lead: 'fiddle', comp: 'accordion' },
+      ];
+      const FULL = [
+        { lead: 'fiddle', comp: 'guitar', harm: 'banjo-roll', drums: true }, { lead: 'harmonica', comp: 'piano', drums: true },
+        { lead: 'banjo', comp: 'piano', harm: 'fiddle', drums: true }, { lead: 'mandolin', comp: 'accordion', harm: 'harmonica', drums: true },
+        { lead: 'piano', comp: 'guitar', harm: 'fiddle', drums: true }, { lead: 'fiddle', comp: 'piano', harm: 'mandolin', drums: true },
+      ];
+      const pickOf = (a) => a[Math.floor(Math.random() * a.length)];
+      function newPlan() { const a = pickOf(LIGHT); let b = pickOf(FULL), k = 0; while (b.lead === a.lead && k++ < 8) b = pickOf(FULL); plan = [a, b]; }
+      const LEAD = { banjo: 0.3, mandolin: 0.27, piano: 0.3, fiddle: 0.12, harmonica: 0.12 };
+      function lead(inst, m, t, len, gain, pan) {
+        if (inst === 'fiddle' || inst === 'harmonica') return bow(m, inst, t, len * 0.95, gain, pan);
+        if (inst === 'mandolin' && len > 0.38) { for (let k = 0, n = Math.floor(len / 0.075); k < n; k++) play(m, 'mandolin', t + k * 0.075, 0.2, gain * (k ? 0.55 : 1), pan); return; } // tremolo on long notes
+        play(m, inst, t, Math.max(0.3, len * 1.15), gain, pan);
+      }
+      // one 16th
+      function step(S, e, t) {
+        const A = arr || LIGHT[0], tt = t + (S.swing && e % 4 === 2 ? S.step * 0.3 : 0);
+        const m = S.mAt[e];
+        if (m) {
+          const len = m[1] * S.step;
+          lead(A.lead, m[0], tt, len, LEAD[A.lead], 0.12);
+          if (A.harm && A.harm !== 'banjo-roll' && m[1] >= 2) lead(A.harm, third(m[0]) + (A.harm === 'piano' ? 0 : 0), tt, len, LEAD[A.harm] * 0.5, -0.3);
+        }
+        const c = S.cAt[e]; if (c) { chord = CHC[c[0]] || chord; if (chord && A.comp === 'accordion') chord.slice(0, 3).forEach((n, k) => bow(n + 12, 'accordion', tt, c[1] * S.step, 0.03, k - 1 ? 0.2 : -0.2)); }
+        if (!chord) return;
+        const bar = 4 * S.meter, inBar = (((e - S.pick) % bar) + bar) % bar;
+        if (inBar % 4) {
+          if (inBar % 4 === 2 && !m && S.meter === 4 && (A.harm === 'banjo-roll' ? Math.random() < 0.7 : A.lead === 'banjo' && Math.random() < 0.3)) play(chord[(e >> 2) % 3] + 24, 'banjo', tt, 0.3, 0.09, -0.3); // banjo roll
+          return;
+        }
+        const b = inBar / 4, down = b === 0 || (S.meter === 4 && b === 2);
+        if (b === 0) play(chord[0] - 12, 'bass', tt, S.step * 7, 0.34, 0);
+        else if (S.meter === 4 && b === 2) play(chord[2] - 12, 'bass', tt, S.step * 7, 0.3, 0);
+        else if (A.comp === 'guitar') chord.slice(0, 3).forEach((n, k) => play(n + 12, 'guitar', tt + k * 0.014, S.step * 2.6, 0.075, -0.25));
+        else if (A.comp === 'piano') chord.slice(0, 3).forEach((n) => play(n + 12, 'piano', tt, S.step * 2.2, 0.08, -0.2));
+        if (A.drums) {
+          if (down) play(0, 'kick', tt, 0.3, b === 0 ? 0.3 : 0.24, 0);
+          else play(0, 'brush', tt, 0.22, S.meter === 3 ? 0.05 : 0.07, 0.15);
+        }
+      }
+      function setup() {
+        if (bus) return true; if (!ensure()) return false;
+        bus = ctx.createGain(); bus.gain.value = 0;
+        // a fixed safety curve, linear up to 0.7 then a soft knee: no gain riding, so nothing pumps
+        const sh = ctx.createWaveShaper(), c = new Float32Array(4096);
+        for (let i = 0; i < c.length; i++) { const x = (i / (c.length - 1)) * 2 - 1, a = Math.abs(x); c[i] = a < 0.7 ? x : Math.sign(x) * (0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
+        sh.curve = c; sh.oversample = '2x';
+        bus.connect(sh); sh.connect(ctx.destination); if (meter) sh.connect(meter);
+        probe = ctx.createAnalyser(); probe.fftSize = 4096; bus.connect(probe); // tests: the band alone, before the safety curve
+        timer = setInterval(tick, 50);
+        return true;
+      }
+      const level = () => (on && !(solo && !soloPass) ? musicGain() : 0);
+      function ramp(sec) { if (!bus) return; const t = ctx.currentTime; bus.gain.cancelScheduledValues(t); bus.gain.setValueAtTime(bus.gain.value, t); bus.gain.linearRampToValueAtTime(level(), t + sec); }
+      // ── real recordings (user 2026-11-17: "nhạc nghe chán… lấy nhạc nào hay ấy, đánh giá tốt"): instrumental country /
+      // acoustic tracks by Kevin MacLeod (incompetech.com, CC BY 4.0; credit in web/CREDITS.md + the 🔊 panel), loudness-
+      // normalised to -18 LUFS (sounds/country-*.mp3). Streamed by an <audio> element (no full decode in RAM) into this
+      // band's own bus, so the music volume, the sleep fade and the on/off ramps still apply. The synth band above is only
+      // the fallback when the files do not load.
+      const TRACKS = [['country-01.mp3', 'Fireflies and Stardust'], ['country-02.mp3', 'Hillbilly Swing'], ['country-03.mp3', 'Still Pickin'],
+        ['country-04.mp3', 'River Valley Breakdown'], ['country-05.mp3', 'Bama Country'], ['country-06.mp3', 'Cattails'], ['country-07.mp3', 'Guts and Bourbon'],
+        ['country-08.mp3', 'Clear Air'], ['country-09.mp3', 'Drankin Song'], ['country-10.mp3', 'Galway']];
+      let audio = null, tOrder = [], tLast = -1, tErr = 0, useSynth = false, pauseT = 0;
+      function trackSetup() {
+        if (audio) return true;
+        try {
+          audio = new Audio(); audio.preload = 'auto';
+          ctx.createMediaElementSource(audio).connect(bus);
+          audio.addEventListener('ended', () => nextTrack());
+          audio.addEventListener('playing', () => { tErr = 0; });
+          audio.addEventListener('error', () => { if (++tErr >= 3) { useSynth = true; audio.pause(); } else nextTrack(); });
+          return true;
+        } catch (e) { useSynth = true; return false; }
+      }
+      function nextTrack() {
+        if (!tOrder.length) { tOrder = TRACKS.map((_, i) => i).sort(() => Math.random() - 0.5); if (tOrder[0] === tLast && tOrder.length > 1) tOrder.push(tOrder.shift()); }
+        tLast = tOrder.shift(); name = TRACKS[tLast][1];
+        audio.src = './forest-sounds/' + TRACKS[tLast][0];
+        if (on) audio.play().catch(() => {});
+      }
+      function shuffle() { order = SONGS.map((_, i) => i).sort(() => Math.random() - 0.5); if (order[0] === last && order.length > 1) order.push(order.shift()); }
+      function tick() {
+        if (!on || !ctx || ctx.state !== 'running' || !useSynth) return;
+        const now = ctx.currentTime, ahead = document.hidden ? 2.5 : 0.4;
+        if (next < now) next = now + 0.05; // fell behind (tab asleep): carry on from here, no burst of notes
+        while (next < now + ahead) {
+          if (!order.length) shuffle();
+          const S = SONGS[order[0]];
+          if (!plan.length) { newPlan(); pass = 0; } arr = plan[Math.min(pass, plan.length - 1)];
+          name = S.name;
+          if (pos >= 0) step(S, pos, next);
+          next += S.step; pos++;
+          if (pos >= S.len) { // twice through (light, then full), then a short quiet and the next song
+            if (++pass < plan.length) pos = 0; else { last = order.shift(); pos = -12; chord = null; plan = []; }
+          }
+        }
+      }
+      return {
+        set(want) {
+          if (want && !setup()) return;
+          if (want === on) return;
+          on = want; clearTimeout(pauseT);
+          if (on && !useSynth && trackSetup() && !useSynth) { if (!audio.src) nextTrack(); else audio.play().catch(() => {}); }
+          if (on) { pos = -4; next = 0; chord = null; plan = []; tick(); }
+          else if (audio) pauseT = setTimeout(() => { if (!on) audio.pause(); }, 800); // pause after the fade-out, resume where it was
+          ramp(on ? 1.2 : 0.6);
+        },
+        pref() { ramp(0.05); },
+        playing: () => (on ? name : ''),
+        songs: () => SONGS.map((S) => S.name),
+        level: () => (bus ? bus.gain.value : 0),
+        peak() { if (!probe) return 0; const d = new Float32Array(probe.fftSize); probe.getFloatTimeDomainData(d); let p = 0, a = 0; for (const v of d) { p = Math.max(p, Math.abs(v)); a += v * v; } return { peak: p, rms: Math.sqrt(a / d.length), gain: bus.gain.value }; },
+        skip() { if (audio && !useSynth) return nextTrack(); if (order.length) { last = order.shift(); pos = -4; chord = null; plan = []; } },
+        tracks: () => TRACKS.map((T) => T[1]),
+        mode: () => (useSynth || !audio ? 'synth' : 'tracks'),
+        synth(v) { useSynth = !!v; if (audio && v) audio.pause(); }, // tests
+        arrangement: () => (arr ? { ...arr, pass } : null),
+        setArr(lead, comp, harm, drums) { arr = { lead, comp, harm, drums }; plan = [arr, arr]; }, // tests
+      };
+    })();
+    let cSong = 0, cPos = -4, cNext = 0, cList = '', playing = '';
     const countryOn = (ph) => soundPref.country === 'all' || (soundPref.country !== 'off' && ph.night < 0.5); // night stays lo-fi for sleep
-    function pluck(fq, t, d, gain, pan) { // a banjo-ish pluck: bright saw through a closing filter + a little body
-      tone({ type: 'sawtooth', f: [fq, fq], dur: d, gain: gain * 0.55, attack: 0.003, when: t, bus: musicBus, pan, filter: { type: 'lowpass', f: 2600, q: 0.8 } });
-      tone({ type: 'triangle', f: [fq, fq], dur: d * 1.2, gain: gain * 0.6, attack: 0.002, when: t, bus: musicBus, pan });
-    }
     function themeMusicKey() {
       if (soundPref.themeMusic === false) return null;
       let th = {}; try { th = themeNow(); } catch (e) {}
       return th.noel || th.santa ? 'noel' : th.halloween ? 'spooky' : th.tet || th.trungthu ? 'tet' : null;
     }
-    function carolTick(ph, list = 'noel') {
-      const now = ctx.currentTime, LIST = list === 'farm' ? FARM : CAROLS;
-      if (cList !== list) { cList = list; cSong = list === 'farm' ? Math.floor(Math.random() * FARM.length) : 0; cPos = -4; cChord = null; }
+    function carolTick(ph, list = 'noel') { // Noel carols only (the country band has its own engine above)
+      const now = ctx.currentTime, LIST = CAROLS;
+      if (cList !== list) { cList = list; cSong = 0; cPos = -4; }
       if (!cNext || cNext < now) cNext = now + 0.15;
       while (cNext < now + (document.hidden ? 1.6 : 0.35)) {
         const t = cNext, e = cPos, T = LIST[cSong % LIST.length];
         playing = T.name;
-        if (e >= 0 && list === 'farm') { // hoedown band
-          const swing = e % 2 ? 0.035 : 0, tt = t + swing;
-          const m = T.mAt[e];
-          if (m) pluck(mtof(m[0]), tt, Math.max(0.28, Math.min(0.9, m[1] * T.step * 1.3)), 0.075, 0.12);
-          const c = T.cAt[e]; if (c) cChord = CH[c[0]];
-          if (cChord) {
-            if (e % 4 === 0) tone({ f: [mtof(cChord[0] - 12), mtof(cChord[0] - 12)], dur: 0.3, gain: 0.11, attack: 0.004, when: tt, bus: musicBus, pan: 0, filter: { type: 'lowpass', f: 600 } }); // boom (root)
-            if (e % 8 === 4) tone({ f: [mtof(cChord[2] - 12), mtof(cChord[2] - 12)], dur: 0.3, gain: 0.09, attack: 0.004, when: tt, bus: musicBus, pan: 0, filter: { type: 'lowpass', f: 600 } }); // alternating fifth
-            if (e % 4 === 2) cChord.slice(0, 3).forEach((n, k) => tone({ type: 'triangle', f: [mtof(n + 12), mtof(n + 12)], dur: 0.14, gain: 0.022, attack: 0.002, when: tt + k * 0.012, bus: musicBus, pan: -0.25 })); // chick (strum)
-            if (!m && e % 2 && Math.random() < 0.45) { const n = cChord[Math.floor(Math.random() * 3)] + 24; pluck(mtof(n), tt, 0.25, 0.03, -0.3); } // banjo roll fill
-          }
-          noise({ dur: 0.035, gain: (e % 2 ? 0.006 : 0.011) * (0.6 + 0.4 * (1 - ph.night)), type: 'highpass', f: 6000, when: tt, bus: musicBus }); // shaker
-        } else if (e >= 0) {
+        if (e >= 0) {
           const m = T.mAt[e];
           if (m) { // a music-box bell: the note + soft partials
             const fq = mtof(m[0]), d = Math.max(0.5, m[1] * T.step * 1.6);
@@ -779,10 +994,11 @@
     const SPOOKY = { ch: [[57, 60, 64, 67], [53, 57, 60, 64], [50, 53, 57, 60], [52, 56, 59, 62]], pen: [69, 72, 74, 75, 76, 79, 81, 84] }; // Am7 Fmaj7 Dm7 E7, a minor blues scale
     const TETM = { ch: [[48, 55, 62, 69], [50, 57, 62, 69], [53, 60, 65, 69], [45, 52, 57, 64]], pen: [72, 74, 77, 79, 81, 84, 86, 89] }; // open fifths, do-re-fa-sol-la
     function musicTick(ph) {
+      const key = soundPref.music ? themeMusicKey() : null, farmTime = soundPref.music && !key && countryOn(ph);
+      country.set(farmTime); // its own engine and bus; the lo-fi below stays silent meanwhile
       if (!soundPref.music) { mNext = 0; cNext = 0; cList = ''; playing = ''; return; }
-      const key = themeMusicKey();
       if (key === 'noel') { mNext = 0; carolTick(ph, 'noel'); return; }
-      if (!key && countryOn(ph)) { mNext = 0; carolTick(ph, 'farm'); return; }
+      if (farmTime) { mNext = 0; cNext = 0; cList = ''; playing = ''; return; }
       cNext = 0; cList = ''; playing = key === 'spooky' ? 'Halloween' : key === 'tet' ? 'nhạc Tết' : '';
       const CHORDS = key === 'spooky' ? SPOOKY.ch : key === 'tet' ? TETM.ch : CHORDS0, PENTA = key === 'spooky' ? SPOOKY.pen : key === 'tet' ? TETM.pen : PENTA0;
       const now = ctx.currentTime;
@@ -868,9 +1084,9 @@
       peak() { if (!meter) return 0; const d = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); let p = 0; for (const v of d) p = Math.max(p, Math.abs(v)); return p; },
       // loudest 50 ms RMS inside the analyser's last ~0.7 s (tests poll this every 100 ms)
       rms() { if (!meter) return 0; const d = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); const w = Math.round(ctx.sampleRate * 0.05); let m = 0; for (let i = 0; i + w <= d.length; i += w >> 1) { let a = 0; for (let j = i; j < i + w; j++) a += d[j] * d[j]; m = Math.max(m, a / w); } return Math.sqrt(m); },
-      solo(on, keepStream) { solo = !!on; if (bed) for (const k in bed) bed[k].g.gain.value = keepStream && k === 'stream' ? 0.06 : 0; },
+      solo(on, keepStream) { solo = !!on; if (bed) for (const k in bed) bed[k].g.gain.value = keepStream && k === 'stream' ? 0.06 : 0;; country.pref(); },
       isSolo: () => solo,
-      playing: () => playing, carols: () => CAROLS.map((S) => S.name),
+      playing: () => country.playing() || playing, carols: () => CAROLS.map((S) => S.name), countrySongs: () => country.songs(), countrySkip: () => country.skip(), country,
       sample: (group, gain, rate) => playSample(group, W / 2, gain, rate),
       pass(fn) { soloPass = true; try { return fn(); } finally { soloPass = false; } },
       state: () => (ctx ? `${ctx.state} muted=${soundPref.muted} forest=${soundPref.on}@${soundPref.vol} music=${soundPref.music}@${soundPref.musicVol} gains=${master.gain.value.toFixed(2)}/${musicBus.gain.value.toFixed(2)} bed=${!!bed} step=${mStep} samples=${Object.entries(samples).map(([k, v]) => k + ':' + v.length).join(',')}` : 'no-context'),
@@ -880,6 +1096,7 @@
         try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundPref)); } catch {}
         if (master) master.gain.setTargetAtTime(forestGain(), ctx.currentTime, 0.05);
         if (musicBus) musicBus.gain.setTargetAtTime(musicGain(), ctx.currentTime, 0.05);
+        country.pref();
       },
       oink: (x) => { tone({ type: 'sawtooth', f: [210, 130], dur: 0.17, gain: 0.42, x, filter: { type: 'bandpass', f: 750, q: 0.9 } }); noise({ dur: 0.08, gain: 0.12, f: 900, q: 1, x }); tone({ type: 'sawtooth', f: [180, 115], dur: 0.15, gain: 0.36, at: 0.21, x, filter: { type: 'bandpass', f: 700, q: 0.9 } }); },
       cluck: (x) => { for (let i = 0; i < 3; i++) tone({ type: 'square', f: [1050, 650], dur: 0.06, gain: 0.2, at: i * 0.1, x, filter: { type: 'lowpass', f: 2600 } }); tone({ type: 'square', f: [700, 950, 760], dur: 0.22, gain: 0.22, at: 0.34, x, filter: { type: 'lowpass', f: 2600 } }); },
@@ -1638,6 +1855,7 @@
     sound(name, arg) { sfx.resume(); if (sfx[name]) sfx.pass(() => sfx[name](arg !== undefined ? arg : W / 2)); return !!sfx[name]; },
     peak: () => sfx.peak(),
     rms: () => sfx.rms(),
+    country: () => sfx.country,
     solo: (on, keepStream) => sfx.solo(on, keepStream),
     sample: (group, gain, rate) => { sfx.resume(); return sfx.pass(() => sfx.sample(group, gain, rate)); },
     duckLand() { for (const c of critters) if (c.kind === 'duck') c.landNext = 0; },
@@ -5883,7 +6101,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '13:49 16-11';
+    const build = '09:36 17-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6830,13 +7048,16 @@
     const hint = document.createElement('div');
     hint.style.cssText = 'opacity:0.6;font-size:11px;margin-top:4px;';
     hint.textContent = 'Bấm 🔊 để tắt/mở tất cả';
+    const credit = document.createElement('div'); credit.style.cssText = 'font-size:10px;opacity:.6;margin-top:4px'; credit.textContent = '🎵 Nhạc đồng quê: Kevin MacLeod (incompetech.com) · CC BY 4.0';
     const lsx = (k, d) => { try { const v = localStorage.getItem('forest-x-' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, lsxs = (k, v) => { try { localStorage.setItem('forest-x-' + k, JSON.stringify(v)); } catch {} };
     const enTog = document.createElement('button'); enTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 4px 0 0;' + PIX;
     enTog.addEventListener('click', (e) => { e.stopPropagation(); lsxs('en', !lsx('en', true)); paintAll(); });
     const enSpk = document.createElement('button'); enSpk.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin-top:4px;' + PIX;
     enSpk.addEventListener('click', (e) => { e.stopPropagation(); lsxs('enSpeak', !lsx('enSpeak', false)); paintAll(); });
     const enRow = document.createElement('div'); enRow.append(enTog, enSpk);
-    soundPanel.append(forest.r, music.r, themeTog, countryTog, enRow, hint);
+    const skipTog = document.createElement('button'); skipTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 0 0 4px;' + PIX; skipTog.textContent = '⏭ Bài khác';
+    skipTog.addEventListener('click', (e) => { e.stopPropagation(); sfx.resume(); sfx.countrySkip(); setTimeout(paintAll, 300); });
+    soundPanel.append(forest.r, music.r, themeTog, countryTog, skipTog, enRow, hint, credit);
     function paintAll() {
       const audible = !soundPref.muted && (soundPref.on || soundPref.music);
       soundBtn.textContent = audible ? '🔊' : '🔇';
@@ -9198,7 +9419,45 @@
     ['rain', 'mưa', '🌧️'], ['sunny', 'trời nắng', '☀️'], ['cloud', 'đám mây', '☁️'], ['moon', 'mặt trăng', '🌙'], ['star', 'ngôi sao', '⭐'], ['snow', 'tuyết', '❄️'],
     ['wind', 'gió', '🌬️'], ['campfire', 'lửa trại', '🔥'], ['tent', 'cái lều', '⛺'], ['boat', 'con thuyền', '🚤'], ['tourist', 'khách du lịch', '📷'], ['customer', 'khách hàng', '🧑'],
     ['farmer', 'nông dân', '🧑‍🌾'], ['manager', 'quản lý', '🧑‍💼'], ['cook', 'đầu bếp', '👩‍🍳'], ['waiter', 'người phục vụ', '🍽️'], ['salary', 'tiền lương', '💵'],
-    ['loan', 'khoản vay', '🏦'], ['profit', 'tiền lời', '📈'], ['busy', 'bận rộn', '🏃'], ['tired', 'mệt', '😮‍💨'], ['delicious', 'ngon', '😋'], ['beautiful', 'đẹp', '😍']];
+    ['loan', 'khoản vay', '🏦'], ['profit', 'tiền lời', '📈'], ['busy', 'bận rộn', '🏃'], ['tired', 'mệt', '😮‍💨'], ['delicious', 'ngon', '😋'], ['beautiful', 'đẹp', '😍'],
+    // more words (user 2026-11-16: "cho nhiều từ vựng tiếng anh hơn") — farm work
+    ['soil', 'đất trồng', '🟫'], ['shovel', 'cái xẻng', '🪏'], ['hoe', 'cái cuốc', '⛏️'], ['watering can', 'bình tưới', '🚿'], ['basket', 'cái giỏ', '🧺'], ['fence', 'hàng rào', '🚧'],
+    ['scarecrow', 'bù nhìn', '🎃'], ['weed', 'cỏ dại', '🌿'], ['root', 'rễ cây', '🌱'], ['leaf', 'chiếc lá', '🍃'], ['branch', 'cành cây', '🌳'], ['sprout', 'mầm cây', '🌱'],
+    ['ripe', 'chín', '🍅'], ['fresh', 'tươi', '🥬'], ['rotten', 'bị hỏng, thối', '🤢'], ['crop', 'vụ mùa', '🌾'], ['orchard', 'vườn cây ăn quả', '🍎'], ['greenhouse', 'nhà kính', '🏡'],
+    ['tractor', 'máy kéo', '🚜'], ['wheelbarrow', 'xe cút kít', '🛒'], ['bucket', 'cái xô', '🪣'], ['rope', 'sợi dây thừng', '🪢'], ['axe', 'cái rìu', '🪓'], ['saw', 'cái cưa', '🪚'],
+    ['well', 'cái giếng', '🪣'], ['stable', 'chuồng ngựa', '🐴'], ['henhouse', 'chuồng gà', '🐔'], ['nest', 'cái tổ', '🪺'], ['feather', 'lông vũ', '🪶'], ['hay', 'cỏ khô', '🌾'],
+    ['beehive', 'tổ ong', '🐝'], ['fishing rod', 'cần câu', '🎣'], ['bait', 'mồi câu', '🪱'], ['net', 'cái lưới', '🥅'], ['shell', 'vỏ sò', '🐚'], ['wave', 'con sóng', '🌊'],
+    // verbs
+    ['plant', 'trồng cây', '🌱'], ['water', 'tưới nước', '💧'], ['dig', 'đào, xới', '⛏️'], ['grow', 'lớn lên, mọc', '🌿'], ['pick', 'hái', '🍓'], ['feed', 'cho ăn', '🥣'],
+    ['milk (verb)', 'vắt sữa', '🥛'], ['catch', 'bắt, câu được', '🎣'], ['chop', 'chặt, chẻ', '🪓'], ['cook', 'nấu ăn', '🍳'], ['bake', 'nướng (bánh)', '🍞'], ['fry', 'chiên', '🍳'],
+    ['boil', 'luộc, đun sôi', '♨️'], ['sell', 'bán', '💰'], ['buy', 'mua', '🛍️'], ['pay', 'trả tiền', '💵'], ['borrow', 'vay, mượn', '🏦'], ['save', 'tiết kiệm', '🐷'],
+    ['hire', 'thuê người', '🤝'], ['fire (a worker)', 'sa thải', '📤'], ['deliver', 'giao hàng', '📦'], ['carry', 'mang, vác', '📦'], ['build', 'xây dựng', '🏗️'], ['repair', 'sửa chữa', '🔧'],
+    ['clean', 'dọn dẹp', '🧹'], ['rest', 'nghỉ ngơi', '😌'], ['sleep', 'ngủ', '😴'], ['wake up', 'thức dậy', '⏰'], ['wait', 'chờ đợi', '⏳'], ['visit', 'ghé thăm', '🧳'],
+    ['travel', 'du lịch', '✈️'], ['swim', 'bơi', '🏊'], ['row', 'chèo thuyền', '🚣'], ['climb', 'leo, trèo', '🧗'], ['share', 'chia sẻ', '🤲'], ['smile', 'mỉm cười', '😊'],
+    // weather, time, nature
+    ['morning', 'buổi sáng', '🌅'], ['afternoon', 'buổi chiều', '🌇'], ['evening', 'buổi tối', '🌆'], ['midnight', 'nửa đêm', '🌌'], ['sunrise', 'bình minh', '🌄'], ['sunset', 'hoàng hôn', '🌇'],
+    ['today', 'hôm nay', '📅'], ['tomorrow', 'ngày mai', '📆'], ['yesterday', 'hôm qua', '🗓️'], ['week', 'tuần', '🗓️'], ['season', 'mùa', '🍂'], ['spring', 'mùa xuân', '🌸'],
+    ['summer', 'mùa hè', '☀️'], ['autumn', 'mùa thu', '🍂'], ['winter', 'mùa đông', '❄️'], ['storm', 'cơn bão', '⛈️'], ['thunder', 'sấm', '🌩️'], ['lightning', 'tia chớp', '⚡'],
+    ['rainbow', 'cầu vồng', '🌈'], ['fog', 'sương mù', '🌫️'], ['warm', 'ấm áp', '🌤️'], ['cool', 'mát mẻ', '🍃'], ['hot', 'nóng', '🥵'], ['cold', 'lạnh', '🥶'],
+    ['sky', 'bầu trời', '🌤️'], ['beach', 'bãi biển', '🏖️'], ['river', 'dòng sông', '🏞️'], ['forest', 'khu rừng', '🌲'], ['hill', 'ngọn đồi', '⛰️'], ['rock', 'hòn đá', '🪨'],
+    ['grass', 'bãi cỏ', '🌱'], ['firefly', 'đom đóm', '✨'], ['butterfly', 'con bướm', '🦋'], ['bee', 'con ong', '🐝'], ['bird', 'con chim', '🐦'], ['shooting star', 'sao băng', '🌠'],
+    // business, money, places
+    ['price', 'giá cả', '🏷️'], ['cheap', 'rẻ', '👍'], ['expensive', 'đắt', '💸'], ['discount', 'giảm giá', '🔖'], ['receipt', 'hoá đơn', '🧾'], ['cash', 'tiền mặt', '💵'],
+    ['debt', 'khoản nợ', '📉'], ['interest', 'tiền lãi', '%'], ['income', 'thu nhập', '💰'], ['cost', 'chi phí', '🧾'], ['budget', 'ngân sách', '📊'], ['share (stock)', 'cổ phần', '📈'],
+    ['order', 'đơn hàng', '📋'], ['menu', 'thực đơn', '📜'], ['customer review', 'đánh giá của khách', '⭐'], ['advertisement', 'quảng cáo', '📣'], ['market', 'chợ', '🏪'], ['festival', 'lễ hội', '🎉'],
+    ['restaurant', 'nhà hàng', '🍽️'], ['café', 'quán cà phê', '☕'], ['bar', 'quán bar', '🍹'], ['hotel', 'khách sạn', '🏨'], ['homestay', 'nhà nghỉ homestay', '🏠'], ['workshop', 'xưởng', '🏭'],
+    ['warehouse', 'kho hàng', '🏬'], ['staff', 'nhân viên', '👥'], ['boss', 'ông chủ, bà chủ', '👑'], ['accountant', 'kế toán', '🧮'], ['bartender', 'người pha chế', '🍸'], ['guide', 'hướng dẫn viên', '🚩'],
+    ['receptionist', 'lễ tân', '🛎️'], ['fisherman', 'ngư dân', '🎣'], ['beekeeper', 'người nuôi ong', '🐝'], ['gardener', 'người làm vườn', '🌻'], ['visitor', 'khách tham quan', '🧳'], ['neighbor', 'hàng xóm', '🏘️'],
+    // food and kitchen
+    ['breakfast', 'bữa sáng', '🥞'], ['lunch', 'bữa trưa', '🍱'], ['dinner', 'bữa tối', '🍲'], ['snack', 'đồ ăn vặt', '🍪'], ['soup', 'món canh, súp', '🍜'], ['noodles', 'mì, bún', '🍜'],
+    ['sugar', 'đường', '🍬'], ['salt', 'muối', '🧂'], ['pepper', 'hạt tiêu', '🌶️'], ['oil', 'dầu ăn', '🫗'], ['pan', 'cái chảo', '🍳'], ['pot', 'cái nồi', '🍲'],
+    ['knife', 'con dao', '🔪'], ['plate', 'cái đĩa', '🍽️'], ['bowl', 'cái bát', '🥣'], ['cup', 'cái cốc', '☕'], ['spoon', 'cái thìa', '🥄'], ['fork', 'cái nĩa', '🍴'],
+    ['sweet', 'ngọt', '🍯'], ['sour', 'chua', '🍋'], ['salty', 'mặn', '🧂'], ['spicy', 'cay', '🌶️'], ['bitter', 'đắng', '☕'], ['hungry', 'đói', '🤤'],
+    // feelings and people
+    ['happy', 'vui vẻ', '😄'], ['sad', 'buồn', '😢'], ['angry', 'tức giận', '😠'], ['bored', 'chán', '😑'], ['excited', 'háo hức', '🤩'], ['lazy', 'lười biếng', '🦥'],
+    ['hard-working', 'chăm chỉ', '💪'], ['friendly', 'thân thiện', '🤗'], ['careful', 'cẩn thận', '🧐'], ['lucky', 'may mắn', '🍀'], ['proud', 'tự hào', '😌'], ['sleepy', 'buồn ngủ', '🥱'],
+    ['sick', 'bị ốm', '🤒'], ['birthday', 'sinh nhật', '🎂'], ['gift', 'món quà', '🎁'], ['wedding', 'đám cưới', '💒'], ['friend', 'bạn bè', '🧑‍🤝‍🧑'], ['family', 'gia đình', '👨‍👩‍👧'],
+    ['music', 'âm nhạc', '🎵'], ['song', 'bài hát', '🎶'], ['guitar', 'đàn ghi-ta', '🎸'], ['dance', 'nhảy múa', '💃'], ['photo', 'bức ảnh', '📷'], ['dream', 'giấc mơ', '💭']];
   const enOn = () => XL.get('en', true), enSpeakOn = () => XL.get('enSpeak', false);
   let enWords = null;
   function enPool() {
@@ -9222,36 +9481,46 @@
     return pool[0];
   }
   const enWordOf = (vi) => { const en = EN_DICT[vi]; return en ? { en, vi: vi.toLowerCase() } : null; };
+  // everyday lines for any job (2026-11-16: more English); some tasks also mix one of these in
+  const EN_IDLE = [["Let's get to work!", 'Bắt tay vào việc thôi!'], ['What a busy day!', 'Hôm nay bận rộn quá!'], ['We are doing great.', 'Mình đang làm tốt lắm.'],
+    ['Almost done!', 'Sắp xong rồi!'], ['Can you give me a hand?', 'Bạn giúp tôi một tay được không?'], ['No problem, I can do it.', 'Không sao, tôi làm được.'],
+    ['The weather is lovely today.', 'Hôm nay trời đẹp quá.'], ['I feel a bit tired.', 'Tôi thấy hơi mệt.'], ['Take your time.', 'Cứ từ từ thôi.'],
+    ['Good job, everyone!', 'Mọi người làm tốt lắm!'], ["I'll be right back.", 'Tôi quay lại ngay.'], ['Be careful!', 'Cẩn thận nhé!'],
+    ['What time is it?', 'Mấy giờ rồi nhỉ?'], ["Let's have lunch together.", 'Mình ăn trưa cùng nhau nhé.'], ['I love working here.', 'Tôi thích làm việc ở đây.'],
+    ['See you tomorrow!', 'Mai gặp lại nhé!'], ['Thank you so much!', 'Cảm ơn nhiều lắm!'], ['Never give up.', 'Đừng bao giờ bỏ cuộc.'],
+    ['Practice makes perfect.', 'Có công mài sắt, có ngày nên kim.'], ['Slow and steady wins the race.', 'Chậm mà chắc.'], ['Every day is a new chance.', 'Mỗi ngày là một cơ hội mới.']];
+  const enMix = (L, pick) => (Math.random() < 0.3 ? pick(EN_IDLE) : L);
   // what someone says: [english, vietnamese]
   function enLine(v) {
     const pick = (a) => a[Math.floor(Math.random() * a.length)];
-    if (v.diner) return pick({ banhmi: [['This bread is really good!', 'Bánh mì này ngon thật!'], ['One more sandwich, please.', 'Cho tôi thêm một ổ nữa nhé.']],
-      cafe: [["I'd like an iced coffee, please.", 'Cho tôi một ly cà phê đá nhé.'], ['This juice is so fresh!', 'Nước ép này tươi quá!']],
-      restaurant: [['The food here is delicious.', 'Đồ ăn ở đây ngon lắm.'], ['Can I have some more rice?', 'Cho tôi thêm ít cơm được không?']] }[v.diner.id] || [['Yummy!', 'Ngon quá!']]);
-    if (v.tourist) { const at = v.tourist.stops[v.tourist.si]; if (at && at.shop) return pick([['How much is this?', 'Cái này bao nhiêu tiền?'], ['I am so hungry.', 'Tôi đói quá.'], ['Two drinks, please.', 'Cho hai ly nước nhé.']]);
-      return pick([['What a beautiful farm!', 'Trang trại đẹp quá!'], ['Can I take a photo?', 'Tôi chụp ảnh được không?'], ['Look at that!', 'Nhìn kìa!'], ['I love this place.', 'Tôi thích nơi này quá.']]); }
+    if (v.diner) return pick({ banhmi: [['This bread is really good!', 'Bánh mì này ngon thật!'], ['One more sandwich, please.', 'Cho tôi thêm một ổ nữa nhé.'], ['Is it spicy?', 'Cái này có cay không?'], ['Can I take it away?', 'Tôi mang đi được không?']],
+      cafe: [["I'd like an iced coffee, please.", 'Cho tôi một ly cà phê đá nhé.'], ['This juice is so fresh!', 'Nước ép này tươi quá!'], ['Less sugar, please.', 'Cho ít đường thôi nhé.'], ['Can I have the bill?', 'Cho tôi tính tiền nhé.']],
+      restaurant: [['The food here is delicious.', 'Đồ ăn ở đây ngon lắm.'], ['Can I have some more rice?', 'Cho tôi thêm ít cơm được không?'], ['A table for two, please.', 'Cho tôi một bàn hai người.'], ["I'm full. That was great!", 'Tôi no rồi. Ngon tuyệt!']] }[v.diner.id] || [['Yummy!', 'Ngon quá!']]);
+    if (v.tourist) { const at = v.tourist.stops[v.tourist.si]; if (at && at.shop) return pick([['How much is this?', 'Cái này bao nhiêu tiền?'], ['I am so hungry.', 'Tôi đói quá.'], ['Two drinks, please.', 'Cho hai ly nước nhé.'], ['Do you have anything cheaper?', 'Có món nào rẻ hơn không?'], ["I'll take this one.", 'Tôi lấy cái này.']]);
+      return pick([['What a beautiful farm!', 'Trang trại đẹp quá!'], ['Can I take a photo?', 'Tôi chụp ảnh được không?'], ['Look at that!', 'Nhìn kìa!'], ['I love this place.', 'Tôi thích nơi này quá.'],
+        ['Where is the restroom?', 'Nhà vệ sinh ở đâu ạ?'], ['The sea is so blue!', 'Biển xanh quá!'], ["Let's come back next year.", 'Năm sau mình quay lại nhé.'], ['Which way to the zoo?', 'Đường nào đến sở thú vậy?'], ['The air is so fresh here.', 'Không khí ở đây trong lành quá.']]); }
     const T = v.task; if (!T) return null;
     let crop = null; if (T.plot != null) { const p = save.get('plot/' + T.plot); if (p && CROPS[p.crop]) crop = enWordOf(CROPS[p.crop].name); }
     const c = crop || { en: 'vegetables', vi: 'rau' };
     switch (T.kind) {
       case 'harvest': return [`The ${c.en} crop is ready to harvest!`, `${c.vi[0].toUpperCase() + c.vi.slice(1)} chín rồi, thu hoạch thôi!`];
       case 'plant': case 'sow': return [`I'm planting ${c.en} seeds.`, `Em đang gieo hạt ${c.vi}.`];
-      case 'water': return pick([['The plants need water.', 'Cây cần nước.'], ["It's so hot today.", 'Hôm nay nóng quá.']]);
-      case 'hoe': return ["I'm digging the soil.", 'Em đang xới đất.'];
+      case 'water': return pick([['The plants need water.', 'Cây cần nước.'], ["It's so hot today.", 'Hôm nay nóng quá.'], ['Not too much water!', 'Đừng tưới nhiều quá!'], [`Grow fast, little ${c.en}!`, `Mau lớn nhé, ${c.vi} nhỏ!`]]);
+      case 'hoe': return enMix(["I'm digging the soil.", 'Em đang xới đất.'], pick);
       case 'weed': return ["I'm pulling the weeds.", 'Em đang nhổ cỏ.'];
       case 'clear': return ["Let's clean up this plot.", 'Dọn ô đất này thôi.'];
       case 'feed': case 'feedFish': return pick([['Time to eat, everyone!', 'Đến giờ ăn rồi các bạn ơi!'], ['The animals are hungry.', 'Các con vật đói rồi.']]);
-      case 'collect': return ["I'm collecting the eggs and milk.", 'Em đang nhặt trứng, vắt sữa.'];
-      case 'fish': case 'fishMiss': return pick([['I hope I catch a big fish!', 'Mong câu được con cá to!'], ['The fish are biting today.', 'Hôm nay cá cắn câu nhiều.']]);
-      case 'cook': case 'serve': return ["I'm cooking something delicious.", 'Em đang nấu món gì đó ngon lắm.'];
+      case 'collect': return pick([["I'm collecting the eggs and milk.", 'Em đang nhặt trứng, vắt sữa.'], ['The hens laid lots of eggs today.', 'Hôm nay gà đẻ nhiều trứng ghê.'], ['Easy, easy, good girl.', 'Từ từ nào, ngoan lắm.']]);
+      case 'fish': case 'fishMiss': return pick([['I hope I catch a big fish!', 'Mong câu được con cá to!'], ['The fish are biting today.', 'Hôm nay cá cắn câu nhiều.'], ['Oh no, it got away!', 'Ôi không, nó sổng mất rồi!'], ['Patience is the key.', 'Kiên nhẫn là chìa khoá.']]);
+      case 'cook': case 'serve': return pick([["I'm cooking something delicious.", 'Em đang nấu món gì đó ngon lắm.'], ['Add a little salt.', 'Thêm chút muối nào.'], ['Dinner is ready!', 'Cơm tối xong rồi!'], ['It smells so good!', 'Thơm quá đi!']]);
       case 'sell': case 'order': return ['This order is ready to go.', 'Đơn hàng này xong rồi, giao thôi.'];
-      case 'chop': case 'wood': return ["I'm chopping firewood.", 'Em đang chẻ củi.'];
-      case 'rest': return ['I need a short break.', 'Em nghỉ tay một chút.'];
+      case 'chop': case 'wood': return enMix(["I'm chopping firewood.", 'Em đang chẻ củi.'], pick);
+      case 'rest': return pick([['I need a short break.', 'Em nghỉ tay một chút.'], ["I'm thirsty. Time for some water.", 'Khát quá, uống chút nước thôi.'], ['Five more minutes!', 'Thêm năm phút nữa thôi!']]);
       case 'guide': return ['Welcome! Please follow me.', 'Xin chào! Mời mọi người đi theo tôi.'];
       case 'zooFeed': return ['Here is your lunch, little friend.', 'Bữa trưa của bạn đây, bạn nhỏ.'];
       case 'sweep': return v.role === 'marketer' ? ['Come and visit our farm!', 'Mời mọi người ghé thăm trang trại!'] : ["Let's keep everything clean.", 'Giữ mọi thứ sạch sẽ nào.'];
       case 'count': case 'shop': return ['Good morning! What would you like?', 'Chào buổi sáng! Bạn muốn dùng gì?'];
-      default: return pick([["Let's get to work!", 'Bắt tay vào việc thôi!'], ['What a busy day!', 'Hôm nay bận rộn quá!'], ['We are doing great.', 'Mình đang làm tốt lắm.']]);
+      default: return pick(EN_IDLE);
     }
   }
   function enSay(text) {
@@ -9313,6 +9582,10 @@
     if (vis) pick.push([`${vis} tourists visited our farm yesterday.`, `Hôm qua có ${vis} du khách ghé thăm trang trại.`]);
     if (yd.acts) pick.push([`Our team finished ${yd.acts} jobs.`, `Đội mình đã làm xong ${yd.acts} việc.`]);
     pick.push(['Have a nice day, boss!', 'Chúc chủ nhân một ngày vui vẻ!']);
+    pick.push([['Everything is under control.', 'Mọi việc đều trong tầm kiểm soát.'], ['The team is working hard for you.', 'Cả đội đang làm việc chăm chỉ vì chủ nhân.'],
+      ['Please get some rest, boss.', 'Chủ nhân nghỉ ngơi đi ạ.'], ['Business is getting better every day.', 'Việc kinh doanh mỗi ngày một tốt hơn.'],
+      ['I will report to you every morning.', 'Em sẽ báo cáo chủ nhân mỗi sáng.'], ['Leave the farm to me.', 'Cứ giao trang trại cho em.'],
+      ['Our customers are very happy.', 'Khách hàng của mình rất hài lòng.']][dayNo(t) % 7]);
     const [en, vi] = pick[dayNo(t) % pick.length];
     return `📘 <b>${en}</b> <span style="opacity:.75">(${vi})</span>${seen ? ` · chủ nhân đã gặp <b>${seen}</b> từ tiếng Anh` : ''}`;
   }
