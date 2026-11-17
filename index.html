@@ -884,15 +884,18 @@
       // the fallback when the files do not load.
       const TRACKS = [['country-01.mp3', 'Fireflies and Stardust'], ['country-02.mp3', 'Hillbilly Swing'], ['country-03.mp3', 'Still Pickin'],
         ['country-04.mp3', 'River Valley Breakdown'], ['country-05.mp3', 'Bama Country'], ['country-06.mp3', 'Cattails'], ['country-07.mp3', 'Guts and Bourbon'],
-        ['country-08.mp3', 'Clear Air'], ['country-09.mp3', 'Drankin Song'], ['country-10.mp3', 'Galway']];
+        ['country-08.mp3', 'Clear Air'], ['country-09.mp3', 'Drankin Song'], ['country-10.mp3', 'Galway'],
+        // more (2026-11-17 tối: "nhạc khá hay, tìm thêm")
+        ['country-11.mp3', 'Kings of Tara'], ['country-12.mp3', 'Corncob'], ['country-13.mp3', 'DarxieLand'], ['country-14.mp3', 'Matt\'s Blues'], ['country-15.mp3', 'Morning'], ['country-16.mp3', 'Evening'], ['country-17.mp3', 'Almost Bliss'], ['country-18.mp3', 'Midnight Tale'], ['country-19.mp3', 'Industrious Ferret'], ['country-20.mp3', 'Cold Sober'], ['country-21.mp3', 'Pleasant Porridge'], ['country-22.mp3', 'Teddy Bear Waltz'], ['country-23.mp3', 'Cheery Monday'], ['country-24.mp3', 'Del Rio Bravo']];
       // theme playlists (user 2026-11-17): real recordings only, Kevin MacLeod (CC BY 4.0), no voices. Tết / Trung thu use East-Asian
       // instrumentals (erhu, pipa, guzheng, koto) — there is no Vietnamese folk set on incompetech.
       const LISTS = { country: TRACKS,
         noel: [['noel-01.mp3', 'Jingle Bells'], ['noel-02.mp3', 'Jingle Bells (glockenspiel)'], ['noel-03.mp3', 'We Wish You a Merry Christmas'], ['noel-04.mp3', 'Deck the Halls'],
           ['noel-05.mp3', 'Oh, Christmas Tree'], ['noel-06.mp3', 'Up on a Housetop'], ['noel-07.mp3', 'Dance of the Sugar Plum Fairies'], ['noel-08.mp3', 'Silent Night'],
-          ['noel-09.mp3', 'Adeste Fideles Waltz'], ['noel-10.mp3', 'Jingle Bells (Calm)']],
-        spooky: [['spooky-01.mp3', 'Ghost Story'], ['spooky-02.mp3', 'Myst on the Moor'], ['spooky-03.mp3', 'Danse Macabre'], ['spooky-04.mp3', 'Krampus Workshop']],
-        tet: [['tet-01.mp3', 'Shenyang'], ['tet-02.mp3', 'Guzheng City'], ['tet-03.mp3', 'Senbazuru'], ['tet-04.mp3', 'Ishikari Lore']] };
+          ['noel-09.mp3', 'Adeste Fideles Waltz'], ['noel-10.mp3', 'Jingle Bells (Calm)'],
+          ['noel-11.mp3', 'Angels We Have Heard on High'], ['noel-12.mp3', 'Oh, Little Town of Bethlehem'], ['noel-13.mp3', 'Deck the Halls A'], ['noel-14.mp3', 'It Came Upon a Midnight Clear'], ['noel-15.mp3', 'Jesu, Joy of Man\'s Desiring'], ['noel-16.mp3', 'Oh Holy Night'], ['noel-17.mp3', 'What Child is This'], ['noel-18.mp3', 'Holiday Weasel'], ['noel-19.mp3', 'Dance of the Tuba Plum Fairy']],
+        spooky: [['spooky-01.mp3', 'Ghost Story'], ['spooky-02.mp3', 'Myst on the Moor'], ['spooky-03.mp3', 'Danse Macabre'], ['spooky-04.mp3', 'Krampus Workshop'], ['spooky-05.mp3', 'Netherworld Shanty'], ['spooky-06.mp3', 'One-eyed Maestro'], ['spooky-07.mp3', 'Miri\'s Magic Dance'], ['spooky-08.mp3', 'Folk Round'], ['spooky-09.mp3', 'Gothamlicious']],
+        tet: [['tet-01.mp3', 'Shenyang'], ['tet-02.mp3', 'Guzheng City'], ['tet-03.mp3', 'Senbazuru'], ['tet-04.mp3', 'Ishikari Lore'], ['tet-05.mp3', 'Ripples'], ['tet-06.mp3', 'Finding Movement'], ['tet-07.mp3', 'Nu Flute'], ['tet-08.mp3', 'Eastern Thought']] };
       let audio = null, tOrder = [], tLast = -1, tErr = 0, useSynth = false, pauseT = 0, listK = 'country', tracks = TRACKS;
       function trackSetup() {
         if (audio) return true;
@@ -6281,7 +6284,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '14:05 17-11';
+    const build = '14:30 17-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
