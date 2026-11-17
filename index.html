@@ -392,7 +392,7 @@
   // Ambient bed by time of day (stream, wind, birds, crickets, owls, campfire) + one-shot effects.
   // Toggle button under the zoom controls; mouse wheel on it = volume. Saved in localStorage.
   const SOUND_KEY = 'claude-forest-sound';
-  let soundPref = { muted: false, on: true, vol: 1.2, music: true, musicVol: 0.35, themeMusic: true, country: 'day', v: 3 };
+  let soundPref = { muted: false, on: true, vol: 1.2, music: true, musicVol: 0.35, real: true, realVol: 0.35, themeMusic: true, country: 'day', v: 3 };
   try {
     const saved = JSON.parse(localStorage.getItem(SOUND_KEY) || '{}');
     // v3: rebalanced mix (headphones) -> volumes back to the new defaults; keep the on/off choices
@@ -543,6 +543,7 @@
     let outMul = 1;
     const forestGain = () => (!soundPref.muted && soundPref.on ? soundPref.vol * outMul : 0);
     const musicGain = () => (!soundPref.muted && soundPref.music ? soundPref.musicVol * outMul : 0);
+    const realGain = () => (!soundPref.muted && soundPref.real !== false ? soundPref.realVol * outMul : 0); // 🎻 country / theme recordings, own volume
     const ensure = () => {
       if (ctx) return ctx;
       try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
@@ -563,7 +564,7 @@
     };
     const resume = () => { if (ensure() && ctx.state !== 'running') ctx.resume().catch(() => {}); };
     ['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, resume, { capture: true }));
-    const live = () => ctx && ctx.state === 'running' && !soundPref.muted && (soundPref.on || soundPref.music) && (!solo || soloPass);
+    const live = () => ctx && ctx.state === 'running' && !soundPref.muted && (soundPref.on || soundPref.music || soundPref.real !== false) && (!solo || soloPass);
     // stereo kept narrow (±0.45): on headphones a hard-panned call is loud in one ear only
     const out = (pan = 0, bus) => { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)) * 0.45; p.connect(bus || master); return p; };
     const panOf = (x) => (x === undefined ? 0 : (x / W) * 2 - 1);
@@ -679,27 +680,8 @@
         o.start(when); o2.start(when); o.stop(when + len + 3); o2.stop(when + len + 3);
       }
     }
-    // ── theme music (user 2026-11-13: "nghe nhạc theo theme, giáng sinh có những bài noel"): public-domain carols
-    // arranged here (music-box bells, bass, pads, sleigh bells), no recordings and no voices; Halloween / Tết / Trung thu
-    // swap the lo-fi's chords and scale. [midi, eighths] melody, [chord, eighths] chords (null = rest).
-    const CH = { C: [48, 52, 55], F: [53, 57, 60], G7: [55, 59, 62, 65], D7: [50, 54, 57, 60], Am: [57, 60, 64], G: [55, 59, 62] };
-    const CAROLS = [
-      { name: 'Jingle Bells', step: 0.25, bells: true,
-        mel: [[76, 2], [76, 2], [76, 4], [76, 2], [76, 2], [76, 4], [76, 2], [79, 2], [72, 3], [74, 1], [76, 8], [77, 2], [77, 2], [77, 3], [77, 1], [77, 2], [76, 2], [76, 2], [76, 1], [76, 1], [76, 2], [74, 2], [74, 2], [76, 2], [74, 4], [79, 4],
-          [76, 2], [76, 2], [76, 4], [76, 2], [76, 2], [76, 4], [76, 2], [79, 2], [72, 3], [74, 1], [76, 8], [77, 2], [77, 2], [77, 2], [77, 2], [77, 2], [76, 2], [76, 2], [76, 1], [76, 1], [79, 2], [79, 2], [77, 2], [74, 2], [72, 8]],
-        ch: [['C', 32], ['F', 8], ['C', 8], ['D7', 8], ['G7', 8], ['C', 32], ['F', 8], ['C', 8], ['G7', 8], ['C', 8]] },
-      { name: 'We Wish You a Merry Christmas', step: 0.21,
-        mel: [[67, 2], [72, 2], [72, 1], [74, 1], [72, 1], [71, 1], [69, 2], [69, 2], [69, 2], [74, 2], [74, 1], [76, 1], [74, 1], [72, 1], [71, 2], [67, 2], [67, 2], [76, 2], [76, 1], [77, 1], [76, 1], [74, 1], [72, 2], [69, 2], [67, 1], [67, 1], [69, 2], [74, 2], [71, 2], [72, 6]],
-        ch: [[null, 2], ['C', 6], ['F', 6], ['D7', 6], ['G7', 6], ['Am', 6], ['F', 6], ['G7', 6], ['C', 6]] },
-      { name: 'Silent Night', step: 0.34,
-        mel: [[67, 3], [69, 1], [67, 2], [64, 6], [67, 3], [69, 1], [67, 2], [64, 6], [74, 4], [74, 2], [71, 6], [72, 4], [72, 2], [67, 6], [69, 4], [69, 2], [72, 3], [71, 1], [69, 2], [67, 3], [69, 1], [67, 2], [64, 6],
-          [69, 4], [69, 2], [72, 3], [71, 1], [69, 2], [67, 3], [69, 1], [67, 2], [64, 6], [74, 4], [74, 2], [77, 3], [74, 1], [71, 2], [72, 6], [76, 6], [72, 3], [67, 1], [64, 2], [67, 3], [65, 1], [62, 2], [60, 12]],
-        ch: [['C', 24], ['G7', 12], ['C', 12], ['F', 12], ['C', 12], ['F', 12], ['C', 12], ['G7', 12], ['C', 12], ['C', 6], ['G7', 6], ['C', 12]] },
-    ].map((S) => prepSong(S));
-    function prepSong(S) { // index where each note / chord starts, once
-      const at = (list) => { const m = {}; let e = 0; for (const [n, d] of list) { if (n != null) m[e] = [n, d]; e += d; } return { m, len: e }; };
-      const M = at(S.mel), C = at(S.ch); return { ...S, mAt: M.m, cAt: C.m, len: Math.max(M.len, C.len) };
-    }
+    // theme music: real recordings only (user 2026-11-17: "nhạc tự làm thì bỏ ngay") -> the `country` player below plays
+    // the theme playlists (Kevin MacLeod, CC BY); the old synth carols / Halloween / Tết lo-fi were removed.
     // ── country band (user 2026-11-16): its OWN engine, apart from the lo-fi and the carols ("tách hẳn với các lofi, không
     // dùng chung logic âm nhạc"). The first version shared tone()/noise(), the music bus and the master compressor: every
     // animal call ducked that bus to 35 % and the compressor pumped ("lúc to lúc bé"), and the saw-wave banjo + noise
@@ -893,7 +875,7 @@
         timer = setInterval(tick, 50);
         return true;
       }
-      const level = () => (on && !(solo && !soloPass) ? musicGain() : 0);
+      const level = () => (on && !(solo && !soloPass) ? realGain() : 0);
       function ramp(sec) { if (!bus) return; const t = ctx.currentTime; bus.gain.cancelScheduledValues(t); bus.gain.setValueAtTime(bus.gain.value, t); bus.gain.linearRampToValueAtTime(level(), t + sec); }
       // ── real recordings (user 2026-11-17: "nhạc nghe chán… lấy nhạc nào hay ấy, đánh giá tốt"): instrumental country /
       // acoustic tracks by Kevin MacLeod (incompetech.com, CC BY 4.0; credit in web/CREDITS.md + the 🔊 panel), loudness-
@@ -903,7 +885,15 @@
       const TRACKS = [['country-01.mp3', 'Fireflies and Stardust'], ['country-02.mp3', 'Hillbilly Swing'], ['country-03.mp3', 'Still Pickin'],
         ['country-04.mp3', 'River Valley Breakdown'], ['country-05.mp3', 'Bama Country'], ['country-06.mp3', 'Cattails'], ['country-07.mp3', 'Guts and Bourbon'],
         ['country-08.mp3', 'Clear Air'], ['country-09.mp3', 'Drankin Song'], ['country-10.mp3', 'Galway']];
-      let audio = null, tOrder = [], tLast = -1, tErr = 0, useSynth = false, pauseT = 0;
+      // theme playlists (user 2026-11-17): real recordings only, Kevin MacLeod (CC BY 4.0), no voices. Tết / Trung thu use East-Asian
+      // instrumentals (erhu, pipa, guzheng, koto) — there is no Vietnamese folk set on incompetech.
+      const LISTS = { country: TRACKS,
+        noel: [['noel-01.mp3', 'Jingle Bells'], ['noel-02.mp3', 'Jingle Bells (glockenspiel)'], ['noel-03.mp3', 'We Wish You a Merry Christmas'], ['noel-04.mp3', 'Deck the Halls'],
+          ['noel-05.mp3', 'Oh, Christmas Tree'], ['noel-06.mp3', 'Up on a Housetop'], ['noel-07.mp3', 'Dance of the Sugar Plum Fairies'], ['noel-08.mp3', 'Silent Night'],
+          ['noel-09.mp3', 'Adeste Fideles Waltz'], ['noel-10.mp3', 'Jingle Bells (Calm)']],
+        spooky: [['spooky-01.mp3', 'Ghost Story'], ['spooky-02.mp3', 'Myst on the Moor'], ['spooky-03.mp3', 'Danse Macabre'], ['spooky-04.mp3', 'Krampus Workshop']],
+        tet: [['tet-01.mp3', 'Shenyang'], ['tet-02.mp3', 'Guzheng City'], ['tet-03.mp3', 'Senbazuru'], ['tet-04.mp3', 'Ishikari Lore']] };
+      let audio = null, tOrder = [], tLast = -1, tErr = 0, useSynth = false, pauseT = 0, listK = 'country', tracks = TRACKS;
       function trackSetup() {
         if (audio) return true;
         try {
@@ -911,19 +901,19 @@
           ctx.createMediaElementSource(audio).connect(bus);
           audio.addEventListener('ended', () => nextTrack());
           audio.addEventListener('playing', () => { tErr = 0; });
-          audio.addEventListener('error', () => { if (++tErr >= 3) { useSynth = true; audio.pause(); } else nextTrack(); });
+          audio.addEventListener('error', () => { if (++tErr >= 3) { if (listK === 'country') useSynth = true; audio.pause(); } else nextTrack(); });
           return true;
         } catch (e) { useSynth = true; return false; }
       }
       function nextTrack() {
-        if (!tOrder.length) { tOrder = TRACKS.map((_, i) => i).sort(() => Math.random() - 0.5); if (tOrder[0] === tLast && tOrder.length > 1) tOrder.push(tOrder.shift()); }
-        tLast = tOrder.shift(); name = TRACKS[tLast][1];
-        audio.src = './forest-sounds/' + TRACKS[tLast][0];
+        if (!tOrder.length) { tOrder = tracks.map((_, i) => i).sort(() => Math.random() - 0.5); if (tOrder[0] === tLast && tOrder.length > 1) tOrder.push(tOrder.shift()); }
+        tLast = tOrder.shift(); name = tracks[tLast][1];
+        audio.src = './forest-sounds/' + tracks[tLast][0];
         if (on) audio.play().catch(() => {});
       }
       function shuffle() { order = SONGS.map((_, i) => i).sort(() => Math.random() - 0.5); if (order[0] === last && order.length > 1) order.push(order.shift()); }
       function tick() {
-        if (!on || !ctx || ctx.state !== 'running' || !useSynth) return;
+        if (!on || !ctx || ctx.state !== 'running' || !useSynth || listK !== 'country') return; // the synth band only stands in for country
         const now = ctx.currentTime, ahead = document.hidden ? 2.5 : 0.4;
         if (next < now) next = now + 0.05; // fell behind (tab asleep): carry on from here, no burst of notes
         while (next < now + ahead) {
@@ -939,17 +929,27 @@
         }
       }
       return {
-        set(want) {
+        set(listIn) { // null = off, else 'country' | 'noel' | 'spooky' | 'tet' (true = 'country', for old tests)
+          const L = listIn === true ? 'country' : listIn || null, want = !!L;
           if (want && !setup()) return;
+          if (want && L !== listK) { // another playlist: start it fresh
+            listK = L; tracks = LISTS[L] || TRACKS; tOrder = []; tLast = -1; tErr = 0; name = '';
+            if (L !== 'country' && useSynth) useSynth = false; // theme files are tried again
+            if (on && audio) { if (useSynth) audio.pause(); else nextTrack(); }
+          }
           if (want === on) return;
           on = want; clearTimeout(pauseT);
-          if (on && !useSynth && trackSetup() && !useSynth) { if (!audio.src) nextTrack(); else audio.play().catch(() => {}); }
+          if (on && !useSynth && trackSetup() && !useSynth) { if (!audio.src || !tracks.some((T) => audio.src.endsWith(encodeURI(T[0])))) nextTrack(); else audio.play().catch(() => {}); }
           if (on) { pos = -4; next = 0; chord = null; plan = []; tick(); }
           else if (audio) pauseT = setTimeout(() => { if (!on) audio.pause(); }, 800); // pause after the fade-out, resume where it was
           ramp(on ? 1.2 : 0.6);
         },
         pref() { ramp(0.05); },
         playing: () => (on ? name : ''),
+        list: () => (on ? listK : null),
+        // something real is coming out of this player (theme files that fail to load leave the lo-fi playing instead)
+        audible: () => on && (listK === 'country' ? true : !!(audio && !useSynth && tErr < 3)),
+        lists: () => Object.fromEntries(Object.entries(LISTS).map(([k, v]) => [k, v.map((T) => T[1])])),
         songs: () => SONGS.map((S) => S.name),
         level: () => (bus ? bus.gain.value : 0),
         peak() { if (!probe) return 0; const d = new Float32Array(probe.fftSize); probe.getFloatTimeDomainData(d); let p = 0, a = 0; for (const v of d) { p = Math.max(p, Math.abs(v)); a += v * v; } return { peak: p, rms: Math.sqrt(a / d.length), gain: bus.gain.value }; },
@@ -961,46 +961,22 @@
         setArr(lead, comp, harm, drums) { arr = { lead, comp, harm, drums }; plan = [arr, arr]; }, // tests
       };
     })();
-    let cSong = 0, cPos = -4, cNext = 0, cList = '', playing = '';
+    let playing = '';
     const countryOn = (ph) => soundPref.country === 'all' || (soundPref.country !== 'off' && ph.night < 0.5); // night stays lo-fi for sleep
     function themeMusicKey() {
       if (soundPref.themeMusic === false) return null;
       let th = {}; try { th = themeNow(); } catch (e) {}
       return th.noel || th.santa ? 'noel' : th.halloween ? 'spooky' : th.tet || th.trungthu ? 'tet' : null;
     }
-    function carolTick(ph, list = 'noel') { // Noel carols only (the country band has its own engine above)
-      const now = ctx.currentTime, LIST = CAROLS;
-      if (cList !== list) { cList = list; cSong = 0; cPos = -4; }
-      if (!cNext || cNext < now) cNext = now + 0.15;
-      while (cNext < now + (document.hidden ? 1.6 : 0.35)) {
-        const t = cNext, e = cPos, T = LIST[cSong % LIST.length];
-        playing = T.name;
-        if (e >= 0) {
-          const m = T.mAt[e];
-          if (m) { // a music-box bell: the note + soft partials
-            const fq = mtof(m[0]), d = Math.max(0.5, m[1] * T.step * 1.6);
-            tone({ type: 'triangle', f: [fq, fq], dur: d, gain: 0.06, attack: 0.004, when: t, bus: musicBus, pan: 0.1 });
-            tone({ f: [fq * 2, fq * 2], dur: d * 0.5, gain: 0.018, attack: 0.002, when: t, bus: musicBus, pan: -0.1 });
-            tone({ f: [fq * 4.01, fq * 4.01], dur: 0.25, gain: 0.006, attack: 0.002, when: t, bus: musicBus, pan: 0 });
-          }
-          const c = T.cAt[e];
-          if (c) { const notes = CH[c[0]]; pad(notes, t, c[1] * T.step); tone({ f: [mtof(notes[0] - 12), mtof(notes[0] - 12)], dur: Math.min(1.4, c[1] * T.step), gain: 0.08, when: t, bus: musicBus, pan: 0 }); }
-          if (T.bells && e % 2 === 0) for (let k = 0; k < 2; k++) noise({ dur: 0.05, gain: (e % 4 ? 0.006 : 0.011) * (0.55 + 0.45 * (1 - ph.night)), type: 'highpass', f: 6500 + k * 1500, when: t + k * 0.03, bus: musicBus });
-        }
-        cNext += T.step; cPos++;
-        if (cPos >= T.len) { cSong++; cPos = -8; } // a short quiet between songs
-      }
-    }
-    const SPOOKY = { ch: [[57, 60, 64, 67], [53, 57, 60, 64], [50, 53, 57, 60], [52, 56, 59, 62]], pen: [69, 72, 74, 75, 76, 79, 81, 84] }; // Am7 Fmaj7 Dm7 E7, a minor blues scale
-    const TETM = { ch: [[48, 55, 62, 69], [50, 57, 62, 69], [53, 60, 65, 69], [45, 52, 57, 64]], pen: [72, 74, 77, 79, 81, 84, 86, 89] }; // open fifths, do-re-fa-sol-la
     function musicTick(ph) {
-      const key = soundPref.music ? themeMusicKey() : null, farmTime = soundPref.music && !key && countryOn(ph);
-      country.set(farmTime); // its own engine and bus; the lo-fi below stays silent meanwhile
-      if (!soundPref.music) { mNext = 0; cNext = 0; cList = ''; playing = ''; return; }
-      if (key === 'noel') { mNext = 0; carolTick(ph, 'noel'); return; }
-      if (farmTime) { mNext = 0; cNext = 0; cList = ''; playing = ''; return; }
-      cNext = 0; cList = ''; playing = key === 'spooky' ? 'Halloween' : key === 'tet' ? 'nhạc Tết' : '';
-      const CHORDS = key === 'spooky' ? SPOOKY.ch : key === 'tet' ? TETM.ch : CHORDS0, PENTA = key === 'spooky' ? SPOOKY.pen : key === 'tet' ? TETM.pen : PENTA0;
+      // two separate channels (user 2026-11-17): 🎻 real music (country by day / theme playlists) with its own switch + volume,
+      // and the 🎵 lo-fi with its own. The lo-fi only rests while a real track is actually playing.
+      const real = soundPref.real !== false, key = real ? themeMusicKey() : null, farmTime = real && !key && countryOn(ph);
+      const list = key || (farmTime ? 'country' : null);
+      country.set(list);
+      if (!soundPref.music || (list && country.audible())) { mNext = 0; playing = ''; return; }
+      playing = '';
+      const CHORDS = CHORDS0, PENTA = PENTA0;
       const now = ctx.currentTime;
       if (!mNext || mNext < now) { mNext = now + 0.15; mStep = 0; }
       const calm = 0.55 + 0.45 * (1 - ph.night); // softer drums at night
@@ -1086,10 +1062,10 @@
       rms() { if (!meter) return 0; const d = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); const w = Math.round(ctx.sampleRate * 0.05); let m = 0; for (let i = 0; i + w <= d.length; i += w >> 1) { let a = 0; for (let j = i; j < i + w; j++) a += d[j] * d[j]; m = Math.max(m, a / w); } return Math.sqrt(m); },
       solo(on, keepStream) { solo = !!on; if (bed) for (const k in bed) bed[k].g.gain.value = keepStream && k === 'stream' ? 0.06 : 0;; country.pref(); },
       isSolo: () => solo,
-      playing: () => country.playing() || playing, carols: () => CAROLS.map((S) => S.name), countrySongs: () => country.songs(), countrySkip: () => country.skip(), country,
+      playing: () => country.playing() || playing, carols: () => country.lists().noel, countrySongs: () => country.songs(), countrySkip: () => country.skip(), country,
       sample: (group, gain, rate) => playSample(group, W / 2, gain, rate),
       pass(fn) { soloPass = true; try { return fn(); } finally { soloPass = false; } },
-      state: () => (ctx ? `${ctx.state} muted=${soundPref.muted} forest=${soundPref.on}@${soundPref.vol} music=${soundPref.music}@${soundPref.musicVol} gains=${master.gain.value.toFixed(2)}/${musicBus.gain.value.toFixed(2)} bed=${!!bed} step=${mStep} samples=${Object.entries(samples).map(([k, v]) => k + ':' + v.length).join(',')}` : 'no-context'),
+      state: () => (ctx ? `${ctx.state} muted=${soundPref.muted} forest=${soundPref.on}@${soundPref.vol} music=${soundPref.music}@${soundPref.musicVol} real=${soundPref.real !== false}@${soundPref.realVol} gains=${master.gain.value.toFixed(2)}/${musicBus.gain.value.toFixed(2)} bed=${!!bed} step=${mStep} samples=${Object.entries(samples).map(([k, v]) => k + ':' + v.length).join(',')}` : 'no-context'),
       setFade(m) { outMul = Math.max(0, Math.min(1, m)); this.setPref(); },
       suspend() { try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) {} },
       setPref() {
@@ -2943,7 +2919,7 @@
   // investing switched off blocks everything except hiring / a marketer's rank (they have their own switches)
   const mInvOff = (o) => mOff('invest') && !/^(hire|rank):/.test((o && o.key) || '');
   const mOff = (k) => !!(mCmd().off || {})[k];
-  const mCanInvest = (cost, o = {}) => !mPaused() && !mInvOff(o) && mLineOk(o.line) && mAskState(cost, o) !== 'no' && (mOwnCash(cost) || mBoldCheck(cost, o).ok);
+  const mCanInvest = (cost, o = {}) => !mPaused() && !mInvOff(o) && mPrioLet(cost, o) && mLineOk(o.line) && mAskState(cost, o) !== 'no' && (mOwnCash(cost) || mBoldCheck(cost, o).ok);
   function mFund(cost, o = {}) {
     if (mPaused() || mInvOff(o)) return false;
     if (mAsk(cost, o) !== 'ok') return false;
@@ -3174,6 +3150,102 @@
       : B.ok ? '🚀 đủ điều kiện vay TJBank để làm' : mLoan().owed > 0 && short <= 0 ? 'trả xong nợ TJBank rồi làm' : `còn thiếu ~${money(Math.max(1, short))} xu${mRiskPick() === 'bold' ? ` (chưa vay vì ${B.why})` : ''}`;
     return c;
   }
+  // ── 🎯 the owner's priority list (user 2026-11-17: "danh sách các việc ưu tiên… ưu tiên xây cái này, nâng cái kia… để
+  // tiền tập trung vào cái đó; ban đầu trống, tôi chọn vào, quản lý dựa thứ tự mà tập trung; hết danh sách thì quay lại
+  // bình thường"). save 'mgr/prio' = [{ key, to }] (to = the level that item reaches). While the list holds something the
+  // manager can do now, every other investment waits (only replacing old animals and a first hire for an empty trade still
+  // go through, so the farm keeps running); the moment her own money is there (wages + seed money kept back, no loan) she does the first item, whatever her usual rules
+  // say (the owner chose it: no payback test, no approval asked). Items whose level is not reached yet are skipped, not
+  // blocking. Done items drop off; an empty list = back to normal.
+  const PRIO_LINE = { small: 'ranch', big: 'ranch', kitchen: 'kitchen', barn: 'shop', dorm: 'staff' };
+  function prioCatalog(t = farmNow()) {
+    const C = [], lv = level(), res = (kind, line, text, at, icon) => ({ kind, line, text, at, icon, big: true });
+    C.push({ key: 'land', icon: '🗺️', name: 'Mua thêm ô đất', cur: land(), max: FARM.plots.length, cost: landPrice(), why: '', line: 'field',
+      exec: () => farm.buyLand() && res('land', 'field', `🎯 mua ô đất thứ ${land()} (chủ trại ưu tiên)`, plotAt(land() - 1), '🗺️') });
+    for (const [id, U] of Object.entries(UPGRADES)) {
+      const n = upg(id);
+      C.push({ key: 'up:' + id, icon: U.icon, name: `${n ? 'Nâng' : 'Mở rộng'} ${U.name}`, cur: n, max: U.cost.length, cost: U.cost[n] || 0, why: n < U.cost.length && lv < U.lvl[n] ? `cần cấp ${U.lvl[n]}` : '', line: PRIO_LINE[id] || 'staff',
+        exec: () => farm.upgrade(id) && res('upgrade', PRIO_LINE[id] || 'staff', `🎯 nâng ${U.name} lần ${n + 1} (${money(U.cost[n])} xu, chủ trại ưu tiên)`, ['small', 'big'].includes(id) ? penAt(id) : barnAt(), '🔨') });
+    }
+    if (typeof XPROJ !== 'undefined') for (const [id, P] of Object.entries(XPROJ)) {
+      if (!XISLE[id]) continue;
+      C.push({ key: 'x:' + id, icon: P.icon, name: `Xây ${P.name}`, cur: xProj(id) ? 1 : 0, max: 1, cost: P.cost, why: lv < P.lvl ? `cần cấp ${P.lvl}` : '', line: xLine(id),
+        exec: (tt, w) => { ledger(-P.cost, 0, {}); save.set('proj/' + id, { t0: tt, done: tt + P.build * HOUR, by: w.id }); const s = XISLE[id].sign; return res('upgrade', xLine(id), `🎯 bắt đầu xây ${P.icon} ${P.name} (${money(P.cost)} xu, xong sau ${P.build} giờ, chủ trại ưu tiên)`, { x: s.x, y: s.y }, '🔨'); } });
+    }
+    C.push({ key: 'zooOpen', icon: '🦁', name: 'Mở sở thú', cur: zooOpen() ? 1 : 0, max: 1, cost: ZOO_UNLOCK, why: lv < ZOO_LVL ? `cần cấp ${ZOO_LVL}` : '', line: 'zoo',
+      exec: () => zoo.open() && res('zooOpen', 'zoo', `🎯 mở cửa sở thú (${money(ZOO_UNLOCK)} xu, chủ trại ưu tiên)`, zooGateAt(), '🦁') });
+    for (const id of Object.keys(FAC)) {
+      const F = FAC[id], L = facLv(id), nx = facNext(id);
+      C.push({ key: 'f:' + id, icon: F.icon, name: nx ? `Nâng ${F.names[L - 1]} lên ${nx.name}` : `${F.names[L - 1]} (tối đa)`, cur: L, max: 3, cost: nx ? nx.cost : 0,
+        why: !nx ? '' : !facOk(id, t) ? 'chưa có (xây/mở trước đã)' : lv < nx.need ? `cần cấp ${nx.need}` : '', line: F.line,
+        exec: (tt) => facUp(id, tt, 'boss') && res('upgrade', F.line, `🎯 nâng ${F.icon} ${F.names[L - 1]} lên cấp ${L + 1}: ${nx.name} (${money(nx.cost)} xu, chủ trại ưu tiên)`, barnAt(), '⬆️') });
+    }
+    { const nx = millNext(), L = millLv();
+      C.push({ key: 'mill', icon: '🏭', name: L ? (nx ? `Nâng xưởng lên ${nx.name}` : 'Xưởng (tối đa)') : 'Xây xưởng chế biến', cur: L, max: 3, cost: nx ? nx.cost : 0, why: nx && lv < nx.lvl ? `cần cấp ${nx.lvl}` : '', line: 'mill',
+        exec: () => { ledger(-nx.cost, 0, {}); save.set('mill/lv', nx.to); return res('upgrade', 'mill', `🎯 ${L ? `nâng xưởng lên ${nx.name}` : 'xây xưởng chế biến'} (${money(nx.cost)} xu, chủ trại ưu tiên)`, barnAt(), '🏭'); } }); }
+    { const L = innLv();
+      C.push({ key: 'inn', icon: '🏨', name: L ? (L < 3 ? `Nâng ${INN.names[L - 1]} lên ${INN.names[L]}` : `${INN.names[2]} (tối đa)`) : `Xây ${INN.names[0]}`, cur: L, max: 3, cost: L < 3 ? INN.cost[L] : 0, why: L < 3 && lv < INN.lvl[L] ? `cần cấp ${INN.lvl[L]}` : '', line: 'inn',
+        exec: () => { ledger(-INN.cost[L], 0, {}); save.set('inn/lv', L + 1); return res('upgrade', 'inn', `🎯 ${L ? `nâng lên ${INN.names[L]}` : `xây ${INN.names[0]}`} (${money(INN.cost[L])} xu, chủ trại ưu tiên)`, barnAt(), '🏨'); } }); }
+    C.push({ key: 'boat', icon: '⛵', name: 'Mua thuyền ra khơi', cur: save.get('boat/own') ? 1 : 0, max: 1, cost: BOAT.cost, line: 'fishing',
+      why: lv < BOAT.lvl ? `cần cấp ${BOAT.lvl}` : !mStaff().some((w) => w.role === 'angler') ? 'cần có người câu cá' : '',
+      exec: () => { ledger(-BOAT.cost, 0, {}); save.set('boat/own', farmNow()); return res('upgrade', 'fishing', `🎯 mua thuyền đánh cá ra khơi (${money(BOAT.cost)} xu, chủ trại ưu tiên)`, shopAt(), '⛵'); } });
+    return C;
+  }
+  // the list with each item's catalogue entry; done items are dropped (and the save tidied)
+  function mPrioList(t = farmNow()) {
+    const raw = save.get('mgr/prio', []) || [], cat = prioCatalog(t), by = Object.fromEntries(cat.map((c) => [c.key, c]));
+    const out = raw.map((p) => ({ ...p, c: by[p.key] })).filter((p) => p.c && p.c.cur < p.to && p.c.cur < p.c.max);
+    if (out.length !== raw.length) save.set('mgr/prio', out.map(({ key, to }) => ({ key, to })));
+    return out;
+  }
+  // what the money goes to now: the first item that can be done at this level (the next level of it, one at a time)
+  const mPrioFocus = (t = farmNow()) => { const p = mPrioList(t).find((x) => !x.c.why && x.c.cost > 0 && x.c.cur + 1 <= x.to && !mPrioBusy(x.key, t)); return p ? p.c : null; };
+  const mPrioBusy = (key, t) => key.startsWith('f:') && !facOk(key.slice(2), t); // an islet's level waits for the islet
+  function mPrioLet(cost, o = {}) {
+    const f = mPrioFocus(); if (!f) return true;
+    const k = o.key || '';
+    if (k === f.key) return true;
+    if (k.startsWith('animal:')) return true; // an old animal replaced: the farm keeps producing
+    if (k.startsWith('hire:') && !mStaff().some((w) => w.role === k.slice(5))) return true; // nobody at all in a trade
+    return false;
+  }
+  // the manager's first move each round: the owner's top item, as soon as the cash (or a 🚀 loan) allows
+  function mPrioStep(t, w) {
+    if (mPaused(t)) return null;
+    const f = mPrioFocus(t); if (!f) return null;
+    const o = { line: f.line, key: f.key, what: `${f.name} (chủ trại ưu tiên)`, payback: 0 };
+    if (!mOwnCash(f.cost)) return null; // her own money, wages + seed money kept back; never borrows for it
+    const r = f.exec(t, w); if (!r) return null;
+    mAskDone(o);
+    return r;
+  }
+  function mPrioAct(op, a, b) {
+    const L = (save.get('mgr/prio', []) || []).slice(), key = String(a || '').replace('.', ':'), i = Number(a);
+    if (op === 'add') { const c = prioCatalog().find((x) => x.key === key); if (!c) return; const top = Math.max(c.cur, ...L.filter((p) => p.key === key).map((p) => p.to)); if (top >= c.max) return; L.push({ key, to: top + 1 }); }
+    if (op === 'up' && i > 0) [L[i - 1], L[i]] = [L[i], L[i - 1]];
+    if (op === 'down' && i < L.length - 1) [L[i + 1], L[i]] = [L[i], L[i + 1]];
+    if (op === 'del') L.splice(i, 1);
+    if (op === 'clear') L.length = 0;
+    save.set('mgr/prio', L); save.set('mgr/plan', null);
+  }
+  function mPrioHtml(now) {
+    const L = mPrioList(now), f = mPrioFocus(now), cat = prioCatalog(now);
+    let h = '<div style="opacity:.85;margin-top:8px"><b>🎯 Danh sách ưu tiên của chủ trại</b></div>'
+      + '<div style="font-size:12px;opacity:.8;margin:2px 0 4px">Có việc trong danh sách thì quản lý dồn tiền làm theo thứ tự (việc chưa đủ cấp thì bỏ qua tạm); các khoản đầu tư khác chờ. Danh sách trống = quản lý tự quyết như bình thường.</div>';
+    if (!L.length) h += '<div style="font-size:12px;opacity:.6">(trống)</div>';
+    L.forEach((p, i) => {
+      const c = p.c, lvTxt = p.key === 'land' ? ` (ô thứ ${p.to}/${c.max})` : c.max > 1 ? ` → mức ${p.to}/${c.max}` : '', isF = f && f.key === p.key && L.findIndex((x) => x.key === p.key) === i;
+      const st = c.why ? `⏳ ${c.why}` : isF ? (mOwnCash(c.cost) ? '▶️ đủ tiền, quản lý làm ngay lượt tới' : `💰 đang gom tiền: ${money(coins())}/${money(c.cost + mReserve() + mMinSeed() * 2)} xu (giữ lại tiền lương + hạt giống)${mLoan().owed > 0 ? ', trả xong nợ TJBank trước' : ''}`) : 'chờ tới lượt';
+      h += `<div style="display:flex;align-items:center;gap:4px;margin:3px 0;font-size:13px;${isF ? 'border-left:3px solid #7fd65a;padding-left:4px;' : ''}"><span style="flex:1">${i + 1}. ${c.icon} ${c.name}${lvTxt} · <b>${money(c.cost)}</b> xu<br><span style="font-size:11px;opacity:.8">${st}</span></span>`
+        + B(`mprio:up:${i}`, '▲', i > 0) + B(`mprio:down:${i}`, '▼', i < L.length - 1) + B(`mprio:del:${i}`, '✖') + '</div>';
+    });
+    if (L.length) h += B('mprio:clear', 'Xoá hết');
+    const can = cat.filter((c) => { const top = Math.max(c.cur, ...L.filter((p) => p.key === c.key).map((p) => p.to)); return top < c.max && c.cost > 0; });
+    h += `<details style="margin-top:4px"><summary style="cursor:pointer;font-size:13px">➕ Thêm việc ưu tiên (${can.length})</summary><div>`
+      + can.map((c) => B(`mprio:add:${c.key.replace(':', '.')}`, `${c.icon} ${c.name} · ${money(c.cost)}${c.why ? ` (${c.why})` : ''}`)).join('') + '</div></details>';
+    return h;
+  }
+  window.__forestPrio = { catalog: () => prioCatalog(), list: () => mPrioList(), focus: () => mPrioFocus(), let: (c, o) => mPrioLet(c, o || {}), act: (op, a, b) => mPrioAct(op, a, b), step: () => { const w = mStaff().find((x) => x.id === bossId()) || mStaff()[0]; return w ? mPrioStep(farmNow(), w) : null; }, addCoins: (n) => ledger(n, 0, {}), sound: () => sfx.state() }; // tests (2026-11-17)
   // the day's plan: written into the journal at the start of the shift, shown in the morning report and 📈 Đầu tư
   function mPlanToday(t = farmNow()) {
     const L = [], R = mRisk(), br = mBrake(t), F = mForecast(t), end = coins() + F.inflow - F.outflow, glut = mCropGlut(t);
@@ -3184,7 +3256,8 @@
     const open = orderBook(dayNo(t)).filter((o) => !o.done).length; if (open) L.push(`📦 ${open} đơn hàng: làm đơn có lãi (lỗ nhẹ vẫn làm để giữ uy tín), không kịp thì huỷ sớm`);
     const ln = mLoan().owed || 0; if (ln) L.push(`🏦 Nợ TJBank ${money(ln)} xu (lãi ~${money(ln * loanRate())} xu/ngày): dư tiền là trả ngay`);
     if (mPaused(t)) L.push(`⏸️ Chủ trại dặn ngưng đầu tư đến ${new Date(mCmd().pause).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' })}: chỉ chạy việc, dư tiền thì trả nợ`);
-    const nx = !mPaused(t) && mNextInvest(t); if (nx) L.push(`🎯 Đầu tư tiếp: ${nx.what} (${money(nx.cost)} xu${nx.payback ? `, hoàn vốn ~${Math.ceil(nx.payback)} ngày` : ''}): ${nx.state}`);
+    { const pf = mPrioFocus(t), pl = mPrioList(t); if (pf) L.push(`🎯 Ưu tiên của chủ trại: ${pf.icon} ${pf.name} (${money(pf.cost)} xu)${pl.length > 1 ? ` rồi ${pl.length - 1} việc nữa` : ''}: dồn tiền cho việc này, các khoản đầu tư khác chờ`); else if (pl.length) L.push(`🎯 Danh sách ưu tiên còn ${pl.length} việc nhưng chưa đủ cấp: tạm đầu tư như thường`); }
+    const nx = !mPaused(t) && !mPrioFocus(t) && mNextInvest(t); if (nx) L.push(`🎯 Đầu tư tiếp: ${nx.what} (${money(nx.cost)} xu${nx.payback ? `, hoàn vốn ~${Math.ceil(nx.payback)} ngày` : ''}): ${nx.state}`);
     if (barBuilt(t)) { const E = barExpect(t); L.push(`🍹 Quầy bar tối nay: dự tính ~${E.guests} lượt khách, lời ~${money(E.margin)} xu trước lương tăng ca (quyết lúc 17:30)`); }
     for (const [k, s] of Object.keys(LINES).map((k) => [k, mLineStats(k, 5, t)]).filter(([, s]) => s.days >= 3 && s.net < 0).slice(0, 2)) L.push(`⚠️ ${LINES[k].name} lỗ ~${money(-s.perDay)} xu/ngày: tạm không đổ thêm tiền vào đây`);
     const dd = xWx && xWx.daily; if (dd && dd.precipitation_probability_max && dd.precipitation_probability_max[0] >= 60) L.push(`🌧️ Hôm nay ${dd.precipitation_probability_max[0]}% có mưa: mưa thì khỏi tưới, dồn người sang việc khác`);
@@ -3797,6 +3870,7 @@
     // a stove when every one is busy, staff when work is being missed or a trade has nobody
     boss(t, w) {
       const d = mDayRec(t), st = mStaff(), count = (r) => st.filter((x) => x.role === r).length;
+      { const pr = mPrioStep(t, w); if (pr) return pr; } // 🎯 the owner's list first
       const empty = [...Array(land()).keys()].filter((i) => ['empty', 'dead'].includes(simPlot(i).status)).length;
       // more land once the field is (nearly) all in use and someone works it
       { const o = { line: 'field', key: 'land', what: `mua ô đất thứ ${land() + 1}`, payback: mLandPayback() };
@@ -6098,7 +6172,7 @@
   function mPlanPanelHtml(now) {
     const pick = mRiskPick(), br = mBrake(now), thr = save.get('cfg/approve', 0), asks = mAsks();
     const pn = (n) => `<b style="color:${n >= 0 ? '#7fd65a' : '#e08a5a'}">${n >= 0 ? '+' : '−'}${money(Math.abs(n))}</b>`;
-    let h = '<div style="opacity:.85;margin-top:8px"><b>Tính cách quản lý</b></div><div>'
+    let h = mPrioHtml(now) + '<div style="opacity:.85;margin-top:8px"><b>Tính cách quản lý</b></div><div>'
       + Object.entries(RISK).map(([k, R]) => B('mrisk:' + k, R.name, true, k === pick ? 'border-color:#7fd65a;' : '')).join('') + '</div>'
       + `<div style="font-size:12px;opacity:.85;margin:4px 0">${RISK[pick].note}</div>`
       + (pick === 'bold' ? '<div style="font-size:12px;opacity:.8">🚀 chỉ vay để đầu tư khi: biết khoản đó hoàn vốn trong 10 ngày · không nợ lương · két không cạn · nợ sau khi vay ≤ 40% hạn mức · 3 ngày qua trại có lãi · lãi/ngày ≥ 2 lần tiền lãi vay · uy tín ≥ 30 · cách lần vay đầu tư trước ≥ 2 ngày · mảng đó không lỗ</div>' : '')
@@ -6207,7 +6281,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '11:58 17-11';
+    const build = '14:05 17-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6395,6 +6469,7 @@
     if (act === 'land') farm.buyLand();
     if (act === 'upgrade') farm.upgrade(a1);
     if (act === 'fill') farm.fillOrder(Number(a1));
+    if (act === 'mprio') { mPrioAct(a1, a2); return renderPanel(); }
     if (act === 'mrisk' && RISK[a1]) { save.set('cfg/risk', a1); if (a1 !== 'bold') save.set('mgr/brake', null); mLog(farmNow(), '', `Chủ trại đặt tính cách quản lý: ${RISK[a1].name}`, 0); save.set('mgr/plan', null); }
     if (act === 'mapprove') save.set('cfg/approve', Number(a1) || 0);
     if ((act === 'mok' || act === 'mno') && a1 && a1.startsWith('mgr/ask/')) { const a = save.get(a1); if (a) { save.set(a1, { ...a, state: act === 'mok' ? 'ok' : 'no', at: farmNow() }); mLog(farmNow(), '', `${act === 'mok' ? '✅ Chủ trại duyệt' : '❌ Chủ trại không duyệt'}: ${a.what} (${money(a.cost)} xu)`, 0); } }
@@ -7147,7 +7222,8 @@
       slider.addEventListener('input', () => { soundPref[volKey] = Number(slider.value) / 100; soundPref[key] = soundPref[volKey] > 0; soundPref.muted = false; sfx.resume(); sfx.setPref(); paintAll(); });
       return { r, paintRow };
     };
-    const forest = row('🌲 Rừng', 'on', 'vol', 300), music = row('🎵 Nhạc', 'music', 'musicVol', 100);
+    const forest = row('🌲 Rừng', 'on', 'vol', 300), music = row('🎵 Lo-fi', 'music', 'musicVol', 100), real = row('🎻 Nhạc thật', 'real', 'realVol', 100); // separate channels (2026-11-17)
+    real.r.title = 'Nhạc đồng quê + nhạc theo theme (bản thu thật), âm lượng riêng, không dính lo-fi';
     const themeTog = document.createElement('button'); themeTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin-top:4px;' + PIX;
     themeTog.addEventListener('click', (e) => { e.stopPropagation(); soundPref.themeMusic = soundPref.themeMusic === false; sfx.setPref(); paintAll(); });
     const countryTog = document.createElement('button'); countryTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 0 0 4px;' + PIX;
@@ -7155,7 +7231,7 @@
     const hint = document.createElement('div');
     hint.style.cssText = 'opacity:0.6;font-size:11px;margin-top:4px;';
     hint.textContent = 'Bấm 🔊 để tắt/mở tất cả';
-    const credit = document.createElement('div'); credit.style.cssText = 'font-size:10px;opacity:.6;margin-top:4px'; credit.textContent = '🎵 Nhạc đồng quê: Kevin MacLeod (incompetech.com) · CC BY 4.0';
+    const credit = document.createElement('div'); credit.style.cssText = 'font-size:10px;opacity:.6;margin-top:4px'; credit.textContent = '🎻 Nhạc đồng quê + nhạc theme: Kevin MacLeod (incompetech.com) · CC BY 4.0';
     const lsx = (k, d) => { try { const v = localStorage.getItem('forest-x-' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, lsxs = (k, v) => { try { localStorage.setItem('forest-x-' + k, JSON.stringify(v)); } catch {} };
     const enTog = document.createElement('button'); enTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 4px 0 0;' + PIX;
     enTog.addEventListener('click', (e) => { e.stopPropagation(); lsxs('en', !lsx('en', true)); paintAll(); });
@@ -7164,13 +7240,13 @@
     const enRow = document.createElement('div'); enRow.append(enTog, enSpk);
     const skipTog = document.createElement('button'); skipTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 0 0 4px;' + PIX; skipTog.textContent = '⏭ Bài khác';
     skipTog.addEventListener('click', (e) => { e.stopPropagation(); sfx.resume(); sfx.countrySkip(); setTimeout(paintAll, 300); });
-    soundPanel.append(forest.r, music.r, themeTog, countryTog, skipTog, enRow, hint, credit);
+    soundPanel.append(forest.r, real.r, music.r, themeTog, countryTog, skipTog, enRow, hint, credit);
     function paintAll() {
-      const audible = !soundPref.muted && (soundPref.on || soundPref.music);
+      const audible = !soundPref.muted && (soundPref.on || soundPref.music || soundPref.real !== false);
       soundBtn.textContent = audible ? '🔊' : '🔇';
       soundBtn.title = 'Âm thanh: rê chuột để chỉnh, bấm để tắt/mở tất cả';
       soundBtn.style.opacity = audible ? '1' : '0.6';
-      forest.paintRow(); music.paintRow();
+      forest.paintRow(); music.paintRow(); real.paintRow();
       enTog.textContent = `📘 Tiếng Anh ${lsx('en', true) ? 'bật' : 'tắt'}`; enTog.style.opacity = lsx('en', true) ? '1' : '0.55';
       enSpk.textContent = `🔈 Tự đọc to ${lsx('enSpeak', false) ? 'bật' : 'tắt'}`; enSpk.style.opacity = lsx('enSpeak', false) ? '1' : '0.55';
       themeTog.textContent = `🎄 Nhạc theo theme ${soundPref.themeMusic !== false ? 'bật' : 'tắt'}`; themeTog.style.opacity = soundPref.themeMusic !== false ? '1' : '0.55';
@@ -9564,7 +9640,17 @@
     ['happy', 'vui vẻ', '😄'], ['sad', 'buồn', '😢'], ['angry', 'tức giận', '😠'], ['bored', 'chán', '😑'], ['excited', 'háo hức', '🤩'], ['lazy', 'lười biếng', '🦥'],
     ['hard-working', 'chăm chỉ', '💪'], ['friendly', 'thân thiện', '🤗'], ['careful', 'cẩn thận', '🧐'], ['lucky', 'may mắn', '🍀'], ['proud', 'tự hào', '😌'], ['sleepy', 'buồn ngủ', '🥱'],
     ['sick', 'bị ốm', '🤒'], ['birthday', 'sinh nhật', '🎂'], ['gift', 'món quà', '🎁'], ['wedding', 'đám cưới', '💒'], ['friend', 'bạn bè', '🧑‍🤝‍🧑'], ['family', 'gia đình', '👨‍👩‍👧'],
-    ['music', 'âm nhạc', '🎵'], ['song', 'bài hát', '🎶'], ['guitar', 'đàn ghi-ta', '🎸'], ['dance', 'nhảy múa', '💃'], ['photo', 'bức ảnh', '📷'], ['dream', 'giấc mơ', '💭']];
+    ['music', 'âm nhạc', '🎵'], ['song', 'bài hát', '🎶'], ['guitar', 'đàn ghi-ta', '🎸'], ['dance', 'nhảy múa', '💃'], ['photo', 'bức ảnh', '📷'], ['dream', 'giấc mơ', '💭'],
+    // everyday spoken English (2026-11-17: "ngoài đời bản địa hơn") — phrasal verbs, slang, set phrases
+    ['hang out', 'đi chơi, tụ tập', '🛋️'], ['chill', 'thư giãn, xả hơi', '😎'], ['grab a bite', 'ăn qua loa chút gì', '🥪'], ["I'm beat", 'mệt rã rời', '🥵'],
+    ['no worries', 'không sao đâu', '👌'], ['my bad', 'lỗi tôi', '🙇'], ['for real?', 'thật hả?', '😮'], ['gonna', 'sắp, định (= going to)', '➡️'],
+    ['wanna', 'muốn (= want to)', '🙋'], ['gotta', 'phải (= got to)', '⏰'], ['kinda', 'hơi hơi, kiểu như', '🤏'], ['no way!', 'không đời nào / thật á!', '🙅'],
+    ['figure out', 'nghĩ ra, tìm ra', '🧩'], ['run out of', 'hết sạch (cái gì)', '🫙'], ['pick up', 'nhặt; đón; khá lên', '🚗'], ['show up', 'xuất hiện, có mặt', '🙋‍♂️'],
+    ['give up', 'bỏ cuộc', '🏳️'], ['catch up', 'bắt kịp; hàn huyên', '🏃'], ['check out', 'xem thử; trả phòng', '👀'], ['sort out', 'giải quyết, sắp xếp', '🗂️'],
+    ['call it a day', 'nghỉ làm hôm nay', '🌇'], ['piece of cake', 'dễ ợt', '🍰'], ['under the weather', 'hơi mệt, khó ở', '🤧'], ['on the house', 'quán mời, miễn phí', '🎁'],
+    ['break the ice', 'phá tan ngượng ngùng', '🧊'], ['hit the sack', 'đi ngủ', '🛏️'], ['cost an arm and a leg', 'đắt cắt cổ', '💸'], ['heads up', 'báo trước, coi chừng', '⚠️'],
+    ['awesome', 'tuyệt cú mèo', '🤩'], ['cozy', 'ấm cúng', '🛖'], ['broke', 'cháy túi, hết tiền', '🪫'], ['busy as a bee', 'bận tối mắt', '🐝'],
+    ['take it easy', 'cứ thư thả / bảo trọng', '🌿'], ['what\'s up?', 'có gì mới không? (chào)', '👋'], ['see ya', 'gặp sau nha', '👋'], ['cheers', 'cảm ơn; chúc sức khoẻ (cụng ly)', '🍻']];
   const enOn = () => XL.get('en', true), enSpeakOn = () => XL.get('enSpeak', false);
   let enWords = null;
   function enPool() {
@@ -9588,45 +9674,51 @@
     return pool[0];
   }
   const enWordOf = (vi) => { const en = EN_DICT[vi]; return en ? { en, vi: vi.toLowerCase() } : null; };
-  // everyday lines for any job (2026-11-16: more English); some tasks also mix one of these in
-  const EN_IDLE = [["Let's get to work!", 'Bắt tay vào việc thôi!'], ['What a busy day!', 'Hôm nay bận rộn quá!'], ['We are doing great.', 'Mình đang làm tốt lắm.'],
-    ['Almost done!', 'Sắp xong rồi!'], ['Can you give me a hand?', 'Bạn giúp tôi một tay được không?'], ['No problem, I can do it.', 'Không sao, tôi làm được.'],
-    ['The weather is lovely today.', 'Hôm nay trời đẹp quá.'], ['I feel a bit tired.', 'Tôi thấy hơi mệt.'], ['Take your time.', 'Cứ từ từ thôi.'],
-    ['Good job, everyone!', 'Mọi người làm tốt lắm!'], ["I'll be right back.", 'Tôi quay lại ngay.'], ['Be careful!', 'Cẩn thận nhé!'],
-    ['What time is it?', 'Mấy giờ rồi nhỉ?'], ["Let's have lunch together.", 'Mình ăn trưa cùng nhau nhé.'], ['I love working here.', 'Tôi thích làm việc ở đây.'],
-    ['See you tomorrow!', 'Mai gặp lại nhé!'], ['Thank you so much!', 'Cảm ơn nhiều lắm!'], ['Never give up.', 'Đừng bao giờ bỏ cuộc.'],
-    ['Practice makes perfect.', 'Có công mài sắt, có ngày nên kim.'], ['Slow and steady wins the race.', 'Chậm mà chắc.'], ['Every day is a new chance.', 'Mỗi ngày là một cơ hội mới.']];
-  const enMix = (L, pick) => (Math.random() < 0.3 ? pick(EN_IDLE) : L);
+  // everyday lines (user 2026-11-17: "tiếng anh đang kiểu sách vở quá, muốn ngoài đời bản địa hơn") — how native speakers
+  // actually talk at work: contractions, gonna/wanna, fillers, slang and idioms; the Vietnamese is the natural meaning,
+  // with a short note after "·" when a phrase can't be guessed word by word.
+  const EN_IDLE = [["Alright, let's get this done.", 'Rồi, làm cho xong nào.'], ["Man, it's been a crazy day.", 'Trời, hôm nay loạn thật.'], ["We're killing it today!", 'Hôm nay mình làm đỉnh quá! · killing it = làm cực tốt'],
+    ['Almost there!', 'Sắp xong rồi!'], ['Mind giving me a hand?', 'Phụ tôi một tay được không?'], ['No worries, I got this.', 'Không sao, để tôi lo.'],
+    ['Gorgeous day, huh?', 'Trời đẹp ghê ha?'], ["I'm beat.", 'Mệt rã rời luôn. · beat = kiệt sức'], ['No rush.', 'Cứ thong thả.'],
+    ['Nice work, guys!', 'Làm tốt lắm mọi người!'], ['Be right back.', 'Quay lại liền. · hay viết BRB'], ['Heads up!', 'Coi chừng! · heads up = cảnh báo'],
+    ['What time is it, anyway?', 'Mà mấy giờ rồi nhỉ?'], ['Wanna grab lunch?', 'Đi ăn trưa không? · grab = ăn/lấy nhanh'], ['Honestly, I love this job.', 'Nói thật, tôi mê việc này.'],
+    ['Catch you tomorrow!', 'Mai gặp nha!'], ['Thanks a ton!', 'Cảm ơn nhiều nha! · a ton = rất nhiều'], ['Hang in there.', 'Ráng lên nhé. · hang in there = cố trụ'],
+    ["Let's call it a day.", 'Nghỉ thôi, hôm nay vậy đủ rồi. · call it a day = kết thúc ngày làm'], ["It's a piece of cake.", 'Dễ ợt. · piece of cake = dễ như ăn bánh'], ["Don't sweat it.", 'Đừng lo chuyện đó.'],
+    ['Sounds good to me.', 'Nghe ổn đó.'], ['My bad!', 'Lỗi tôi!'], ["I'm on it.", 'Tôi làm liền đây.'], ['Got it.', 'Hiểu rồi.'], ["That's what I'm talking about!", 'Phải vậy chứ!'],
+    ["Let's take five.", 'Nghỉ năm phút đi. · take five = nghỉ giải lao ngắn'], ['Long time no see!', 'Lâu quá không gặp!'], ["You're a lifesaver.", 'Bạn cứu tôi một bàn thua đó.'],
+    ['Easy does it.', 'Từ từ, nhẹ tay thôi.'], ["I'm starving.", 'Đói muốn xỉu. · starving = đói lắm'], ["Kinda chilly today, isn't it?", 'Hôm nay hơi lạnh ha?'],
+    ['Whatever works.', 'Sao cũng được, miễn ổn.'], ["Let's roll.", 'Đi thôi / bắt đầu thôi.'], ['Hold on a sec.', 'Đợi xíu.'], ["Can't complain.", 'Cũng ổn, không có gì phàn nàn.']];
+  const enMix = (L, pick) => (Math.random() < 0.35 ? pick(EN_IDLE) : L);
   // what someone says: [english, vietnamese]
   function enLine(v) {
     const pick = (a) => a[Math.floor(Math.random() * a.length)];
-    if (v.diner) return pick({ banhmi: [['This bread is really good!', 'Bánh mì này ngon thật!'], ['One more sandwich, please.', 'Cho tôi thêm một ổ nữa nhé.'], ['Is it spicy?', 'Cái này có cay không?'], ['Can I take it away?', 'Tôi mang đi được không?']],
-      cafe: [["I'd like an iced coffee, please.", 'Cho tôi một ly cà phê đá nhé.'], ['This juice is so fresh!', 'Nước ép này tươi quá!'], ['Less sugar, please.', 'Cho ít đường thôi nhé.'], ['Can I have the bill?', 'Cho tôi tính tiền nhé.']],
-      restaurant: [['The food here is delicious.', 'Đồ ăn ở đây ngon lắm.'], ['Can I have some more rice?', 'Cho tôi thêm ít cơm được không?'], ['A table for two, please.', 'Cho tôi một bàn hai người.'], ["I'm full. That was great!", 'Tôi no rồi. Ngon tuyệt!']] }[v.diner.id] || [['Yummy!', 'Ngon quá!']]);
-    if (v.tourist) { const at = v.tourist.stops[v.tourist.si]; if (at && at.shop) return pick([['How much is this?', 'Cái này bao nhiêu tiền?'], ['I am so hungry.', 'Tôi đói quá.'], ['Two drinks, please.', 'Cho hai ly nước nhé.'], ['Do you have anything cheaper?', 'Có món nào rẻ hơn không?'], ["I'll take this one.", 'Tôi lấy cái này.']]);
-      return pick([['What a beautiful farm!', 'Trang trại đẹp quá!'], ['Can I take a photo?', 'Tôi chụp ảnh được không?'], ['Look at that!', 'Nhìn kìa!'], ['I love this place.', 'Tôi thích nơi này quá.'],
-        ['Where is the restroom?', 'Nhà vệ sinh ở đâu ạ?'], ['The sea is so blue!', 'Biển xanh quá!'], ["Let's come back next year.", 'Năm sau mình quay lại nhé.'], ['Which way to the zoo?', 'Đường nào đến sở thú vậy?'], ['The air is so fresh here.', 'Không khí ở đây trong lành quá.']]); }
+    if (v.diner) return pick({ banhmi: [['Dude, this sandwich is amazing.', 'Ông ơi, ổ bánh mì này đỉnh thật.'], ["I'll grab another one.", 'Lấy thêm ổ nữa.'], ['Is it spicy? Like, really spicy?', 'Cay không? Kiểu cay thật á?'], ['To go, please.', 'Cho mang đi nhé. · to go = mang đi'], ['Can I get one with extra pâté?', 'Cho tôi một ổ thêm pa-tê nhé.']],
+      cafe: [['Can I get an iced coffee?', 'Cho một ly cà phê đá nhé. · Can I get… = cách gọi món tự nhiên'], ['Oh wow, this juice hits the spot.', 'Ly nước này đã thật. · hits the spot = đúng thứ đang thèm'], ['Go easy on the sugar.', 'Ít đường thôi nhé.'], ['Can we get the check?', 'Tính tiền giúp nhé. · check = hoá đơn (Mỹ)'], ["I'm just gonna sit here for a bit.", 'Tôi ngồi đây chút đã.']],
+      restaurant: [['This is so good.', 'Ngon dã man.'], ['Could I get a little more rice?', 'Cho xin thêm ít cơm được không?'], ['Table for two?', 'Bàn hai người nhé?'], ["I'm stuffed. That was awesome!", 'No căng rồi. Ngon xỉu! · stuffed = no căng'], ['What do you recommend?', 'Có món gì ngon giới thiệu không?']] }[v.diner.id] || [['Yum!', 'Ngon!']]);
+    if (v.tourist) { const at = v.tourist.stops[v.tourist.si]; if (at && at.shop) return pick([['How much is this one?', 'Cái này nhiêu vậy?'], ["I'm starving.", 'Đói muốn xỉu.'], ['Two drinks, please.', 'Cho hai ly nhé.'], ['Got anything cheaper?', 'Có gì rẻ hơn không?'], ["I'll take this one.", 'Lấy cái này.'], ['Do you take cards?', 'Có quẹt thẻ không?']]);
+      return pick([['Wow, this place is gorgeous!', 'Trời, chỗ này đẹp quá!'], ['Mind if I take a pic?', 'Chụp tấm hình được không? · pic = picture'], ['Whoa, check that out!', 'Ui, nhìn kìa! · check out = xem thử'], ['I could live here.', 'Ở đây luôn cũng được á.'],
+        ["Where's the restroom?", 'Nhà vệ sinh ở đâu vậy?'], ['The water is crazy blue!', 'Nước xanh dữ thần!'], ["We're so coming back.", 'Chắc chắn quay lại luôn.'], ["Which way's the zoo?", 'Sở thú đi đường nào?'], ['Smell that fresh air.', 'Hít thử không khí trong lành nè.'], ['This is so worth it.', 'Đáng đồng tiền thật.']]); }
     const T = v.task; if (!T) return null;
     let crop = null; if (T.plot != null) { const p = save.get('plot/' + T.plot); if (p && CROPS[p.crop]) crop = enWordOf(CROPS[p.crop].name); }
-    const c = crop || { en: 'vegetables', vi: 'rau' };
+    const c = crop || { en: 'crop', vi: 'rau' };
     switch (T.kind) {
-      case 'harvest': return [`The ${c.en} crop is ready to harvest!`, `${c.vi[0].toUpperCase() + c.vi.slice(1)} chín rồi, thu hoạch thôi!`];
-      case 'plant': case 'sow': return [`I'm planting ${c.en} seeds.`, `Em đang gieo hạt ${c.vi}.`];
-      case 'water': return pick([['The plants need water.', 'Cây cần nước.'], ["It's so hot today.", 'Hôm nay nóng quá.'], ['Not too much water!', 'Đừng tưới nhiều quá!'], [`Grow fast, little ${c.en}!`, `Mau lớn nhé, ${c.vi} nhỏ!`]]);
-      case 'hoe': return enMix(["I'm digging the soil.", 'Em đang xới đất.'], pick);
-      case 'weed': return ["I'm pulling the weeds.", 'Em đang nhổ cỏ.'];
-      case 'clear': return ["Let's clean up this plot.", 'Dọn ô đất này thôi.'];
-      case 'feed': case 'feedFish': return pick([['Time to eat, everyone!', 'Đến giờ ăn rồi các bạn ơi!'], ['The animals are hungry.', 'Các con vật đói rồi.']]);
-      case 'collect': return pick([["I'm collecting the eggs and milk.", 'Em đang nhặt trứng, vắt sữa.'], ['The hens laid lots of eggs today.', 'Hôm nay gà đẻ nhiều trứng ghê.'], ['Easy, easy, good girl.', 'Từ từ nào, ngoan lắm.']]);
-      case 'fish': case 'fishMiss': return pick([['I hope I catch a big fish!', 'Mong câu được con cá to!'], ['The fish are biting today.', 'Hôm nay cá cắn câu nhiều.'], ['Oh no, it got away!', 'Ôi không, nó sổng mất rồi!'], ['Patience is the key.', 'Kiên nhẫn là chìa khoá.']]);
-      case 'cook': case 'serve': return pick([["I'm cooking something delicious.", 'Em đang nấu món gì đó ngon lắm.'], ['Add a little salt.', 'Thêm chút muối nào.'], ['Dinner is ready!', 'Cơm tối xong rồi!'], ['It smells so good!', 'Thơm quá đi!']]);
-      case 'sell': case 'order': return ['This order is ready to go.', 'Đơn hàng này xong rồi, giao thôi.'];
-      case 'chop': case 'wood': return enMix(["I'm chopping firewood.", 'Em đang chẻ củi.'], pick);
-      case 'rest': return pick([['I need a short break.', 'Em nghỉ tay một chút.'], ["I'm thirsty. Time for some water.", 'Khát quá, uống chút nước thôi.'], ['Five more minutes!', 'Thêm năm phút nữa thôi!']]);
-      case 'guide': return ['Welcome! Please follow me.', 'Xin chào! Mời mọi người đi theo tôi.'];
-      case 'zooFeed': return ['Here is your lunch, little friend.', 'Bữa trưa của bạn đây, bạn nhỏ.'];
-      case 'sweep': return v.role === 'marketer' ? ['Come and visit our farm!', 'Mời mọi người ghé thăm trang trại!'] : ["Let's keep everything clean.", 'Giữ mọi thứ sạch sẽ nào.'];
-      case 'count': case 'shop': return ['Good morning! What would you like?', 'Chào buổi sáng! Bạn muốn dùng gì?'];
+      case 'harvest': return pick([[`This ${c.en} is good to go!`, `${c.vi[0].toUpperCase() + c.vi.slice(1)} được rồi, hái thôi! · good to go = sẵn sàng`], [`Whoa, look at the size of this ${c.en}!`, `Nhìn ${c.vi} to chưa kìa!`]]);
+      case 'plant': case 'sow': return pick([[`Gonna plant some ${c.en} here.`, `Định trồng ít ${c.vi} ở đây. · gonna = going to`], ['Fingers crossed these grow.', 'Cầu cho mấy cây này lên. · fingers crossed = cầu may']]);
+      case 'water': return pick([["They're thirsty.", 'Cây khát nước rồi.'], ["It's boiling out here.", 'Ngoài này nóng như lò. · boiling = nóng kinh khủng'], ["Don't drown 'em!", 'Đừng tưới úng chết tụi nó!'], ['Come on, grow already!', 'Lớn lẹ lên coi!']]);
+      case 'hoe': return enMix(['Breaking up the soil real quick.', 'Xới đất cái đã.'], pick);
+      case 'weed': return pick([['These weeds are a pain.', 'Đám cỏ dại này phiền ghê. · a pain = phiền phức'], ['Weeds again? Seriously?', 'Lại cỏ nữa hả? Thiệt luôn?']]);
+      case 'clear': return ["Let's tidy this spot up.", 'Dọn chỗ này cho gọn nào. · tidy up = dọn dẹp'];
+      case 'feed': case 'feedFish': return pick([['Chow time!', 'Tới giờ ăn rồi! · chow = đồ ăn (lóng)'], ["Alright, alright, I'm coming!", 'Rồi rồi, tới liền nè!']]);
+      case 'collect': return pick([['Egg run!', 'Đi lượm trứng nè!'], ['The girls laid a ton today.', 'Hôm nay mấy cô gà đẻ quá trời.'], ['Easy, girl. Good girl.', 'Từ từ nào, ngoan lắm.']]);
+      case 'fish': case 'fishMiss': return pick([["C'mon, big one…", 'Nào, con bự đi…'], ["They're biting today!", 'Hôm nay cá ăn mồi ngon!'], ['Ugh, it got away!', 'Trời, nó xổng mất rồi!'], ["Nothing yet. I'll wait it out.", 'Chưa có gì. Ráng ngồi chờ. · wait it out = chờ cho qua']]);
+      case 'cook': case 'serve': return pick([['Cooking up something good.', 'Đang nấu món ngon đây.'], ['Needs a pinch of salt.', 'Thiếu một nhúm muối.'], ["Food's ready!", 'Đồ ăn xong rồi!'], ['Smells amazing in here!', 'Trong này thơm quá trời!'], ['Order up!', 'Món ra rồi! · câu quen ở bếp nhà hàng']]);
+      case 'sell': case 'order': return pick([["This one's good to go.", 'Đơn này xong rồi, đi giao thôi.'], ['Another order out the door!', 'Thêm một đơn xuất kho!']]);
+      case 'chop': case 'wood': return enMix(['Gotta chop some firewood.', 'Phải đi chẻ củi đây. · gotta = got to = phải'], pick);
+      case 'rest': return pick([["I'm taking a quick break.", 'Nghỉ xíu.'], ["I'm parched.", 'Khát khô cổ. · parched = khát lắm'], ['Five more minutes…', 'Năm phút nữa thôi mà…']]);
+      case 'guide': return pick([['Hey everyone, follow me!', 'Mọi người ơi, đi theo mình nha!'], ['Stick together, guys!', 'Đi sát nhau nha mọi người!']]);
+      case 'zooFeed': return ['Here you go, buddy.', 'Của mày nè, anh bạn. · buddy = bạn thân (thân mật)'];
+      case 'sweep': return v.role === 'marketer' ? pick([['Come check out our farm!', 'Ghé trại bọn mình chơi nha!'], ["You don't wanna miss this!", 'Bỏ lỡ là tiếc đó!']]) : ["Let's keep it neat.", 'Giữ cho gọn gàng nào.'];
+      case 'count': case 'shop': return pick([['Hi there! What can I get you?', 'Chào bạn! Bạn dùng gì? · câu chuẩn khi bán hàng'], ['Anything else?', 'Còn gì nữa không ạ?']]);
       default: return pick(EN_IDLE);
     }
   }
@@ -9685,14 +9777,14 @@
   function enReport(t) {
     if (!enOn()) return '';
     const yd = mDayRec(t - 864e5), vis = (yd.visit || {}).people || 0, seen = Object.keys(enSeen()).length, pick = [];
-    if (yd.in) pick.push([`Yesterday the farm earned ${money(yd.in)} coins.`, `Hôm qua trang trại kiếm được ${money(yd.in)} xu.`]);
-    if (vis) pick.push([`${vis} tourists visited our farm yesterday.`, `Hôm qua có ${vis} du khách ghé thăm trang trại.`]);
-    if (yd.acts) pick.push([`Our team finished ${yd.acts} jobs.`, `Đội mình đã làm xong ${yd.acts} việc.`]);
-    pick.push(['Have a nice day, boss!', 'Chúc chủ nhân một ngày vui vẻ!']);
-    pick.push([['Everything is under control.', 'Mọi việc đều trong tầm kiểm soát.'], ['The team is working hard for you.', 'Cả đội đang làm việc chăm chỉ vì chủ nhân.'],
-      ['Please get some rest, boss.', 'Chủ nhân nghỉ ngơi đi ạ.'], ['Business is getting better every day.', 'Việc kinh doanh mỗi ngày một tốt hơn.'],
-      ['I will report to you every morning.', 'Em sẽ báo cáo chủ nhân mỗi sáng.'], ['Leave the farm to me.', 'Cứ giao trang trại cho em.'],
-      ['Our customers are very happy.', 'Khách hàng của mình rất hài lòng.']][dayNo(t) % 7]);
+    if (yd.in) pick.push([`We pulled in ${money(yd.in)} coins yesterday.`, `Hôm qua mình kiếm được ${money(yd.in)} xu. · pull in = thu về`]);
+    if (vis) pick.push([`We had ${vis} tourists drop by yesterday.`, `Hôm qua có ${vis} du khách ghé chơi. · drop by = ghé qua`]);
+    if (yd.acts) pick.push([`The crew knocked out ${yd.acts} jobs.`, `Cả đội làm xong ${yd.acts} việc. · knock out = làm xong nhanh gọn`]);
+    pick.push(['Have a good one, boss!', 'Chúc chủ nhân một ngày vui nha! · have a good one = chào kiểu thân mật']);
+    pick.push([["Don't worry, I've got it all under control.", 'Chủ nhân đừng lo, mọi thứ em nắm hết.'], ["The crew's been working their butts off.", 'Cả đội làm bán mạng luôn ạ. · work your butt off = làm cật lực'],
+      ['Go get some rest, boss.', 'Chủ nhân đi nghỉ đi ạ.'], ['Business is picking up.', 'Làm ăn đang khấm khá dần. · pick up = khá lên'],
+      ["I'll keep you posted.", 'Có gì em báo chủ nhân liền. · keep sb posted = báo tin thường xuyên'], ['Leave it to me.', 'Cứ để em lo.'],
+      ['The customers are loving it.', 'Khách mê lắm ạ.']][dayNo(t) % 7]);
     const [en, vi] = pick[dayNo(t) % pick.length];
     return `📘 <b>${en}</b> <span style="opacity:.75">(${vi})</span>${seen ? ` · chủ nhân đã gặp <b>${seen}</b> từ tiếng Anh` : ''}`;
   }
