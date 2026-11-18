@@ -690,6 +690,7 @@
     // random gains, and its own timer (not tied to frames). Public-domain folk songs, no voices.
     // Songs: [midi, length] melody + [chord, length] chords; `tick: true` = lengths in 16ths, else 8ths (doubled on load).
     // pick = pickup length (same unit), meter = beats per bar (3 = waltz), swing = lazy off-beats.
+    const mineTracks = []; let mineNow = null;
     const country = (() => {
       const CHC = { C: [48, 52, 55], F: [53, 57, 60], G: [55, 59, 62], G7: [55, 59, 62, 65], D: [50, 54, 57], D7: [50, 54, 57, 60], Am: [57, 60, 64] };
       const SONGS = [
@@ -896,22 +897,27 @@
           ['noel-11.mp3', 'Angels We Have Heard on High'], ['noel-12.mp3', 'Oh, Little Town of Bethlehem'], ['noel-13.mp3', 'Deck the Halls A'], ['noel-14.mp3', 'It Came Upon a Midnight Clear'], ['noel-15.mp3', 'Jesu, Joy of Man\'s Desiring'], ['noel-16.mp3', 'Oh Holy Night'], ['noel-17.mp3', 'What Child is This'], ['noel-18.mp3', 'Holiday Weasel'], ['noel-19.mp3', 'Dance of the Tuba Plum Fairy']],
         spooky: [['spooky-01.mp3', 'Ghost Story'], ['spooky-02.mp3', 'Myst on the Moor'], ['spooky-03.mp3', 'Danse Macabre'], ['spooky-04.mp3', 'Krampus Workshop'], ['spooky-05.mp3', 'Netherworld Shanty'], ['spooky-06.mp3', 'One-eyed Maestro'], ['spooky-07.mp3', 'Miri\'s Magic Dance'], ['spooky-08.mp3', 'Folk Round'], ['spooky-09.mp3', 'Gothamlicious']],
         tet: [['tet-01.mp3', 'Shenyang'], ['tet-02.mp3', 'Guzheng City'], ['tet-03.mp3', 'Senbazuru'], ['tet-04.mp3', 'Ishikari Lore'], ['tet-05.mp3', 'Ripples'], ['tet-06.mp3', 'Finding Movement'], ['tet-07.mp3', 'Nu Flute'], ['tet-08.mp3', 'Eastern Thought']] };
+      const BASE = Object.fromEntries(Object.entries(LISTS).map(([k, v]) => [k, v.slice()]));
+      function mineMerge() { // the owner's files (blob: URLs) join their playlist; 'all' joins every one
+        for (const k of Object.keys(BASE)) LISTS[k] = BASE[k].concat(mineTracks.filter((m) => m.list === k || m.list === 'all').map((m) => [m.url, m.name, m.id]));
+        if (listK !== 'mine') { tracks = LISTS[listK] || TRACKS; tOrder = []; }
+      }
       let audio = null, tOrder = [], tLast = -1, tErr = 0, useSynth = false, pauseT = 0, listK = 'country', tracks = TRACKS;
       function trackSetup() {
         if (audio) return true;
         try {
           audio = new Audio(); audio.preload = 'auto';
           ctx.createMediaElementSource(audio).connect(bus);
-          audio.addEventListener('ended', () => nextTrack());
+          audio.addEventListener('ended', () => { if (listK === 'mine') { mineNow = null; audio.pause(); return; } nextTrack(); });
           audio.addEventListener('playing', () => { tErr = 0; });
-          audio.addEventListener('error', () => { if (++tErr >= 3) { if (listK === 'country') useSynth = true; audio.pause(); } else nextTrack(); });
+          audio.addEventListener('error', () => { if (listK === 'mine') { mineNow = null; audio.pause(); return; } if (++tErr >= 3) { if (listK === 'country') useSynth = true; audio.pause(); } else nextTrack(); });
           return true;
         } catch (e) { useSynth = true; return false; }
       }
       function nextTrack() {
         if (!tOrder.length) { tOrder = tracks.map((_, i) => i).sort(() => Math.random() - 0.5); if (tOrder[0] === tLast && tOrder.length > 1) tOrder.push(tOrder.shift()); }
         tLast = tOrder.shift(); name = tracks[tLast][1];
-        audio.src = './forest-sounds/' + tracks[tLast][0];
+        audio.src = /^(blob|data):/.test(tracks[tLast][0]) ? tracks[tLast][0] : './forest-sounds/' + tracks[tLast][0];
         if (on) audio.play().catch(() => {});
       }
       function shuffle() { order = SONGS.map((_, i) => i).sort(() => Math.random() - 0.5); if (order[0] === last && order.length > 1) order.push(order.shift()); }
@@ -936,7 +942,7 @@
           const L = listIn === true ? 'country' : listIn || null, want = !!L;
           if (want && !setup()) return;
           if (want && L !== listK) { // another playlist: start it fresh
-            listK = L; tracks = LISTS[L] || TRACKS; tOrder = []; tLast = -1; tErr = 0; name = '';
+            listK = L; tracks = L === 'mine' && mineNow ? [[mineNow.url, mineNow.name]] : LISTS[L] || TRACKS; tOrder = []; tLast = -1; tErr = 0; name = '';
             if (L !== 'country' && useSynth) useSynth = false; // theme files are tried again
             if (on && audio) { if (useSynth) audio.pause(); else nextTrack(); }
           }
@@ -958,6 +964,9 @@
         peak() { if (!probe) return 0; const d = new Float32Array(probe.fftSize); probe.getFloatTimeDomainData(d); let p = 0, a = 0; for (const v of d) { p = Math.max(p, Math.abs(v)); a += v * v; } return { peak: p, rms: Math.sqrt(a / d.length), gain: bus.gain.value }; },
         skip() { if (audio && !useSynth) return nextTrack(); if (order.length) { last = order.shift(); pos = -4; chord = null; plan = []; } },
         tracks: () => TRACKS.map((T) => T[1]),
+        mineMerge,
+        restart() { if (listK === 'mine' && mineNow) { tracks = [[mineNow.url, mineNow.name]]; tOrder = []; if (on && audio) nextTrack(); } },
+        src: () => (audio ? audio.src : ''),
         mode: () => (useSynth || !audio ? 'synth' : 'tracks'),
         synth(v) { useSynth = !!v; if (audio && v) audio.pause(); }, // tests
         arrangement: () => (arr ? { ...arr, pass } : null),
@@ -965,6 +974,22 @@
       };
     })();
     let playing = '';
+    // ── 🎶 Nhạc của tôi (user 2026-11-18): files stay on this device (IndexedDB 'forest-mymusic'), never synced or uploaded
+    const MINE_LISTS = { noel: '🎄 Giáng sinh', country: '🌾 Ban ngày', spooky: '🎃 Halloween', tet: '🧧 Tết, Trung thu', all: '🔁 Mọi lúc' };
+    const mineDb = () => new Promise((ok, no) => { try { const r = indexedDB.open('forest-mymusic', 1); r.onupgradeneeded = () => r.result.createObjectStore('tracks', { keyPath: 'id' }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); } catch (e) { no(e); } });
+    const mineTx = async (mode, fn) => { const db = await mineDb(); return new Promise((ok, no) => { const tx = db.transaction('tracks', mode), st = tx.objectStore('tracks'); const r = fn(st); tx.oncomplete = () => { db.close(); ok(r && r.result); }; tx.onerror = () => { db.close(); no(tx.error); }; }); };
+    const mineMusic = {
+      ready: null,
+      async load() { try { const all = await mineTx('readonly', (st) => st.getAll()); mineTracks.forEach((m) => URL.revokeObjectURL(m.url)); mineTracks.length = 0; (all || []).sort((a, b) => a.added - b.added).forEach((r) => mineTracks.push({ id: r.id, name: r.name, list: r.list, size: r.blob.size, url: URL.createObjectURL(r.blob) })); } catch (e) {} country.mineMerge(); return mineTracks; },
+      async add(file, list = 'noel') { const id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name = String(file.name || 'Bài hát').replace(/\.[a-z0-9]{2,4}$/i, '').slice(0, 80); await mineTx('readwrite', (st) => st.put({ id, name, list, blob: file, added: Date.now() })); return this.load(); },
+      async del(id) { if (mineNow && mineNow.id === id) mineNow = null; await mineTx('readwrite', (st) => st.delete(id)); return this.load(); },
+      async setList(id, list) { const r = await mineTx('readonly', (st) => st.get(id)); if (!r) return; r.list = list; await mineTx('readwrite', (st) => st.put(r)); return this.load(); },
+      play(id) { const m = mineTracks.find((x) => x.id === id); if (!m) return; mineNow = { id, url: m.url, name: m.name }; soundPref.real = true; if (!soundPref.realVol) soundPref.realVol = 0.35; soundPref.muted = false; country.restart(); },
+      stop() { mineNow = null; },
+      list: () => mineTracks.map((m) => ({ id: m.id, name: m.name, list: m.list, size: m.size })),
+      now: () => mineNow && mineNow.name,
+      lists: MINE_LISTS,
+    };
     const countryOn = (ph) => soundPref.country === 'all' || (soundPref.country !== 'off' && ph.night < 0.5); // night stays lo-fi for sleep
     function themeMusicKey() {
       if (soundPref.themeMusic === false) return null;
@@ -975,7 +1000,7 @@
       // two separate channels (user 2026-11-17): 🎻 real music (country by day / theme playlists) with its own switch + volume,
       // and the 🎵 lo-fi with its own. The lo-fi only rests while a real track is actually playing.
       const real = soundPref.real !== false, key = real ? themeMusicKey() : null, farmTime = real && !key && countryOn(ph);
-      const list = key || (farmTime ? 'country' : null);
+      const list = mineNow ? 'mine' : key || (farmTime ? 'country' : null);
       country.set(list);
       if (!soundPref.music || (list && country.audible())) { mNext = 0; playing = ''; return; }
       playing = '';
@@ -1065,7 +1090,7 @@
       rms() { if (!meter) return 0; const d = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); const w = Math.round(ctx.sampleRate * 0.05); let m = 0; for (let i = 0; i + w <= d.length; i += w >> 1) { let a = 0; for (let j = i; j < i + w; j++) a += d[j] * d[j]; m = Math.max(m, a / w); } return Math.sqrt(m); },
       solo(on, keepStream) { solo = !!on; if (bed) for (const k in bed) bed[k].g.gain.value = keepStream && k === 'stream' ? 0.06 : 0;; country.pref(); },
       isSolo: () => solo,
-      playing: () => country.playing() || playing, carols: () => country.lists().noel, countrySongs: () => country.songs(), countrySkip: () => country.skip(), country,
+      playing: () => country.playing() || playing, carols: () => country.lists().noel, countrySongs: () => country.songs(), countrySkip: () => { if (mineNow) mineNow = null; else country.skip(); }, country, mine: mineMusic,
       sample: (group, gain, rate) => playSample(group, W / 2, gain, rate),
       pass(fn) { soloPass = true; try { return fn(); } finally { soloPass = false; } },
       state: () => (ctx ? `${ctx.state} muted=${soundPref.muted} forest=${soundPref.on}@${soundPref.vol} music=${soundPref.music}@${soundPref.musicVol} real=${soundPref.real !== false}@${soundPref.realVol} gains=${master.gain.value.toFixed(2)}/${musicBus.gain.value.toFixed(2)} bed=${!!bed} step=${mStep} samples=${Object.entries(samples).map(([k, v]) => k + ':' + v.length).join(',')}` : 'no-context'),
@@ -6389,7 +6414,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '15:53 18-11';
+    const build = '16:23 18-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -7313,7 +7338,7 @@
       const r = document.createElement('div');
       r.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;';
       const tog = document.createElement('button');
-      tog.style.cssText = 'width:74px;height:26px;cursor:pointer;padding:0;text-align:left;padding-left:6px;' + PIX;
+      tog.style.cssText = 'min-width:74px;white-space:nowrap;height:26px;cursor:pointer;padding:0 6px;text-align:left;' + PIX;
       const slider = document.createElement('input');
       slider.type = 'range'; slider.min = '0'; slider.max = String(max); slider.step = '5';
       slider.style.cssText = 'width:110px;accent-color:#7fd65a;cursor:pointer;';
@@ -7348,7 +7373,39 @@
     const enRow = document.createElement('div'); enRow.append(enTog, enSpk);
     const skipTog = document.createElement('button'); skipTog.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 0 0 4px;' + PIX; skipTog.textContent = '⏭ Bài khác';
     skipTog.addEventListener('click', (e) => { e.stopPropagation(); sfx.resume(); sfx.countrySkip(); setTimeout(paintAll, 300); });
-    soundPanel.append(forest.r, real.r, music.r, themeTog, countryTog, skipTog, enRow, hint, credit);
+    const MINE_LISTS = sfx.mine.lists, mineBtn = document.createElement('button'); mineBtn.style.cssText = 'height:26px;cursor:pointer;padding:0 6px;margin:4px 0 0 0;display:block;' + PIX;
+    const mineBox = document.createElement('div'); mineBox.style.cssText = 'display:none;margin-top:4px;padding:6px;border:1px dashed rgba(255,255,255,.25);border-radius:6px;max-width:300px;max-height:46vh;overflow:auto;';
+    let mineOpen = false;
+    const mineFile = document.createElement('input'); mineFile.type = 'file'; mineFile.accept = 'audio/*,.mp3,.m4a,.ogg,.wav'; mineFile.multiple = true; mineFile.style.display = 'none';
+    mineBtn.addEventListener('click', (e) => { e.stopPropagation(); mineOpen = !mineOpen; paintMine(); });
+    mineBox.addEventListener('click', (e) => e.stopPropagation());
+    let mineAddTo = 'noel';
+    mineFile.addEventListener('change', async () => { const fl = [...(mineFile.files || [])]; mineFile.value = ''; if (!fl.length) return; mineMsg = 'Đang lưu…'; paintMine(); try { for (const x of fl) await sfx.mine.add(x, mineAddTo); mineMsg = `Đã thêm ${fl.length} bài vào ${MINE_LISTS[mineAddTo]}`; } catch (err) { mineMsg = 'Không lưu được (trình duyệt hết chỗ hoặc chặn lưu trữ)'; } paintMine(); });
+    let mineMsg = '';
+    function paintMine() {
+      const L = sfx.mine.list(), now = sfx.mine.now();
+      mineBtn.textContent = `🎶 Nhạc của tôi (${L.length}) ${mineOpen ? '▴' : '▾'}`;
+      mineBox.style.display = mineOpen ? 'block' : 'none'; if (!mineOpen) return;
+      const opt = (sel) => Object.entries(MINE_LISTS).map(([k, v]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${v}</option>`).join('');
+      const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      mineBox.innerHTML = '<div style="font-size:11px;opacity:.75;line-height:1.35">File nhạc của bạn chỉ lưu trong trình duyệt của <b>máy này</b>, không đưa lên GitHub, không đồng bộ sang máy khác. Bài sẽ phát chung với nhạc của dịp đã chọn.</div>'
+        + `<div style="display:flex;gap:4px;align-items:center;margin:6px 0"><select data-addto style="max-width:130px">${opt(mineAddTo)}</select><button data-pick style="height:26px;cursor:pointer;padding:0 6px">➕ Chọn file…</button></div>`
+        + (mineMsg ? `<div style="font-size:11px;color:#9fe08a;margin-bottom:4px">${esc(mineMsg)}</div>` : '')
+        + (L.length ? L.map((m) => `<div style="display:flex;gap:4px;align-items:center;margin:3px 0;font-size:12px"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.name)}">${now === m.name ? '🔊 ' : ''}${esc(m.name)}</span><select data-list="${m.id}" style="max-width:96px;font-size:11px">${opt(m.list)}</select><button data-play="${m.id}" title="Phát ngay" style="height:22px;cursor:pointer;padding:0 5px">▶</button><button data-del="${m.id}" title="Xoá khỏi máy này" style="height:22px;cursor:pointer;padding:0 5px">✖</button></div>`).join('') : '<div style="font-size:12px;opacity:.6">(chưa có bài nào)</div>')
+        + (now ? `<button data-stop style="height:24px;cursor:pointer;padding:0 6px;margin-top:4px">⏹ Thôi, về nhạc thường</button>` : '');
+      mineBox.querySelectorAll('button').forEach((b) => { b.style.cssText += PIX; });
+    }
+    mineBox.addEventListener('change', async (e) => { const t = e.target; if (t.dataset.addto != null) { mineAddTo = t.value; return; } if (t.dataset.list) { await sfx.mine.setList(t.dataset.list, t.value); mineMsg = 'Đã đổi dịp phát'; paintMine(); } });
+    mineBox.addEventListener('click', async (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.pick != null) { mineMsg = ''; mineFile.click(); return; }
+      if (b.dataset.play) { sfx.resume(); sfx.mine.play(b.dataset.play); sfx.setPref(); paintAll(); setTimeout(paintMine, 400); return; }
+      if (b.dataset.del) { const m = sfx.mine.list().find((x) => x.id === b.dataset.del); if (m && confirm(`Xoá "${m.name}" khỏi máy này?`)) { await sfx.mine.del(m.id); mineMsg = 'Đã xoá'; paintMine(); } return; }
+      if (b.dataset.stop != null) { sfx.mine.stop(); setTimeout(paintMine, 300); }
+    });
+    sfx.mine.ready = sfx.mine.load().then(() => paintMine());
+    window.__forestMine = sfx.mine; // tests
+    soundPanel.append(forest.r, real.r, music.r, themeTog, countryTog, skipTog, mineBtn, mineBox, mineFile, enRow, hint, credit);
     function paintAll() {
       const audible = !soundPref.muted && (soundPref.on || soundPref.music || soundPref.real !== false);
       soundBtn.textContent = audible ? '🔊' : '🔇';
