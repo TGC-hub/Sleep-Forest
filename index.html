@@ -3553,6 +3553,8 @@
       : !count('cook') && level() >= 3 && kitchenSlots() > 0 && st.length >= 3 ? ['cook', 'mở bếp nấu món bán giá cao']
       : !count('woodcutter') && count('cook') ? ['woodcutter', 'bếp cần củi đều']
       : !count('seller') && goodsHeld > 30 ? ['seller', 'kho đầy hàng chưa bán']
+      : !count('gamemaster') && cyberHere() && st.length >= 2 ? ['gamemaster', 'phòng game (văn phòng máy tính cũ) có người trực 8h–22h mới mở cửa thu tiền du khách']
+      : !count('gamenight') && count('gamemaster') && cyberHere() && cyberNightNet(t) > ROLES.gamenight.wage * 1.5 ? ['gamenight', `phòng game mở 24/7, ca đêm 22h–8h chưa ai trực (dự tính lãi ca đêm ~${money(Math.round(cyberNightNet(t)))} xu)`]
       : !count('hr') && st.length >= 4 ? ['hr', 'đông người, cần chấm công và ghi sổ ai chăm ai lười']
       : !count('guide') && guideAllowed() ? ['guide', 'sở thú đã có khách: người hướng dẫn đón được gấp đôi số đoàn, thêm tiền tip']
       : !count('zookeeper') && zooIds().length >= 3 ? ['zookeeper', 'sở thú đông thú, cần người cho ăn']
@@ -3564,7 +3566,6 @@
       : !count('camphost') && xBuilt('camp', t) ? ['camphost', 'khu cắm trại có người đón thì khách đến đủ (không ai đón chỉ ~60%)']
       : !count('beekeeper') && xBuilt('bees', t) ? ['beekeeper', 'trại ong có người chuyên chăm: mật thêm 30%, nông dân đỡ phải ra đảo']
       : !count('gardener') && xBuilt('orchard', t) ? ['gardener', 'vườn quả có người chuyên chăm: quả thêm 30%, nông dân đỡ phải ra đảo']
-      : !count('gamemaster') && cyberHere() && st.length >= 2 ? ['gamemaster', 'phòng game (văn phòng máy tính cũ) có người trực 8h–22h mới mở cửa thu tiền du khách']
       : !count('host') && innLv() >= 1 ? ['host', 'homestay có lễ tân thì khách đến đủ (không có chỉ một nửa)']
       : !count('artisan') && millLv() >= 2 ? ['artisan', 'xưởng chế biến đã có 4 thùng, cần thợ chuyên ủ và coi hầm']
       : !count('marketer') && level() >= 3 && (guideAllowed() || xBuilt('banhmi', t) || xBuilt('cafe', t) || xBuilt('restaurant', t)) ? ['marketer', 'quảng cáo kéo thêm đoàn du khách (vé, tip, ăn uống ở phố)']
@@ -4054,7 +4055,7 @@
     const r = JOBS.payroll(t, boss) || (mBroke() ? null : JOBS.boss(t, boss));
     if (r) { r.text = `${r.text} (duyệt lúc đang nghỉ tay)`; r.big = true; mRecord(boss.id, t, [r]); }
   }
-  const mOnShift = (w, t = farmNow()) => { if (lifeOff(w, t)) return false; const h = mLocalH(t); if ((ROLES[w.role] || {}).night) return h >= BAR_OPEN || h < BAR_CLOSE - 24; { const sh = (ROLES[w.role] || {}).shift; if (sh) { if (h >= sh[0] && h < sh[1]) return true; const o = h >= sh[1] && mOT(w.id, t); return !!(o && o.until > sh[1] && h < o.until); } } if (h >= MWORK[0] && h < MWORK[1]) return true; if (h < MWORK[0]) { const y = mOT(w.id, t - 864e5); return !!(y && y.until > 24 && h + 24 < y.until); } const o = h >= MWORK[1] && mOT(w.id, t); return !!(o && o.until > 0 && h < o.until); };
+  const mOnShift = (w, t = farmNow()) => { if (lifeOff(w, t)) return false; const h = mLocalH(t); if ((ROLES[w.role] || {}).night) { const nh = ROLES[w.role].nightH; return nh ? h >= nh[0] || h < nh[1] : h >= BAR_OPEN || h < BAR_CLOSE - 24; } { const sh = (ROLES[w.role] || {}).shift; if (sh) { if (h >= sh[0] && h < sh[1]) return true; const o = h >= sh[1] && mOT(w.id, t); return !!(o && o.until > sh[1] && h < o.until); } } if (h >= MWORK[0] && h < MWORK[1]) return true; if (h < MWORK[0]) { const y = mOT(w.id, t - 864e5); return !!(y && y.until > 24 && h + 24 < y.until); } const o = h >= MWORK[1] && mOT(w.id, t); return !!(o && o.until > 0 && h < o.until); };
   const otRate = (w) => ((ROLES[w.role] || {}).wage || 0) / (MWORK[1] - MWORK[0]) * 2; // coins per overtime hour
   const shiftEndH = (w) => ((ROLES[w.role] || {}).shift || [0, MWORK[1]])[1]; // 18h, the food stalls 22h
   const otCost = (w, until, from = shiftEndH(w)) => Math.round(otRate(w) * Math.max(0, until - Math.max(from, shiftEndH(w))));
@@ -4860,15 +4861,17 @@
   // from level 2 the counter also sells cup noodles + soft drinks. Costs: power per machine-hour, the snacks bought in.
   // Three levels like every place (FAC.cyber). On the PC the Claude sessions that are working keep their seats: players
   // are only drawn on the stools nobody is sitting on.
-  const CYBER = { seats: 6, open: 8, close: 22, power: 2, session: 1.5, snackCost: 0.45,
-    curve: [[8, 11, 0.45], [11, 14, 0.6], [14, 17, 0.7], [17, 20, 0.85], [20, 22, 0.95]] };
+  const CYBER = { seats: 6, open: 0, close: 24, power: 2, session: 1.5, snackCost: 0.45,
+    curve: [[0, 2, 0.75], [2, 4, 0.45], [4, 7, 0.2], [7, 8, 0.3], [8, 11, 0.45], [11, 14, 0.6], [14, 17, 0.7], [17, 20, 0.85], [20, 24, 0.95]], day: [8, 22] };
   FAC.cyber = { icon: '🎮', names: ['Phòng game', 'Cyber Game', 'TJ Esports Arena'], cost: [2500, 7000], lvl: [4, 6], line: 'cyber',
     what: ['6 máy, 10 xu/giờ, khách chơi tự do', 'máy mạnh, ghế gaming, bán mì ly + nước ngọt: khách đông ~1,4, 15 xu/giờ', 'đèn neon, giải đấu cuối tuần: khách đông ~1,8, 22 xu/giờ'] };
   Object.assign(FX, { cyberFee: [10, 15, 22], cyberRate: [1, 1.4, 1.8], cyberSnack: [0, 6, 9] });
-  ROLES.gamemaster = { name: 'Trực phòng game', icon: '🎮', ap: 4, wage: 30, hire: 150, jobs: ['cyber'], shift: [CYBER.open, CYBER.close] };
-  LINES.cyber = { name: '🎮 Phòng game', roles: ['gamemaster'] }; ROLE_LINE.gamemaster = 'cyber'; KIND_LINE.cyber = 'cyber';
+  ROLES.gamemaster = { name: 'Trực phòng game', icon: '🎮', ap: 4, wage: 30, hire: 150, jobs: ['cyber'], shift: CYBER.day };
+  ROLES.gamenight = { name: 'Trực game ca đêm', icon: '🌙', ap: 4, wage: 40, hire: 160, jobs: ['cyber'], night: true, nightH: [CYBER.day[1], CYBER.day[0]] }; // 22h–8h (user 2026-11-18: "mở 24/7, thuê thêm ca đêm")
+  LINES.cyber = { name: '🎮 Phòng game', roles: ['gamemaster', 'gamenight'] }; ROLE_LINE.gamemaster = 'cyber'; ROLE_LINE.gamenight = 'cyber'; KIND_LINE.cyber = 'cyber';
   const cyberHere = () => !!(FARM.isles || {}).cyber;
-  const cyberStaffed = (t = farmNow()) => mStaff().some((w) => w.role === 'gamemaster' && mOnShift(w, t));
+  const CYB_ROLES = ['gamemaster', 'gamenight'];
+  const cyberStaffed = (t = farmNow()) => mStaff().some((w) => CYB_ROLES.includes(w.role) && mOnShift(w, t));
   const cyberOpenNow = (t = farmNow()) => { const h = mLocalH(t); return cyberHere() && h >= CYBER.open && h < CYBER.close && cyberStaffed(t); };
   // share of the machines in use at hour h (0..1)
   function cyberOcc(t = farmNow(), L = facLv('cyber')) {
@@ -4878,11 +4881,12 @@
     return Math.min(1, seg[2] * draw * FX.cyberRate[L - 1]);
   }
   // a day's takings at a level (for the upgrade's payback): fee + snacks − power − snacks bought in
-  function cyberExpectDay(L, t = farmNow()) {
+  function cyberExpectDay(L, t = farmNow(), only) {
     let m = 0; const d0 = new Date(t); d0.setMinutes(30, 0, 0);
-    for (let h = CYBER.open; h < CYBER.close; h++) { d0.setHours(h); const used = CYBER.seats * cyberOcc(d0.getTime(), L); m += used * (FX.cyberFee[L - 1] - CYBER.power) + (used / CYBER.session) * FX.cyberSnack[L - 1] * (1 - CYBER.snackCost); }
+    for (let h = CYBER.open; h < CYBER.close; h++) { if (only && (h >= CYBER.day[0] && h < CYBER.day[1]) === (only === 'night')) continue; d0.setHours(h); const used = CYBER.seats * cyberOcc(d0.getTime(), L); m += used * (FX.cyberFee[L - 1] - CYBER.power) + (used / CYBER.session) * FX.cyberSnack[L - 1] * (1 - CYBER.snackCost); }
     return m;
   }
+  const cyberNightNet = (t = farmNow()) => cyberExpectDay(facLv('cyber'), t, 'night');
   const cyberRec = (t = farmNow()) => save.get('cyber/' + dayNo(t), { last: 0, in: 0, players: 0, hrs: 0 });
   JOBS.cyber = (t, w) => {
     if (!cyberHere()) return null;
@@ -4900,13 +4904,13 @@
     return { kind: 'cyber', line: 'cyber', text: `trực phòng game: ${n} lượt khách, ${String(Math.round(used * 10) / 10).replace('.', ',')} giờ máy${snack ? `, bán mì ly + nước ngọt ${money(snack)} xu` : ''} (+${money(fee + snack)} xu, điện ${money(Math.round(used * CYBER.power))} xu)`, ...spot, icon: '🎮', value: fee + snack - cost };
   };
   function cyberPanelHtml(head) {
-    const t = farmNow(), L = facLv('cyber'), rec = cyberRec(t), open = cyberOpenNow(t), gm = mStaff().filter((w) => w.role === 'gamemaster');
+    const t = farmNow(), L = facLv('cyber'), rec = cyberRec(t), open = cyberOpenNow(t), gm = mStaff().filter((w) => CYB_ROLES.includes(w.role));
     let x = head(`🎮 ${FAC.cyber.names[L - 1]}`);
-    x += `<div style="font-size:12px;opacity:.85;margin:4px 0">Khu văn phòng máy tính cũ giờ là phòng game cho du khách: ${CYBER.seats} máy, mở ${CYBER.open}h–${CYBER.close}h khi có người 🎮 trực. Thu ${FX.cyberFee[L - 1]} xu/giờ máy${FX.cyberSnack[L - 1] ? `, mì ly + nước ngọt ~${FX.cyberSnack[L - 1]} xu/khách` : ''}; điện ${CYBER.power} xu/giờ máy. Đông nhất buổi tối và cuối tuần; càng nhiều du khách, quảng cáo càng mạnh thì càng đông.</div>`;
-    x += row('Lúc này', open ? `🟢 đang mở · ~${Math.round(cyberOcc(t) * CYBER.seats)}/${CYBER.seats} máy có khách` : !gm.length ? '🔴 đóng: chưa thuê người 🎮 Trực phòng game' : mLocalH(t) < CYBER.open || mLocalH(t) >= CYBER.close ? `🔴 đóng (mở ${CYBER.open}h–${CYBER.close}h)` : '🔴 đóng: người trực đang nghỉ');
+    x += `<div style="font-size:12px;opacity:.85;margin:4px 0">Khu văn phòng máy tính cũ giờ là phòng game cho du khách: ${CYBER.seats} máy, mở 24/7: ca ngày ${CYBER.day[0]}h–${CYBER.day[1]}h có 🎮 Trực phòng game, ca đêm ${CYBER.day[1]}h–${CYBER.day[0]}h có 🌙 Trực game ca đêm; giờ nào không ai trực thì đóng. Thu ${FX.cyberFee[L - 1]} xu/giờ máy${FX.cyberSnack[L - 1] ? `, mì ly + nước ngọt ~${FX.cyberSnack[L - 1]} xu/khách` : ''}; điện ${CYBER.power} xu/giờ máy. Đông nhất buổi tối tới nửa đêm và cuối tuần, vắng nhất 4h–7h sáng; càng nhiều du khách, quảng cáo càng mạnh thì càng đông.</div>`;
+    x += row('Lúc này', open ? `🟢 đang mở · ~${Math.round(cyberOcc(t) * CYBER.seats)}/${CYBER.seats} máy có khách` : !gm.length ? '🔴 đóng: chưa thuê người 🎮 Trực phòng game' : !cyberStaffed(t) ? `🔴 đóng: giờ này ${mLocalH(t) >= CYBER.day[0] && mLocalH(t) < CYBER.day[1] ? 'chưa có 🎮 người trực ca ngày' : 'chưa có 🌙 người trực ca đêm'} (hoặc người trực đang nghỉ)` : '🔴 đóng');
     x += row('Hôm nay', `${Math.round(rec.players)} lượt khách · ${money(Math.round(rec.hrs))} giờ máy · thu ${money(Math.round(rec.in))} xu`);
-    x += row('Dự tính 1 ngày', `~${money(Math.round(cyberExpectDay(L, t)))} xu lãi (trước lương người trực ${ROLES.gamemaster.wage} xu)`);
-    x += row('Người trực', gm.length ? gm.map((w) => `${w.name}`).join(', ') : '<span style="color:#ffb08a">chưa có — quản lý sẽ tự thuê, hoặc thuê ở tab Nhân viên</span>');
+    x += row('Dự tính 1 ngày', `~${money(Math.round(cyberExpectDay(L, t)))} xu lãi cả 24h (ca đêm ~${money(Math.round(cyberNightNet(t)))} xu), trước lương người trực ${ROLES.gamemaster.wage} + ${ROLES.gamenight.wage} xu`);
+    x += row('Người trực', gm.length ? gm.map((w) => `${ROLES[w.role].icon} ${w.name}`).join(', ') + (gm.some((w) => w.role === 'gamenight') ? '' : ' · ca đêm chưa có người') : '<span style="color:#ffb08a">chưa có — quản lý sẽ tự thuê, hoặc thuê ở tab Nhân viên</span>');
     return x + facHtml('cyber');
   }
   // drawing: neon sign, the counter + attendant's PC, glowing game screens, players on the free stools
@@ -4949,9 +4953,9 @@
       if (player && VCREW && crewAtlas.complete) { const j = drawn++; depth(s.y + 7, (g) => xPerson(g, (VCREW.n - 9 - j * 2 + VCREW.n * 3) % VCREW.n, s.x, s.y - 2 - Math.abs(Math.sin(now / 260 + k)) * 0.6, 3, now)); }
     });
     if (open) depth(SKY, (g) => xLabel(g, f.x + 6, f.y + 12, `🎮 ${inUse}/${CYBER.seats} máy có khách`));
-    else if (cyberHere() && mLocalH(t) >= CYBER.open && mLocalH(t) < CYBER.close && !mStaff().some((w) => w.role === 'gamemaster')) depth(SKY, (g) => xLabel(g, f.x + 6, f.y + 12, '🎮 chưa có người trực'));
+    else if (cyberHere() && !mStaff().some((w) => w.role === (mLocalH(t) >= CYBER.day[0] && mLocalH(t) < CYBER.day[1] ? 'gamemaster' : 'gamenight'))) depth(SKY, (g) => xLabel(g, f.x + 6, f.y + 12, mLocalH(t) >= CYBER.day[0] && mLocalH(t) < CYBER.day[1] ? '🎮 chưa có người trực' : '🌙 chưa có người trực ca đêm'));
   }
-  window.__forestCyber = { occ: (t) => cyberOcc(t), expect: (L) => cyberExpectDay(L || facLv('cyber')), open: (t) => cyberOpenNow(t), rec: (t) => cyberRec(t), job: (t, w) => JOBS.cyber(t || farmNow(), w || mStaff()[0]) }; // tests
+  window.__forestCyber = { occ: (t) => cyberOcc(t), expect: (L) => cyberExpectDay(L || facLv('cyber')), open: (t) => cyberOpenNow(t), rec: (t) => cyberRec(t), job: (t, w) => JOBS.cyber(t || farmNow(), w || mStaff()[0]), night: (t) => cyberNightNet(t), want: (t) => { const p = mHireWant(t || farmNow()); return p && p.want[0]; }, onShift: (role, t) => mStaff().filter((w) => w.role === role).map((w) => mOnShift(w, t)) }; // tests
   // ── advertising (user 2026-11-14): a 📣 marketer hands out leaflets at the pier, posts online, hangs banners in town;
   // every marketer brings more tour groups and bigger ones. Ranks like a real job: trial → regular → professional →
   // team lead, each a training fee and some days in the job; a higher rank draws more visitors and earns more.
@@ -6385,7 +6389,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:32 18-11';
+    const build = '09:35 18-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6418,7 +6422,7 @@
       + (() => { const rv = save.get('life/review/' + w.id); return R.wage && w.role !== 'boss' ? row('📋 Tổng kết tuần', rv ? `chăm ${Math.round(rv.att * 100)}%${rv.d > 0 ? ` · ⬆️ +${rv.d} xu/ngày` : rv.d < 0 ? ` · ⬇️ ${rv.d} xu/ngày` : ' · giữ lương'}${rv.bonus ? ` · 🎁 ${money(rv.bonus)} xu` : ''}` : 'thứ Hai tới') + '<div style="font-size:11px;opacity:.7;margin:-2px 0 4px">Mỗi sáng thứ Hai: chăm ≥ 97% được +5% lương và thưởng nửa ngày lương, 90–97% thưởng 1/4 ngày lương, dưới 75% bị giảm 5% lương.</div>' : ''; })()
       + (() => { // shift + overtime (owner's buttons; the manager decides at 17:30 otherwise)
         const o = mOT(w.id, now), rate = otRate(w), end = shiftEndH(w), hNow = mLocalH(now), off = !mOnShift(w, now), cur = o && o.until > end ? `⏱️ tăng ca đến ${o.until > 24 ? (o.until - 24) + "h sáng" : o.until + "h"} (${o.by === 'owner' ? 'bạn cho' : 'quản lý cho: ' + (o.why || '')}) · ~${money(otCost(w, o.until))} xu` : o && o.by === 'boss' ? 'quản lý cho nghỉ đúng giờ' : 'không tăng ca';
-        if (R.night) return row('Ca làm', 'ca đêm (quầy bar)');
+        if (R.night) return row('Ca làm', R.nightH ? `ca đêm ${R.nightH[0]}h–${R.nightH[1]}h sáng` : 'ca đêm (quầy bar)');
         const ch = otChoices(w, hNow), late = hNow >= end;
         return row('Ca làm', `${((R.shift || [MWORK[0]])[0])}h–${end}h · ${cur}`) + (late && off && ch.length ? `<div style="margin:4px 0;color:#ffd84a"><b>📣 ${w.name} đã hết ca về nghỉ.</b> Gọi quay lại làm tăng ca (x2 lương, tính từ lúc gọi):</div>` : late && !ch.length ? '<div style="font-size:12px;opacity:.75">Đã quá giờ gọi tăng ca hôm nay (tối đa đến 24h).</div>' : '') + `<div style="font-size:11px;opacity:.75;margin:-2px 0 2px">Tăng ca x2 lương: ${rate ? '~' + money(rate) + ' xu/giờ' : 'quản lý không lấy lương'}. Trả vào ngày lương hôm sau theo giờ làm thật. Quản lý được quyền đổi lúc 17:30 nếu tình hình trại cần.</div><div>`
           + ch.map((u) => B(`ot:${w.id}:${u}`, `${off && late ? '📣 ' : ''}đến ${u}h${rate ? ' · ' + money(otCost(w, u, hNow)) : ''}`, true, o && o.until === u ? 'border-color:#7fd65a;' : '')).join('') + (late && off ? '' : B(`ot:${w.id}:0`, late ? 'Cho về nghỉ luôn' : 'Không tăng ca', true, !o || !o.until ? 'border-color:#7fd65a;' : '')) + '</div>';
@@ -6436,7 +6440,7 @@
         + (p.full ? `Đã đủ ${mMax()} người.` : p.hiredToday ? 'Hôm nay đã thuê 1 người, mai thuê tiếp.'
           : !p.cash ? `Chờ két đủ ~${money(p.need)} xu (phí thuê + 1 ngày lương, sau khi tính đủ lương mai).`
           : !p.paid ? `Chờ lãi mỗi ngày vượt lương ${p.R.wage} xu (hiện ~${money(p.prof)}).` : 'Sẽ thuê ngay trong ca làm.');
-    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter', 'artisan', 'host', 'marketer', 'gamemaster'];
+    const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter', 'artisan', 'host', 'marketer', 'gamemaster', 'gamenight'];
     return `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>🤝 Tuyển thêm</b> <span style="opacity:.7">(${st.length}/${mMax()} người)</span></div>`
       + `<div style="font-size:12px;margin:4px 0">${status}</div>`
       + roles.map((r) => { const R = ROLES[r], n = st.filter((x) => x.role === r).length;
@@ -7516,7 +7520,7 @@
     : role === 'gardener' && XISLE.orchard ? { x: XISLE.orchard.items[0].stand.c * 16 + 8, y: XISLE.orchard.items[0].stand.r * 16 + 8 }
     : role === 'camphost' && XISLE.camp ? { x: XISLE.camp.stand.c * 16 + 8, y: XISLE.camp.stand.r * 16 + 8 }
     : SHOP_OF[role] && XISLE[SHOP_OF[role]] ? { x: XISLE[SHOP_OF[role]].stand.c * 16 + 8, y: XISLE[SHOP_OF[role]].stand.r * 16 + 8 }
-    : role === 'gamemaster' && XISLE.cyber ? { x: XISLE.cyber.stand.c * 16 + 8, y: XISLE.cyber.stand.r * 16 + 8 }
+    : (role === 'gamemaster' || role === 'gamenight') && XISLE.cyber ? { x: XISLE.cyber.stand.c * 16 + 8, y: XISLE.cyber.stand.r * 16 + 8 }
     : role === 'accountant' && FARM.bank ? { x: FARM.bank.x + 25, y: FARM.bank.y + 50 }
     : role === 'bartender' && XISLE.bar ? { x: XISLE.bar.stand.c * 16 + 8, y: XISLE.bar.stand.r * 16 + 8 }
     : ['fisher', 'pondkeeper', 'angler'].includes(role) ? pondAt(1) : ['rancher', 'poultry'].includes(role) ? penAt('small') : role === 'cattle' ? penAt('big')
@@ -8033,7 +8037,7 @@
     signsNight(g, v, now, ph); // TJ FARM on the mountains + TJBank light up after dark
   }
   const ROLE_COL = { boss: '#ffd84a', farmer: '#9fe070', seller: '#ffb07a', fisher: '#7fd0ff', rancher: '#e8c0a0', cook: '#ff9ab0',
-    poultry: '#fff0a0', cattle: '#e8c0a0', pondkeeper: '#7fd0ff', angler: '#a0e0ff', woodcutter: '#d8a870', hr: '#d0c0ff', guide: '#ffb0e0', zookeeper: '#c8e0a0', beekeeper: '#ffd070', gardener: '#ffa0a0', camphost: '#a0d8a0', bartender: '#d0a0ff', accountant: '#a0c8ff', baker: '#f0c890', barista: '#90e0d0', waiter: '#f0a0c0', gamemaster: '#3df2ff' };
+    poultry: '#fff0a0', cattle: '#e8c0a0', pondkeeper: '#7fd0ff', angler: '#a0e0ff', woodcutter: '#d8a870', hr: '#d0c0ff', guide: '#ffb0e0', zookeeper: '#c8e0a0', beekeeper: '#ffd070', gardener: '#ffa0a0', camphost: '#a0d8a0', bartender: '#d0a0ff', accountant: '#a0c8ff', baker: '#f0c890', barista: '#90e0d0', waiter: '#f0a0c0', gamemaster: '#3df2ff', gamenight: '#9a8cff' };
   // ── the fishing lake (sand shore, water, a jetty) and the zoo (locked: shaded with a sign; open: its animals) ──
   function drawLake(now) {
     const L = FARM.lake; if (!L) return;
