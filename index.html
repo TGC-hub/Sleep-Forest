@@ -4839,14 +4839,14 @@
   KIND_LINE.market = 'shop';
 
   // ── homestay → guest house → TJ hotel: rooms filled each night (reputation, stars, a receptionist), booked at 21:00
-  const INN = { names: ['Homestay', 'Nhà nghỉ ven hồ', 'Khách sạn TJ'], cost: [3000, 7000, 15000], lvl: [5, 7, 9], rooms: [4, 8, 12], price: [60, 90, 140] };
+  const INN = { names: ['Homestay', 'Nhà nghỉ ven hồ', 'Khách sạn TJ'], cost: [3000, 7000, 15000], lvl: [5, 7, 9], rooms: [4, 8, 12], price: [180, 260, 400], spend: [40, 55, 80], clean: [15, 20, 30] }; // 2026-11-18 user: "60 xu/đêm rẻ quá" (was 60/90/140, +20 ăn uống, -8 dọn)
   ROLES.host = { name: 'Lễ tân', icon: '🛎️', ap: 3, wage: 35, hire: 180, jobs: ['inn'] };
   LINES.inn = { name: '🏨 Homestay, khách sạn', roles: ['host'] }; ROLE_LINE.host = 'inn';
   // the day's tour groups fill rooms too (2026-11-16: "nhà nghỉ, khách sạn cho khách du lịch"): +1% per visitor, up to +25%
   const innTourists = (t) => Math.min(0.25, ((mDayRec(t).visit || {}).people || 0) / 100);
   const innLv = () => Math.max(0, Math.min(3, save.get('inn/lv', 0)));
   const innOcc = (t) => { const L = innLv(); if (!L) return 0; const host = mStaff().some((w) => w.role === 'host'); return Math.max(0.1, Math.min(0.95, (0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t)) * (host ? 1 : 0.5))); };
-  const innExpect = (L, t = farmNow()) => { const occ = Math.max(0.1, Math.min(0.95, 0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t))); return INN.rooms[L - 1] * occ * (INN.price[L - 1] + 12); };
+  const innExpect = (L, t = farmNow()) => { const occ = Math.max(0.1, Math.min(0.95, 0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t))); return INN.rooms[L - 1] * occ * (INN.price[L - 1] + INN.spend[L - 1] - INN.clean[L - 1]); };
   JOBS.shophelp = (t, w) => shopHelp(t, w);
   JOBS.inn = (t, w) => { // the receptionist: make the beds, greet guests (an action every 2 hours, for the books and the map)
     if (!innLv()) return null;
@@ -4992,7 +4992,7 @@
   function innNight(t) {
     const L = innLv(), day = dayNo(t); if (!L || mLocalH(t) < 21 || save.get('inn/' + day)) return;
     const rooms = INN.rooms[L - 1], g = Math.max(0, Math.min(rooms, Math.round(rooms * innOcc(t) + (evRnd(day, 401) - 0.5) * 2)));
-    const rent = g * INN.price[L - 1], spend = g * 20, clean = g * 8;
+    const rent = g * INN.price[L - 1], spend = g * INN.spend[L - 1], clean = g * INN.clean[L - 1];
     save.set('inn/' + day, { g, rooms, rent, spend, L });
     if (g) { evBook(t, rent, 'Homestay'); evBook(t, spend, 'Khách lưu trú ăn uống'); evBook(t, -clean, 'Vật tư (cám, thuốc, củi)'); lineAdd(t, 'inn', rent + spend, clean); }
     mLog(t, bossId(), `🏨 ${INN.names[L - 1]} đêm nay ${g}/${rooms} phòng có khách: +${money(rent + spend - clean)} xu`, 0);
@@ -6389,7 +6389,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:39 18-11';
+    const build = '15:53 18-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
