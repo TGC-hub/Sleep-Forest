@@ -416,6 +416,7 @@
     let tab = ''; try { tab = sessionStorage.getItem('claude-forest-tab') || ''; if (!tab) { tab = Math.random().toString(36).slice(2, 8); sessionStorage.setItem('claude-forest-tab', tab); } } catch { tab = Math.random().toString(36).slice(2, 8); }
     const status = { state: cfg.token ? 'idle' : 'off', msg: '', at: cfg.lastSync || 0 };
     const listeners = [];
+    let kver = 0; const kcache = new Map(); // save.keys(prefix) cache, dropped whenever a key appears or is deleted
     const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch {} };
     const persistCfg = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(cfg)); } catch {} };
     persistCfg();
@@ -436,9 +437,9 @@
       for (const [k, e] of Object.entries(items || {})) {
         if (!e || typeof e.t !== 'number') continue;
         if (ep && e.v != null && e.t < ep && !RESET_KEEP.test(k)) continue;
-        if (newer(e, data.items[k])) { data.items[k] = e; changed.push(k); }
+        if (newer(e, data.items[k])) { data.items[k] = e; changed.push(k); kver++; }
       }
-      if (ep > ep0) for (const [k, e] of Object.entries(data.items)) if (e.v != null && e.t < ep && !RESET_KEEP.test(k)) { data.items[k] = { t: ep, v: null }; changed.push(k); }
+      if (ep > ep0) for (const [k, e] of Object.entries(data.items)) if (e.v != null && e.t < ep && !RESET_KEEP.test(k)) { data.items[k] = { t: ep, v: null }; changed.push(k); kver++; }
       if (changed.length) { persist(); notify(ep > ep0 ? null : changed); }
       return changed;
     }
@@ -506,7 +507,8 @@
       device: cfg.device, tab,
       get(k, def) { const e = data.items[k]; return e && e.v != null ? e.v : def; },
       set(k, v) {
-        data.items[k] = { t: Math.max(Date.now(), ((data.items[k] || {}).t || 0) + 1), v };
+        const old = data.items[k]; if ((old && old.v != null) !== (v != null)) kver++;
+        data.items[k] = { t: Math.max(Date.now(), ((old || {}).t || 0) + 1), v };
         if (this.__hold) { this.__held.add(k); return; } // inside batch(): write once at the end
         persist(); notify([k]); schedulePush();
       },
@@ -522,12 +524,12 @@
       wipe() {
         const t = Date.now();
         for (const [k, e] of Object.entries(data.items)) if (e.v != null && !RESET_KEEP.test(k)) data.items[k] = { t, v: null };
-        data.items['game/epoch'] = { t, v: t };
+        data.items['game/epoch'] = { t, v: t }; kver++;
         persist(); notify(null); schedulePush();
         return t;
       },
       _merge: (items) => mergeIn(items), // tests
-      keys(prefix) { return Object.keys(data.items).filter((k) => k.startsWith(prefix) && data.items[k].v != null); },
+      keys(prefix) { let c = kcache.get(prefix); if (!c || c.ver !== kver) { c = { ver: kver, list: Object.keys(data.items).filter((k) => k.startsWith(prefix) && data.items[k].v != null) }; if (kcache.size > 400) kcache.clear(); kcache.set(prefix, c); } return c.list.slice(); },
       onChange(f) { listeners.push(f); },
       sync: () => sync(),
       syncedAt: () => syncedAt,
@@ -5443,34 +5445,45 @@
     if (mWait.split('#')[0] === save.device) return '🗂️ Một tab khác của game trên máy này đang điều hành nhân viên — tab này chỉ xem (không tính tiền hai lần).';
     return `🖥️ Máy ${mWait.startsWith('pc-') ? 'PC' : 'điện thoại'} khác đang điều hành nhân viên — máy này chỉ xem (không tính tiền hai lần).`;
   }
+  // A long absence is caught up in ~60 ms slices, one per frame, so the page never freezes (2026-11-23: "mở lên lag, đơ":
+  // a day away was one ~100 s task on a phone). The away summary is written once, when the last slice is done.
+  let mCatch = null, mCatchEl = null;
+  function mCatchShow(p) {
+    if (p == null) { if (mCatchEl) { mCatchEl.remove(); mCatchEl = null; } return; }
+    if (!mCatchEl) { mCatchEl = document.createElement('div'); mCatchEl.style.cssText = 'position:fixed;left:50%;bottom:72px;transform:translateX(-50%);z-index:60;padding:6px 12px;border-radius:14px;background:rgba(40,28,18,.92);color:#ffe9b8;font:13px system-ui,sans-serif;pointer-events:none;white-space:nowrap'; document.body.appendChild(mCatchEl); }
+    mCatchEl.textContent = `⏳ Lan đang ghi sổ những giờ bạn vắng… ${Math.round(p * 100)}%`;
+  }
   function mCatchUp() {
-    if (!mHoldLease()) return;
+    if (!mHoldLease()) { mCatch = null; mCatchShow(null); return; }
     if (mEnsureBoss()) return;
     const real = farmNow();
     let last = save.get('mgr/last', 0);
     if (!last) { save.set('mgr/last', real); return; }
-    if (real - last < MSTEP) return;
-    const gap = real - last;
-    if (gap > MCATCH) last = real - MCATCH;
-    const live = gap <= 3 * MSTEP, base = farmOffset, fl = floaters.length, muted = [];
-    const sum = { from: save.get('mgr/last', 0), to: real, coins0: coins(), in: 0, out: 0, acts: 0, kinds: {}, hired: [], left: [], land0: land(), animals0: animalIds().length, lvl0: level() };
+    if (!mCatch) {
+      if (real - last < MSTEP) return;
+      const gap = real - last;
+      if (gap > MCATCH) last = real - MCATCH;
+      mCatch = { gap, live: gap <= 3 * MSTEP, from: last, sum: { from: save.get('mgr/last', 0), to: real, coins0: coins(), in: 0, out: 0, acts: 0, kinds: {}, hired: [], left: [], land0: land(), animals0: animalIds().length, lvl0: level() } };
+    }
+    const C = mCatch, live = C.live, base = farmOffset, fl = floaters.length, muted = [], t0 = performance.now();
     if (!live) for (const k of Object.keys(sfx)) if (typeof sfx[k] === 'function' && !['resume', 'setPref', 'state'].includes(k)) { muted.push([k, sfx[k]]); sfx[k] = () => {}; }
-    mRun = { live, sum };
+    mRun = { live, sum: C.sum };
     let t = last;
     try {
       save.batch(() => {
-        for (t = last + MSTEP; t <= real; t += MSTEP) { farmOffset = t - Date.now(); mStep(t); }
-        t -= MSTEP;
-        save.set('mgr/last', t);
+        for (let s = last + MSTEP; s <= real; s += MSTEP) { farmOffset = s - Date.now(); mStep(s); t = s; if (performance.now() - t0 > 60) break; }
+        if (t !== last) save.set('mgr/last', t);
       });
     } finally {
       farmOffset = base; mRun = null;
       for (const [k, f] of muted) sfx[k] = f;
       if (!live) floaters.length = fl;
     }
-    if (gap >= 30 * 60000) {
-      Object.assign(sum, { coins1: coins(), land1: land(), animals1: animalIds().length, lvl1: level() });
-      save.set('mgr/away', sum);
+    if (t + MSTEP <= real) { mNextCheck = 0; if (!live) mCatchShow((t - C.from) / Math.max(1, real - C.from)); return; } // more next frame
+    mCatch = null; mCatchShow(null);
+    if (C.gap >= 30 * 60000) {
+      Object.assign(C.sum, { to: real, coins1: coins(), land1: land(), animals1: animalIds().length, lvl1: level() });
+      save.set('mgr/away', C.sum);
       mAwayPending = true;
     }
   }
@@ -5478,18 +5491,17 @@
   function mTick(now) {
     if (now < mNextCheck) return;
     mNextCheck = now + 4000;
-    try { mUrgentTick(now); } catch (e) { console.warn('[Claude Forest] urgent: ' + e); }
-    try { photoTick(now); } catch (e) {}
+    if (!mCatch) { try { mUrgentTick(now); } catch (e) { console.warn('[Claude Forest] urgent: ' + e); } try { photoTick(now); } catch (e) {} }
     try { mCatchUp(); } catch (e) { console.warn('[Claude Forest] manager: ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' <- ') : e)); }
     // user 2026-11-10: when the owner opens the app the manager reports in her own words (not a table of numbers):
     // after being away (30 min+) or the first time in 3 hours; the old tables stay behind buttons
-    if (typeof openPanel === 'function' && farmPanel && !panelView && mWait !== 'sync' && mWait !== 'claim' && (mAwayPending || Date.now() - XL.get('briefAt', 0) > 3 * HOUR) && mStaff().length) {
+    if (!mCatch && typeof openPanel === 'function' && farmPanel && !panelView && mWait !== 'sync' && mWait !== 'claim' && (mAwayPending || Date.now() - XL.get('briefAt', 0) > 3 * HOUR) && mStaff().length) {
       mAwayPending = false; XL.set('briefAt', Date.now());
       const hh = new Date().getHours(); if (hh >= 5 && hh < 12) XL.set('morning', dayNo(Date.now()));
       openPanel({ kind: mBriefKind() });
     }
   }
-  window.__forestMgr = { boss: { score: (id, t) => mgrScore(mStaff().find((w) => w.id === id), t), swap: (id, by, why, t) => mSwapBoss(id, by || 'owner', why || '', t), review: (t) => mBossReview(t), eligible: (id, t) => mgrEligible(mStaff().find((w) => w.id === id), t), pay: (w) => wageOf(w), perm: (a, b) => mPermAct(a, b), invOff: (o) => mInvOff(o) }, forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z, b) => mTourArrive(n, z, b), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: mCatchUp, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
+  window.__forestMgr = { boss: { score: (id, t) => mgrScore(mStaff().find((w) => w.id === id), t), swap: (id, by, why, t) => mSwapBoss(id, by || 'owner', why || '', t), review: (t) => mBossReview(t), eligible: (id, t) => mgrEligible(mStaff().find((w) => w.id === id), t), pay: (w) => wageOf(w), perm: (a, b) => mPermAct(a, b), invOff: (o) => mInvOff(o) }, forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z, b) => mTourArrive(n, z, b), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: () => { let n = 0; do mCatchUp(); while (mCatch && ++n < 1e5); }, catching: () => !!mCatch, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
   window.__forestReset = { summary: () => runSummary(), runs: () => pastRuns(), html: (ask) => resetHtml({ ask }, (x) => x), go: () => gameReset() };
   window.__forestPondBox = null; window.__forestPond = { lv: () => facLv('pond'), gain: () => facGain('pond'), sim: (i) => simPond(i), fishes: () => FISHES };
@@ -6428,7 +6440,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '17:30 18-11';
+    const build = '09:17 23-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
