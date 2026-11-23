@@ -2143,6 +2143,8 @@
   // Coins / xp / inventory are per-device ledgers (bank/<device>) summed with the starting kit.
   const FARM = DATA.farm || { plots: [] };
   const HOUR = 3600e3, WET_FOR = 6 * HOUR, WET_RATE = 1.25, PEST_P = 0.02, PEST_KILL = 12 * HOUR, FERT_GAIN = 2 * HOUR, LAND_START = 6;
+  // weeds (2026-11-23, Avatar-style): roll per plot-hour like pests; a weedy bed grows at half speed until pulled by hand
+  const WEED_P = 0.05, WEED_SLOW = 0.5;
   const CROPS = {
     cai: { name: 'Củ cải', icon: '🥬', seed: 10, grow: 4, gold: 4, decay: 8, yield: 4, price: 5, lvl: 1, look: 'leafy', leaf: '#5cc44a', fruit: '#a6e463' },
     hanh: { name: 'Dưa leo', icon: '🥒', seed: 15, grow: 6, gold: 5, decay: 10, yield: 4, price: 7, lvl: 1, look: 'spiky', leaf: '#4fbf5a', fruit: '#e8f0d0' },
@@ -2173,12 +2175,21 @@
     shine: { name: 'Nho mẫu đơn', icon: '🍇', seed: 300, grow: 44, gold: 16, decay: 24, yield: 4, price: 150, lvl: 15, plv: 3, art: 'nho', look: 'bush', leaf: '#4aa83c', fruit: '#a8d060' },
     yubari: { name: 'Dưa lưới Nhật', icon: '🍈', seed: 350, grow: 50, gold: 16, decay: 24, yield: 3, price: 260, lvl: 15, plv: 3, art: 'dua', look: 'ground', leaf: '#3f9a4a', fruit: '#e8a040', stripe: true },
     chon: { name: 'Cà phê chồn', icon: '☕', seed: 320, grow: 56, gold: 18, decay: 30, yield: 5, price: 140, lvl: 15, plv: 3, art: 'caphe', look: 'bush', leaf: '#2f7a3a', fruit: '#a02a2a' },
+    // event seeds (2026-11-23, Avatar-style): sold only while the real-life theme is on (ev = themeNow() key); seeds
+    // already bought can be sown any time, the harvest keeps and sells any time
+    trangnguyen: { name: 'Hoa trạng nguyên', icon: '🌺', seed: 60, grow: 18, gold: 12, decay: 24, yield: 3, price: 70, lvl: 3, ev: 'noel', art: 'hoahong', look: 'flower', leaf: '#3f9a4a', fruit: '#e0283a' },
+    duahau: { name: 'Dưa hấu Tết', icon: '🍉', seed: 70, grow: 24, gold: 14, decay: 24, yield: 3, price: 90, lvl: 3, ev: 'tet', art: 'dua', look: 'ground', leaf: '#3f9a4a', fruit: '#2f8a3a', stripe: true },
+    quat: { name: 'Quất cảnh Tết', icon: '🍊', seed: 120, grow: 36, gold: 16, decay: 24, yield: 2, price: 220, lvl: 5, ev: 'tet', art: 'cam', look: 'bush', leaf: '#3f9a4a', fruit: '#ff9a1a' },
+    bingo: { name: 'Bí ngô Halloween', icon: '🎃', seed: 60, grow: 20, gold: 12, decay: 24, yield: 3, price: 75, lvl: 3, ev: 'halloween', art: 'dua', look: 'ground', leaf: '#3f9a4a', fruit: '#ff8a1a' },
+    khoaimon: { name: 'Khoai môn Trung thu', icon: '🥔', seed: 50, grow: 18, gold: 12, decay: 24, yield: 4, price: 45, lvl: 3, ev: 'trungthu', art: 'khoai', look: 'root', leaf: '#3f9a4a', fruit: '#a0407a' },
     bo034: { name: 'Bơ 034', icon: '🥑', seed: 280, grow: 60, gold: 20, decay: 30, yield: 3, price: 210, lvl: 15, plv: 3, art: 'bo', look: 'bush', leaf: '#3f8a3a', fruit: '#5a8a2a' },
   };
   // plot levels (2026-11-23 "ô đất cấp 2, 3 trồng cây xịn hơn, năng suất tốt hơn"): plotlv/<i> = levels bought (0-2)
   const PLOT_UP = { names: ['Đất thường', 'Đất tốt', 'Đất vàng'], cost: [600, 1800], lvl: [10, 15], grow: [1, 1.15, 1.3], yield: [1, 1.25, 1.5], pest: [1, 0.8, 0.6] };
   const plotLv = (i) => 1 + Math.max(0, Math.min(2, save.get('plotlv/' + i, 0)));
   const cropFits = (k, i) => (CROPS[k].plv || 1) <= plotLv(i);
+  const EV_NAME = { noel: 'Giáng sinh', tet: 'Tết', halloween: 'Halloween', trungthu: 'Trung thu' };
+  const cropOn = (k) => { const e = CROPS[k] && CROPS[k].ev; if (!e) return true; try { return !!themeNow()[e]; } catch (x) { return false; } }; // event seed on sale now
   const bestPlotLv = () => { let m = 1; for (let i = 0; i < land(); i++) m = Math.max(m, plotLv(i)); return m; };
   const TOOLS = {
     fert: { name: 'Phân bón', icon: '💩', price: 15, note: 'Rút ngắn 2 giờ' },
@@ -2300,31 +2311,33 @@
     const ck = simCache.get(key), sec = Math.floor(now / 1000);
     if (ck && ck.p === p && ck.sec === sec) return ck.out;
     const pk = key.startsWith('pond/'), C = DEFS[p.crop], PL = pk ? 1 : plotLv(i), growMs = (C.grow * HOUR) / (pk ? facFx('pondGrow', 'pond') : PLOT_UP.grow[PL - 1]); // the pond's level (2026-11-13); the plot's (2026-11-23)
-    let t = p.at, grown = p.grown || 0, pest = p.pest || 0, ripe = p.ripe || 0, dead = p.dead || 0;
+    let t = p.at, grown = p.grown || 0, pest = p.pest || 0, ripe = p.ripe || 0, dead = p.dead || 0, weed = pk ? 0 : p.weed || 0;
     for (let guard = 0; !ripe && !dead && t < now && guard < 5000; guard++) {
       if (pest) { if (pest + PEST_KILL <= now) dead = pest + PEST_KILL; break; }
       const hb = (Math.floor(t / HOUR) + 1) * HOUR, wetNow = p.wet > t;
-      const e = Math.min(now, hb, wetNow ? p.wet : Infinity), rate = wetNow ? WET_RATE : 1;
+      const e = Math.min(now, hb, wetNow ? p.wet : Infinity), rate = (wetNow ? WET_RATE : 1) * (weed ? WEED_SLOW : 1);
       if (growMs - grown <= (e - t) * rate) { ripe = t + (growMs - grown) / rate; grown = growMs; break; }
       grown += (e - t) * rate; t = e;
       if (t === hb && t - p.t0 >= HOUR && hash01(p.t0, i, hb) < PEST_P * (pk ? facFx('pondSick', 'pond') : PLOT_UP.pest[PL - 1])) pest = hb;
+      if (!pk && !weed && !pest && t === hb && t - p.t0 >= HOUR && hash01(p.t0, 500 + i, hb) < WEED_P) weed = hb;
     }
-    const out = { crop: p.crop, C, grown, ripe, pest, dead, wet: p.wet > now, progress: Math.min(1, grown / growMs) };
+    const out = { crop: p.crop, C, grown, ripe, pest, dead, wet: p.wet > now, progress: Math.min(1, grown / growMs), weed: ripe || dead ? 0 : weed, stolen: p.stolen || 0 };
+    const yb = (n) => Math.max(1, n - (p.stolen || 0)); // night thieves took some of a ripe bed
     if (dead) out.status = 'dead';
     else if (ripe) {
       const age = now - ripe, gold = C.gold * HOUR, decay = C.decay * HOUR;
       if (age >= gold + decay) { out.status = 'dead'; out.dead = ripe + gold + decay; out.withered = true; }
-      else if (age < gold) { out.status = 'ripe'; out.yield = pk ? C.yield + facFx('pondYield', 'pond') : Math.round(C.yield * PLOT_UP.yield[PL - 1]); out.left = gold - age; }
-      else { out.status = 'over'; out.over = (age - gold) / decay; out.yield = Math.max(1, Math.floor((pk ? C.yield + facFx('pondYield', 'pond') : Math.round(C.yield * PLOT_UP.yield[PL - 1])) * (1 - out.over))); out.left = gold + decay - age; }
+      else if (age < gold) { out.status = 'ripe'; out.yield = yb(pk ? C.yield + facFx('pondYield', 'pond') : Math.round(C.yield * PLOT_UP.yield[PL - 1])); out.left = gold - age; }
+      else { out.status = 'over'; out.over = (age - gold) / decay; out.yield = yb(Math.max(1, Math.floor((pk ? C.yield + facFx('pondYield', 'pond') : Math.round(C.yield * PLOT_UP.yield[PL - 1])) * (1 - out.over)))); out.left = gold + decay - age; }
     } else if (pest) { out.status = 'pest'; out.left = pest + PEST_KILL - now; }
-    else { out.status = 'grow'; out.left = (growMs - grown) / (out.wet ? WET_RATE : 1); }
+    else { out.status = 'grow'; out.left = (growMs - grown) / ((out.wet ? WET_RATE : 1) * (out.weed ? WEED_SLOW : 1)); }
     simCache.set(key, { p, sec, out });
     return out;
   }
   // rebase a plot at "now" (so later changes start from the true current state), then apply a change
   function editPlot(i, change, pond) {
     const key = pond ? `pond/${i}` : `plot/${i}`, now = farmNow(), s = pond ? simPond(i, now) : simPlot(i, now), p = save.get(key);
-    const snap = { crop: p.crop, t0: p.t0, at: now, grown: s.grown, wet: p.wet || 0, pest: s.pest, ripe: s.ripe, dead: s.dead || 0 };
+    const snap = { crop: p.crop, t0: p.t0, at: now, grown: s.grown, wet: p.wet || 0, pest: s.pest, ripe: s.ripe, dead: s.dead || 0, weed: s.weed || 0, stolen: p.stolen || 0 };
     change(snap, s, now);
     save.set(key, snap);
   }
@@ -2346,6 +2359,7 @@
     big: { name: 'Chuồng lớn', icon: '🐄', base: 6, step: 3, unit: 'chỗ', cost: [300, 800, 4000, 10000], lvl: [3, 5, 12, 18] },
     barn: { name: 'Kho', icon: '🏠', base: 3, step: 1, unit: 'đơn hàng/ngày', cost: [200, 500, 2500, 6000], lvl: [2, 4, 12, 18] },
     kitchen: { name: 'Bếp', icon: '🍳', base: 2, step: 1, unit: 'lò nấu', cost: [250, 600, 1200, 4000, 10000], lvl: [2, 4, 6, 12, 18] },
+    dog: { name: 'Chó canh trại', icon: '🐕', base: 1, step: 1, unit: 'chó', cost: [400, 1200, 3000], lvl: [3, 6, 10] }, // 2026-11-23: night thieves
     dorm: { name: 'Nhà ở nhân viên', icon: '🏘️', base: 12, step: 4, unit: 'người', cost: [1500, 3500, 7000, 15000, 30000], lvl: [3, 5, 7, 14, 20] },
   };
   const upg = (id) => Math.min(UPGRADES[id].cost.length, save.get(`upg/${id}`, 0));
@@ -2446,7 +2460,7 @@
     }
     const n = Math.max(book.n, upgValue('barn')), L = book.lvl; // a barn upgrade adds slots the same day
     const pool = [
-      ...Object.entries(CROPS).filter(([, C]) => C.lvl <= L && (C.plv || 1) <= bestPlotLv()).map(([k, C]) => [k, C.yield]),
+      ...Object.entries(CROPS).filter(([k, C]) => C.lvl <= L && (C.plv || 1) <= bestPlotLv() && cropOn(k)).map(([k, C]) => [k, C.yield]),
       ...Object.entries(FISHES).filter(([, F]) => F.lvl <= L && (F.pondLv || 1) <= facLv('pond')).map(([k, F]) => ['f:' + k, F.yield]),
       ...Object.values(ANIMALS).filter((A) => A.lvl <= L).map((A) => [A.meat || A.product, A.yield]),
       ...Object.entries(RECIPES).filter(([, R]) => R.lvl <= L && !R.base).map(([k]) => ['d:' + k, 1]),
@@ -2530,6 +2544,12 @@
       editPlot(i, (p) => { p.pest = 0; });
       floatAt(i, 'Hết sâu!', '#c8f0a0'); sfx.shake(FARM.plots[i].x); return true;
     },
+    weed(i) { // pull weeds by hand (free)
+      const s = simPlot(i);
+      if (!s.weed || (s.status !== 'grow' && s.status !== 'pest')) return false;
+      editPlot(i, (p) => { p.weed = 0; });
+      floatAt(i, 'Sạch cỏ!', '#c8f0a0'); sfx.rustle(FARM.plots[i].x); return true;
+    },
     harvest(i) {
       const s = simPlot(i);
       if (s.status !== 'ripe' && s.status !== 'over') return false;
@@ -2556,7 +2576,7 @@
     buy(k, n = 1) {
       const [kind, id] = k.split(':'), D = kind === 'seed' ? CROPS[id] : kind === 'fry' ? FISHES[id] : null;
       const price = D ? D.seed : TOOLS[k] ? TOOLS[k].price : 0;
-      if (!price || (D && D.lvl > level()) || coins() < price * n) return false;
+      if (!price || (D && D.lvl > level()) || (kind === 'seed' && !cropOn(id)) || coins() < price * n) return false;
       ledger(-price * n, 0, { [k]: n }); sfx.ding(300); return true;
     },
     sell(k, n) {
@@ -2915,7 +2935,7 @@
     const L = level(), dayEnd = (dayNo(t) + 1) * 864e5 + new Date(t).getTimezoneOffset() * 60000, D = mDemand(t);
     const cand = Object.entries(D.short).filter(([k]) => {
       const C = CROPS[k];
-      if (!C || C.lvl > L || !cropFits(k, i) || !mSeedAfford(k)) return false;
+      if (!C || C.lvl > L || !cropFits(k, i) || !(cropOn(k) || have('seed:' + k) > 0) || !mSeedAfford(k)) return false;
       return D.src[k] !== 'order' || t + (C.grow * HOUR) / WET_RATE < dayEnd;
     }).sort((a, b) => cropRank(a[0]) - cropRank(b[0]) || CROPS[a[0]].grow - CROPS[b[0]].grow)[0];
     if (cand) return { k: cand[0], src: D.src[cand[0]], order: D.src[cand[0]] === 'order' };
@@ -2924,7 +2944,7 @@
   }
   window.__forestPick = (t = farmNow()) => { const D = mDemand(t), p = mPickCrop(0, t); return { pick: p, short: Object.fromEntries(Object.entries(D.short).filter(([k]) => CROPS[k]).map(([k, q]) => [k, [q, D.src[k]]])) }; };
   function mPickBest(i, t) {
-    const L = level(), glut = mCropGlut(t), list = Object.entries(CROPS).filter(([k, C]) => C.lvl <= L && cropFits(k, i)).map(([k, C]) => {
+    const L = level(), glut = mCropGlut(t), list = Object.entries(CROPS).filter(([k, C]) => C.lvl <= L && cropFits(k, i) && (cropOn(k) || have('seed:' + k) > 0)).map(([k, C]) => {
       const ripe = t + C.grow * HOUR / WET_RATE, back = mNextWork(ripe);
       const ok = back - ripe <= C.gold * HOUR * 0.8;
       return { k, C, ok, score: mCropScore(k, glut) };
@@ -2939,7 +2959,7 @@
   const mClaims = new Map();
   const mFree = (k) => !(mClaims.get(k) > Date.now());
   function mLate(t) { const d = mDayRec(t); d.late = (d.late || 0) + 1; save.set(`mgr/day/${dayNo(t)}`, d); }
-  const mMinSeed = () => Math.min(...Object.values(CROPS).filter((C) => C.lvl <= level()).map((C) => C.seed));
+  const mMinSeed = () => Math.min(...Object.values(CROPS).filter((C) => C.lvl <= level() && !C.ev).map((C) => C.seed));
   // with a margin both ways, so a purse hovering at the line does not flip "hết vốn / đủ vốn" every few minutes
   const mBroke = () => { const line = mReserve() + mMinSeed(); return save.get('mgr/broke', false) ? coins() < line + mMinSeed() * 3 + 50 : coins() < line; };
   // (2026-11-10: the 3x rule is gone, see mCanInvest / mForecast) an investment (land, upgrade, hire, livestock):
@@ -3081,7 +3101,7 @@
     return g;
   }
   const mCropScore = (k, glut) => { const C = CROPS[k], n = (glut || {})[k] || 0; return ((C.yield * priceOf(k) - C.seed) / C.grow) * (n > 28 ? 0.4 : n > 14 ? 0.7 : 1); };
-  const mLandPayback = () => { const g = mCropGlut(farmNow()), best = Math.max(0, ...Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= bestPlotLv()).map((k) => mCropScore(k, g))); return best > 0 ? landPrice() / (best * 12 * 0.7) : 0; };
+  const mLandPayback = () => { const g = mCropGlut(farmNow()), best = Math.max(0, ...Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= bestPlotLv() && cropOn(k)).map((k) => mCropScore(k, g))); return best > 0 ? landPrice() / (best * 12 * 0.7) : 0; };
   // real rain (Open-Meteo, only while the app is open): the field gets watered for free, nobody carries water
   const mRainNow = () => { const k = xRealWeather(); return !!(k && k !== 'clear' && mRun && mRun.live); };
   function mRainStep(t) {
@@ -3207,13 +3227,13 @@
   // go through, so the farm keeps running); the moment her own money is there (wages + seed money kept back, no loan) she does the first item, whatever her usual rules
   // say (the owner chose it: no payback test, no approval asked). Items whose level is not reached yet are skipped, not
   // blocking. Done items drop off; an empty list = back to normal.
-  const PRIO_LINE = { small: 'ranch', big: 'ranch', kitchen: 'kitchen', barn: 'shop', dorm: 'staff' };
+  const PRIO_LINE = { small: 'ranch', big: 'ranch', kitchen: 'kitchen', barn: 'shop', dorm: 'staff', dog: 'field' };
   // the next plot to lift: the lowest level first (all to 2 before any to 3), then by number
   function plotNext() { let b = null; for (let i = 0; i < land(); i++) { const L = plotLv(i); if (L < 3 && level() >= PLOT_UP.lvl[L - 1] && (!b || L < b.L)) b = { i, L, cost: PLOT_UP.cost[L - 1] }; } return b; }
   // xu a day one plot gains going from level L to L+1 (best crop it can grow at each level, 70% busy)
   function plotPayback(L) {
     const g = mCropGlut(farmNow()), sc = (k, lv) => { const C = CROPS[k]; return ((Math.round(C.yield * PLOT_UP.yield[lv - 1]) * priceOf(k) - C.seed) / (C.grow / PLOT_UP.grow[lv - 1])) * ((g || {})[k] > 28 ? 0.4 : (g || {})[k] > 14 ? 0.7 : 1); };
-    const best = (lv) => Math.max(0, ...Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= lv).map((k) => sc(k, lv)));
+    const best = (lv) => Math.max(0, ...Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= lv && cropOn(k)).map((k) => sc(k, lv)));
     const gain = (best(L + 1) - best(L)) * 24 * 0.7; return gain > 0 ? PLOT_UP.cost[L - 1] / gain : 0;
   }
   function prioCatalog(t = farmNow()) {
@@ -3313,7 +3333,7 @@
     const L = [], R = mRisk(), br = mBrake(t), F = mForecast(t), end = coins() + F.inflow - F.outflow, glut = mCropGlut(t);
     L.push(`Mức: ${RISK[mRiskPick()].name}${br ? ` → đang phanh về ⚖️ Cân bằng đến ${new Date(br.until).toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric' })} (${br.why})` : ''}`);
     L.push(`🧮 Đến lương mai ${end >= 0 ? 'dư' : 'thiếu'} ~${money(Math.abs(end))} xu (sẽ thu ~${money(F.inflow)}, phải trả ${money(F.outflow)})`);
-    const crops = Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= bestPlotLv()).map((k) => [k, mCropScore(k, glut)]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const crops = Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= bestPlotLv() && cropOn(k)).map((k) => [k, mCropScore(k, glut)]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
     if (crops.length) L.push(`🌱 Gieo ưu tiên: ${crops.map(([k, v]) => `${CROPS[k].icon} ${CROPS[k].name} ~${Math.round(v)} xu/giờ/ô${xSeasonMul(k) > 1 ? ' (đúng mùa)' : ''}`).join(', ')}`);
     const open = orderBook(dayNo(t)).filter((o) => !o.done).length; if (open) L.push(`📦 ${open} đơn hàng: làm đơn có lãi (lỗ nhẹ vẫn làm để giữ uy tín), không kịp thì huỷ sớm`);
     const ln = mLoan().owed || 0; if (ln) L.push(`🏦 Nợ TJBank ${money(ln)} xu (lãi ~${money(ln * loanRate())} xu/ngày): dư tiền là trả ngay`);
@@ -3723,6 +3743,7 @@
       for (const id of penIds(sc)) { const s = simAnimal(id); if (s && s.status === 'sick' && mFree('a:' + id) && buySome('med', 1) && farm.cureAnimal(id)) return { kind: 'cure', text: `chữa bệnh cho ${s.A.icon} ${s.A.name}`, at: penAt(s.A.pen), icon: '💊' }; }
       if (sc.pond && level() >= 2) for (let i = 0; i < 3; i++) if (simPond(i).status === 'pest' && mFree('pond:' + i) && buySome('fishmed', 1) && farm.cureFish(i)) return { kind: 'cure', text: 'chữa bệnh cho lồng cá', at: pondAt(i), icon: '🧪' };
       for (const id of penIds(sc)) { const s = simAnimal(id); if (s && s.status !== 'dead' && s.hungry && mFree('a:' + id) && buySome('feed', s.A.feed) && farm.feedAnimal(id)) return { kind: 'feed', text: `cho ${s.A.icon} đang đói ăn`, at: penAt(s.A.pen), icon: '🥣' }; }
+      if (sc.plots) for (let i = 0; i < land(); i++) { const s = simPlot(i); if (s.weed && s.status === 'grow' && mFree('plot:' + i) && farm.weed(i)) return { kind: 'weed', text: `nhổ cỏ dại cho ${s.C.icon} ${s.C.name}`, at: plotAt(i), icon: '🌿', plot: i }; }
       return null;
     },
     // 2) what died: clear it and start again in the same go (crop for the orders first, the same animal if it pays, new fry)
@@ -3956,6 +3977,7 @@
       }
       { const U = UPGRADES.kitchen, n = upg('kitchen'), cost = U.cost[n]; if (cost && level() >= U.lvl[n] && [...Array(kitchenSlots()).keys()].every((s) => simCook(s).status !== 'empty') && mCanInvest(cost, { line: 'kitchen', key: 'up:kitchen', what: 'xây thêm lò bếp' }) && mFund(cost, { line: 'kitchen', key: 'up:kitchen', what: 'xây thêm lò bếp' }) && farm.upgrade('kitchen')) return { kind: 'upgrade', line: 'kitchen', text: `bếp kín lò, xây thêm lò (${cost} xu)`, at: barnAt(), icon: '🔨', big: true }; }
       { const U = UPGRADES.barn, n = upg('barn'), cost = U.cost[n]; if (cost && level() >= U.lvl[n] && orderBook(dayNo(t)).every((o) => o.done) && mCanInvest(cost, { line: 'shop', key: 'up:barn', what: 'mở rộng kho' }) && mFund(cost, { line: 'shop', key: 'up:barn', what: 'mở rộng kho' }) && farm.upgrade('barn')) return { kind: 'upgrade', line: 'shop', text: `giao hết đơn trong ngày, mở rộng kho nhận thêm đơn (${cost} xu)`, at: barnAt(), icon: '🔨', big: true }; }
+      { const dr = dogInvest(t); if (dr) return dr; }
       { const xr = xInvest(t, w); if (xr) return xr; }
       { const fr = facInvest(t, w); if (fr) return fr; }
       { const mr = millInvest(t) || innInvest(t) || boatInvest(t); if (mr) return mr; } // workshop, homestay, boat (2026-11-12) // a facility level (2026-11-12) // the islets (bee yard, orchard, campsite): cheaper than the zoo, steady income
@@ -4721,7 +4743,7 @@
       apply: (e, p, t) => { if (p === 'b') return 'Ngư dân chèo đi.'; ledger(0, 0, { fish: e.q }); evBook(t, -e.cost, 'Mua hàng ngoài'); return `Kho có thêm ${e.q} 🐟.`; } },
     gift: { icon: '🎁', free: true,
       ok: () => true,
-      make: (t, day) => { const C = Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= bestPlotLv()), g = C[Math.floor(evRnd(day, 71) * C.length)]; return { g, q: 4 + Math.floor(evRnd(day, 72) * 5) }; },
+      make: (t, day) => { const C = Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= bestPlotLv() && cropOn(k)), g = C[Math.floor(evRnd(day, 71) * C.length)]; return { g, q: 4 + Math.floor(evRnd(day, 72) * 5) }; },
       text: (e) => `Bà con trong làng mang sang ${e.q} ${GOODS[e.g].icon} ${GOODS[e.g].name} cảm ơn trại`,
       a: () => 'Nhận quà', b: () => '', auto: () => 'a', why: { a: '', b: '' },
       apply: (e, p, t) => { ledger(0, 0, { [e.g]: e.q }); return 'Em đã cất vào kho.'; } },
@@ -5133,7 +5155,7 @@
   const TAUNTS = ['Nghe nói bên đó nuôi gà mà gà còn gầy hơn que củi?', 'Tuần này trại tôi lại bán đắt hàng hơn đấy, cố lên nhé!', 'Khách bên tôi bảo trại các anh đi lạc mới tới được.', 'Nhân viên giỏi thì về trại tôi, lương cao hơn hẳn.', 'Hẹn gặp ở chợ phiên, xem ai bán hết hàng trước.', 'Trại tôi vừa mua thêm 3 con bò, các anh thì sao?'];
   function rivalWar(day) {
     if (hash01(day * 1000, 601, 1) > 0.35) return null;
-    const C = Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= bestPlotLv()); return C.length ? C[Math.floor(hash01(day * 1000, 602, 1) * C.length)] : null;
+    const C = Object.keys(CROPS).filter((k) => CROPS[k].lvl <= level() && (CROPS[k].plv || 1) <= bestPlotLv() && cropOn(k)); return C.length ? C[Math.floor(hash01(day * 1000, 602, 1) * C.length)] : null;
   }
   function rivalMul(k) { try { const d = dayNo(); return rivalWar(d) === k && !save.get('rival/ad/' + d) ? 0.85 : 1; } catch (e) { return 1; } }
   function rivalWeek(t) { const our = [1, 2, 3, 4, 5, 6, 7].reduce((a, k) => a + mOpNet(mDayRec(t - k * 864e5)), 0); return { our, them: Math.round(Math.max(800, Math.abs(our)) * (0.8 + hash01(Math.floor(dayNo(t) / 7) * 1000, 603, 1) * 0.5)) }; }
@@ -5147,6 +5169,40 @@
     const d = dayNo(t), k = rivalWar(d); if (!k || save.get('rival/ad/' + d) || mLocalH(t) < 9) return;
     const n = [...Array(land()).keys()].filter((i) => simPlot(i, t).crop === k).length + Math.floor(have(k) / 6);
     if (n >= 5 && mSpare() >= 300 && !mPaused(t)) rivalAd(t, 'boss');
+  }
+
+  // ── night thieves (2026-11-23, Avatar-style "hái trộm"): most nights someone from the rival farm may sneak over at ~2:30
+  // and pick part of every ripe bed left in the field (40%, at least 1 left). Guard dogs (Claudio + bought ones) drive
+  // them off; a caught thief's farm pays a fine. Processed once a day after 3:00 (theft/<day>), deterministic per day.
+  const DOG_GUARD = [0.35, 0.6, 0.8, 0.92];
+  const dogGuard = () => DOG_GUARD[Math.min(3, upg('dog'))];
+  function theftStep(t) {
+    const day = dayNo(t), h = mLocalH(t); if (h < 3 || save.get('theft/' + day) || level() < 3) return;
+    const night = t - (h - 2.5) * HOUR, p = rivalWar(day) || rivalWar(day - 1) ? 0.5 : 0.3;
+    if (evRnd(day, 811) > p) { save.set('theft/' + day, { none: 1 }); return; }
+    const ripe = [...Array(land()).keys()].filter((i) => { const a = simPlot(i, night), b = simPlot(i, t); return ['ripe', 'over'].includes(a.status) && ['ripe', 'over'].includes(b.status) && a.crop === b.crop && b.yield > 1; });
+    const dogs = upgValue('dog');
+    if (evRnd(day, 812) < dogGuard()) {
+      const fine = ripe.length ? 40 + 20 * dogs : 0;
+      if (fine) evBook(t, fine, 'Bồi thường');
+      save.set('theft/' + day, { caught: 1, fine, dogs });
+      mLog(t, bossId(), `🐕 Đêm qua có người ${RIVAL} lẻn sang trại, ${dogs > 1 ? `Claudio và ${dogs - 1} chó canh` : 'Claudio'} sủa đuổi chạy mất dép${fine ? `, bên đó phải đền ${fine} xu` : ''}`, fine);
+      return;
+    }
+    if (!ripe.length) { save.set('theft/' + day, { empty: 1 }); mLog(t, bossId(), `🥷 Đêm qua người ${RIVAL} lẻn sang định hái trộm nhưng ruộng không có gì chín, về tay không`, 0); return; }
+    const got = {}; let v = 0;
+    for (const i of ripe) { const s = simPlot(i, t), n = Math.min(s.yield - 1, Math.max(1, Math.floor(s.yield * 0.4))); if (n < 1) continue; editPlot(i, (q) => { q.stolen = (q.stolen || 0) + n; }); got[s.crop] = (got[s.crop] || 0) + n; v += n * priceOf(s.crop); }
+    save.set('theft/' + day, { lost: v, got, beds: ripe.length });
+    mLog(t, bossId(), `🥷 Đêm qua người ${RIVAL} lẻn sang hái trộm ${Object.entries(got).map(([k, n]) => `${n} ${GOODS[k].icon}`).join(', ')} (~${money(v)} xu) ở ${ripe.length} ô chín chưa thu`, -v);
+  }
+  window.__forestThief = { step: (t) => theftStep(t), week: (t) => theftWeek(t), guard: () => dogGuard(), invest: (t) => dogInvest(t), cropOn: (k) => cropOn(k), theme: () => themeNow(), plots: () => FARM.plots }; // tests
+  // the week's losses to thieves, and the manager buying a dog when that pays back
+  const theftWeek = (t) => [0, 1, 2, 3, 4, 5, 6].reduce((a, k) => a + ((save.get('theft/' + (dayNo(t) - k)) || {}).lost || 0), 0);
+  function dogInvest(t) {
+    const U = UPGRADES.dog, n = upg('dog'), cost = U.cost[n]; if (!cost || level() < U.lvl[n] || !mFree('up:dog')) return null;
+    const save7 = theftWeek(t) * (DOG_GUARD[n + 1] - DOG_GUARD[n]) / (1 - DOG_GUARD[n]), o = { line: 'field', key: 'up:dog', what: 'nuôi thêm chó canh trại', payback: save7 > 0 ? cost / (save7 / 7) : 0 };
+    if (!o.payback || o.payback > 20 || !mCanInvest(cost, o) || !mFund(cost, o) || !farm.upgrade('dog')) return null;
+    return { kind: 'upgrade', line: 'field', text: `tuần qua bị trộm ~${money(theftWeek(t))} xu, nuôi thêm chó canh trại (${money(cost)} xu, ${upgValue('dog')} chó)`, at: barnAt(), icon: '🐕', big: true };
   }
 
   // ── visitors' star reviews: 1-3 a day at 20:00; the week's average fills the homestay, festivals
@@ -5171,7 +5227,7 @@
   // ── collections: everything ever caught / cooked / made / grown; a full set gives a badge (+2 uy tín, +50 kn)
   const COLL = {
     fish: { name: '🎣 Cá câu, cá biển', items: Object.keys(CATCH_GOODS).filter((k) => k !== 'boot'), badge: 'Cần thủ huyền thoại' },
-    crops: { name: '🌱 Cây trồng', items: Object.keys(CROPS), badge: 'Nhà nông chính hiệu' },
+    crops: { name: '🌱 Cây trồng', items: Object.keys(CROPS).filter((k) => !CROPS[k].ev), badge: 'Nhà nông chính hiệu' },
     farm: { name: '🥚 Sản phẩm chăn nuôi', items: Object.keys(PRODUCTS), badge: 'Chủ trang trại' },
     dishes: { name: '🍳 Món bếp', items: Object.keys(RECIPES).map((k) => 'd:' + k), badge: 'Vua đầu bếp' },
     mill: { name: '🏭 Hàng xưởng (hạng cao nhất)', items: Object.entries(MILL).map(([k, M]) => millKey(k, M.age ? 3 : 1)), badge: 'Nghệ nhân' },
@@ -5304,7 +5360,7 @@
 
   // ── once a step ──
   function bizStep(t) {
-    seaStep(t); innDay(t); innNight(t); rivalStep(t); rvStep(t); festStep(t); msStep(t);
+    seaStep(t); innDay(t); innNight(t); rivalStep(t); theftStep(t); rvStep(t); festStep(t); msStep(t);
     const day = dayNo(t); if (save.get('biz/day', 0) < day && mLocalH(t) >= 7) { save.set('biz/day', day); colScan(); }
   }
   // ── her words in the report ──
@@ -5317,6 +5373,10 @@
     else if (ys && ys.state === 'back' && h < 12) out.push(`⛵ Hôm qua thuyền đánh được ~${money(ys.v)} xu cá.`);
     const inn = save.get('inn/' + (day - 1)); if (inn && innLv()) out.push(`🏨 Đêm qua ${INN.names[innLv() - 1]} có ${inn.g}/${inn.rooms} phòng khách ở (+${money(inn.rent + inn.spend)} xu)${(save.get('innd/' + (day - 1)) || {}).g ? `, ban ngày ${save.get('innd/' + (day - 1)).g} lượt thuê giờ (+${money(save.get('innd/' + (day - 1)).rent + save.get('innd/' + (day - 1)).spend)} xu)` : ''}${!mStaff().some((w) => w.role === 'host') ? ', chưa có lễ tân nên khách mới đến một nửa' : ''}.`);
     if (marketOpen(t) || ([0, 6].includes(wkDay(t)) && level() >= 3)) out.push(`🛒 Hôm nay có chợ phiên cuối tuần ở bến (7h–16h, giá x1,35): đã mang ra bán ${save.get('mk/' + day, 0)}/${MARKET.cap} món.`);
+    { const th = save.get('theft/' + day); if (th && h < 14) {
+      if (th.caught) out.push(`🐕 Đêm qua có kẻ trộm ${RIVAL} lẻn vào, chó canh đuổi chạy mất dép${th.fine ? `, bên đó đền ${th.fine} xu` : ''} ạ.`);
+      else if (th.lost) out.push(`🥷 Đêm qua bị ${RIVAL} hái trộm ${Object.entries(th.got).map(([k, n]) => `${n} ${GOODS[k].icon}`).join(' ')} (~${money(th.lost)} xu) ở ${th.beds} ô chín chưa thu. ${upg('dog') < UPGRADES.dog.cost.length ? `Nuôi thêm chó canh (🏪 › Mở rộng) thì khó trộm hơn ạ.` : 'Chó đã đủ, lần sau em thu hoạch sớm hơn.'}`);
+    } }
     const war = rivalWar(day);
     if (war) out.push(`😤 ${RIVAL} bên kia sông hôm nay phá giá ${GOODS[war].icon} ${GOODS[war].name}, chợ chỉ trả 85%. ${save.get('rival/ad/' + day) ? `${save.get('rival/ad/' + day) === 'owner' ? 'Chủ nhân' : 'Em'} đã chạy quảng cáo đáp trả, giá về bình thường rồi ạ.` : `Mình có thể quảng cáo đáp trả: ${B('rivalad', '📣 Quảng cáo 300 xu (+2 uy tín)', coins() >= 300)}`}`);
     if (day % 3 === 0) { const R = rivalWeek(t); out.push(`📨 Thư của ${RIVAL}: "${TAUNTS[Math.floor(hash01(day * 1000, 604, 1) * TAUNTS.length)]}" (Tuần qua họ lãi ~${money(R.them)} xu, mình ${R.our >= 0 ? 'lãi' : 'lỗ'} ${money(Math.abs(R.our))} xu${R.our > R.them ? ', mình hơn họ ạ 😎' : ', mình đang thua, em sẽ cố'}.)`); }
@@ -5408,7 +5468,7 @@
   };
   // real time (app open): a worker DECIDES now (farm calls are only recorded), walks there, acts it out, and the
   // recorded calls run when the motion ends, so the plot / pen changes under their hands
-  const FARM_ACTS = ['plant', 'water', 'fert', 'spray', 'harvest', 'clear', 'fillOrder', 'upgrade', 'buyLand', 'buy', 'sell', 'cook', 'serve', 'stock', 'feedFish', 'cureFish', 'netFish', 'clearPond', 'buyAnimal', 'feedAnimal', 'cureAnimal', 'collect', 'removeAnimal', 'hatch'];
+  const FARM_ACTS = ['plant', 'water', 'fert', 'spray', 'weed', 'harvest', 'clear', 'fillOrder', 'upgrade', 'buyLand', 'buy', 'sell', 'cook', 'serve', 'stock', 'feedFish', 'cureFish', 'netFish', 'clearPond', 'buyAnimal', 'feedAnimal', 'cureAnimal', 'collect', 'removeAnimal', 'hatch'];
   function mPlan(w, t) {
     const R = ROLES[w.role], calls = [], saved = {}, c0 = coins(), f0 = mFinNet;
     if (!R) return null;
@@ -5424,7 +5484,7 @@
     const main = calls.find(([k]) => k !== 'buy');
     if (main) {
       const [k, a] = main;
-      r.claim = ['plant', 'water', 'fert', 'spray', 'harvest', 'clear'].includes(k) ? 'plot:' + a[0] : ['stock', 'feedFish', 'cureFish', 'netFish', 'clearPond'].includes(k) ? 'pond:' + a[0]
+      r.claim = ['plant', 'water', 'fert', 'spray', 'weed', 'harvest', 'clear'].includes(k) ? 'plot:' + a[0] : ['stock', 'feedFish', 'cureFish', 'netFish', 'clearPond'].includes(k) ? 'pond:' + a[0]
         : ['feedAnimal', 'cureAnimal', 'collect', 'removeAnimal'].includes(k) ? 'a:' + a[0] : ['cook', 'serve'].includes(k) ? 'cook:' + a[0] : k === 'fillOrder' ? 'order:' + a[0]
         : ['hatch', 'incubate'].includes(k) ? 'inc:' + a[0] : k === 'buyLand' ? 'land' : k === 'buyAnimal' ? 'buyAnimal' : k === 'sell' ? 'sell:' + a[0] : null;
       if (r.claim) mClaims.set(r.claim, Date.now() + 90000);
@@ -5661,6 +5721,7 @@
       });
       // bugs, sparkles and the growth bar sit over the plants of this bed
       depth(y + 31.5, (g) => {
+        if (s.weed && (s.status === 'grow' || s.status === 'pest')) for (const [wx, wy] of [[4, 6], [25, 9], [9, 24], [22, 26]]) { const sw = Math.sin(now / 700 + wx + i) > 0.5 ? 1 : 0; px(g, x + wx, y + wy - 1, 1, 5, '#6b6a22'); px(g, x + wx - 1 - sw, y + wy, 1, 4, '#9a9632'); px(g, x + wx + 1 + sw, y + wy + 1, 1, 3, '#9a9632'); px(g, x + wx - 2, y + wy + 3, 1, 1, '#c8b850'); px(g, x + wx + 2, y + wy + 2, 1, 1, '#c8b850'); px(g, x + wx, y + wy - 2, 1, 1, '#e8e0a0'); }
         if (s.status === 'pest') for (let k = 0; k < 5; k++) { const a = now / 400 + k * 1.3 + i; px(g, x + 16 + Math.cos(a) * (6 + k * 2), y + 16 + Math.sin(a * 1.3) * (5 + k), 2, 1, k % 2 ? '#2a3a10' : '#8fd020'); }
         if (s.status === 'ripe' && (Math.floor(now / 260) + i * 3) % 14 === 0) { px(g, x + 6 + (i * 9) % 20, y + 4, 1, 3, '#fff8c0'); px(g, x + 5 + (i * 9) % 20, y + 5, 3, 1, '#fff8c0'); }
         if (s.status === 'grow') { px(g, x + 3, y + 29, 26, 2, 'rgba(0,0,0,0.35)'); px(g, x + 3, y + 29, Math.max(1, Math.round(26 * s.progress)), 2, s.wet ? '#7fd0ff' : '#9fe070'); }
@@ -5960,7 +6021,7 @@
     if (view) { farmPanel.scrollTop = 0; renderPanel(); }
   }
   // what kind of button: tab / close / careful (red) / do it (green) / the rest (honey)
-  const BTN_GO = new Set(['buy', 'plant', 'plantAll', 'harvest', 'harvestAll', 'collect', 'collectAll', 'land', 'upgrade', 'hire', 'fill', 'xbuild', 'mok', 'cook', 'serve', 'sell', 'crepay', 'repay', 'cure', 'feed', 'water', 'waterAll', 'fert', 'spray', 'hatch', 'incubate', 'stock', 'net', 'netAll', 'sellold', 'buyAnimal', 'facup', 'xfac', 'chustle', 'ckeep', 'cot', 'xpomo']);
+  const BTN_GO = new Set(['buy', 'plant', 'plantAll', 'harvest', 'harvestAll', 'collect', 'collectAll', 'land', 'upgrade', 'hire', 'fill', 'xbuild', 'mok', 'cook', 'serve', 'sell', 'crepay', 'repay', 'cure', 'feed', 'water', 'waterAll', 'fert', 'spray', 'weed', 'hatch', 'incubate', 'stock', 'net', 'netAll', 'sellold', 'buyAnimal', 'facup', 'xfac', 'chustle', 'ckeep', 'cot', 'xpomo']);
   const BTN_WARN = new Set(['fire', 'cfire', 'ocancel', 'remove', 'mno', 'clear', 'clearPond', 'removeAnimal']);
   const B = (act, label, on = true, extra = '') => {
     const k = String(act).split(':')[0], active = /border-color:#7fd65a/.test(extra), ex = extra.replace(/border-color:#7fd65a;?/g, '');
@@ -5984,9 +6045,11 @@
       const C = s.C, title = head(`${num} · ${C.icon} ${C.name}`) + plv;
       const bar = `<div style="height:8px;background:#0a0a14;margin:6px 0;"><div style="height:8px;width:${Math.round(s.progress * 100)}%;background:${s.wet ? '#7fd0ff' : '#9fe070'}"></div></div>`;
       const all = B('waterAll', '💧 Tưới mọi ô') + B('harvestAll', '🧺 Thu mọi ô chín');
-      if (s.status === 'grow') return title + bar + `<div>Đang lớn ${Math.round(s.progress * 100)}% · chín sau khoảng <b>${fmtDur(s.left)}</b>${s.wet ? '<br>💧 Đất còn ẩm (lớn nhanh hơn)' : '<br>Đất khô: tưới để lớn nhanh hơn 25% trong 6 giờ'}</div>` + B('water', '💧 Tưới') + B('fert', `💩 Bón phân (${have('fert')})`, have('fert') > 0) + '<br>' + all;
-      if (s.status === 'pest') return title + bar + `<div style="color:#ffb08a">🐛 Bị sâu! Cây ngừng lớn. Cây sẽ chết sau <b>${fmtDur(s.left)}</b> nếu không phun thuốc.</div>` + B('spray', `🧴 Phun thuốc (${have('spray')})`, have('spray') > 0) + (have('spray') ? '' : B('open:shop', '🏪 Mua thuốc')) + B('water', '💧 Tưới');
-      if (s.status === 'ripe') return title + `<div style="color:#ffe066">Đã chín! Thu được <b>${s.yield} ${C.icon}</b>. Còn tươi ngon trong ${fmtDur(s.left)}.</div>` + B('harvest', `🧺 Thu hoạch`) + '<br>' + all;
+      const wd = s.weed ? `<div style="color:#d8e88a">🌿 Cỏ dại mọc! Cây chỉ lớn bằng một nửa đến khi nhổ cỏ.</div>` + B('weed', '🌿 Nhổ cỏ') : '';
+      if (s.status === 'grow') return title + bar + `<div>Đang lớn ${Math.round(s.progress * 100)}% · chín sau khoảng <b>${fmtDur(s.left)}</b>${s.wet ? '<br>💧 Đất còn ẩm (lớn nhanh hơn)' : '<br>Đất khô: tưới để lớn nhanh hơn 25% trong 6 giờ'}</div>` + wd + B('water', '💧 Tưới') + B('fert', `💩 Bón phân (${have('fert')})`, have('fert') > 0) + '<br>' + all;
+      if (s.status === 'pest') return title + bar + `<div style="color:#ffb08a">🐛 Bị sâu! Cây ngừng lớn. Cây sẽ chết sau <b>${fmtDur(s.left)}</b> nếu không phun thuốc.</div>` + wd + B('spray', `🧴 Phun thuốc (${have('spray')})`, have('spray') > 0) + (have('spray') ? '' : B('open:shop', '🏪 Mua thuốc')) + B('water', '💧 Tưới');
+      const lost = s.stolen ? `<div style="color:#ffb08a">🥷 Đêm qua bị hái trộm ${s.stolen} ${C.icon}.</div>` : '';
+      if (s.status === 'ripe') return title + lost + `<div style="color:#ffe066">Đã chín! Thu được <b>${s.yield} ${C.icon}</b>. Còn tươi ngon trong ${fmtDur(s.left)}.</div>` + B('harvest', `🧺 Thu hoạch`) + '<br>' + all;
       if (s.status === 'over') return title + `<div style="color:#e0c890">Quá thời gian thu, đang héo dần: còn <b>${s.yield}/${C.yield} ${C.icon}</b>. Chết sau ${fmtDur(s.left)}.</div>` + B('harvest', `🧺 Thu hoạch ngay`) + '<br>' + all;
       return title + `<div style="color:#c8a080">${s.withered ? 'Cây đã héo chết vì để quá lâu.' : 'Cây đã chết vì sâu.'}</div>` + B('clear', '🧹 Dọn ô');
     }
@@ -6075,7 +6138,10 @@
       const tabs = B('tab:buy', 'Hạt', true, tab === 'buy' ? 'border-color:#7fd65a;' : '') + B('tab:ranch', 'Vật nuôi', true, tab === 'ranch' ? 'border-color:#7fd65a;' : '') + B('tab:sell', 'Bán', true, tab === 'sell' ? 'border-color:#7fd65a;' : '') + B('tab:land', 'Mở rộng', true, tab === 'land' ? 'border-color:#7fd65a;' : '');
       let body = '';
       if (tab === 'buy') {
-        body = '<div style="opacity:.8;margin-top:6px">Hạt giống</div>' + Object.entries(CROPS).map(([k, C]) => C.lvl > L || (C.plv || 1) > bestPlotLv()
+        const evs = Object.entries(CROPS).filter(([k, C]) => C.ev && cropOn(k));
+        body = (evs.length ? `<div style="opacity:.9;margin-top:6px;color:#ffd27a">🎉 Hạt giống dịp ${[...new Set(evs.map(([, C]) => EV_NAME[C.ev]))].join(', ')} (chỉ bán trong dịp lễ)</div>` + evs.map(([k, C]) => C.lvl > L ? row(`<span style="opacity:.5">${C.icon} ${C.name}</span>`, `<span style="opacity:.6">🔒 Cấp ${C.lvl}</span>`)
+          : row(`${C.icon} ${C.name} <span style="opacity:.7">${C.seed} xu · ${C.grow}h · bán ${C.yield}×${C.price}</span>`, B(`buy:seed:${k}:1`, '+1', c >= C.seed) + B(`buy:seed:${k}:5`, '+5', c >= C.seed * 5))).join('') : '')
+          + '<div style="opacity:.8;margin-top:6px">Hạt giống</div>' + Object.entries(CROPS).filter(([, C]) => !C.ev).map(([k, C]) => C.lvl > L || (C.plv || 1) > bestPlotLv()
           ? row(`<span style="opacity:.5">${C.icon} ${C.name}${C.plv ? ' ⭐' : ''}</span>`, `<span style="opacity:.6">🔒 ${C.lvl > L ? `Cấp ${C.lvl}` : `cần ô đất cấp ${C.plv}`}</span>`)
           : row(`${C.icon} ${C.name} <span style="opacity:.7">${C.seed} xu · ${C.grow}h · bán ${C.yield}×${C.price}</span>`, B(`buy:seed:${k}:1`, '+1', c >= C.seed) + B(`buy:seed:${k}:5`, '+5', c >= C.seed * 5))).join('')
           + '<div style="opacity:.8;margin-top:6px">Vật phẩm</div>' + ['fert', 'spray', 'cui'].map((k) => [k, TOOLS[k]]).map(([k, T]) => row(`${T.icon} ${T.name} <span style="opacity:.7">${T.price} xu · ${T.note}</span>`, B(`buy:${k}:1`, '+1', c >= T.price) + B(`buy:${k}:5`, '+5', c >= T.price * 5))).join('');
@@ -6483,7 +6549,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:51 23-11';
+    const build = '10:29 23-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6667,7 +6733,7 @@
     if (act === 'plotup') farm.plotUp(i);
     if (act === 'plant') farm.plant(i, a1);
     if (act === 'plantAll') { for (let j = 0; j < FARM.plots.length && have('seed:' + a1) > 0; j++) farm.plant(j, a1); }
-    if (['water', 'fert', 'spray', 'harvest', 'clear'].includes(act)) farm[act](i);
+    if (['water', 'fert', 'spray', 'weed', 'harvest', 'clear'].includes(act)) farm[act](i);
     if (act === 'waterAll') farm.all('water');
     if (act === 'harvestAll') farm.all('harvest');
     if (act === 'land') farm.buyLand();
