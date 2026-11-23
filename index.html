@@ -3543,6 +3543,9 @@
   const zooAppeal = () => (zooOpen() ? zooIds().reduce((s, id) => { const z = zooAnimal(id); return s + (z && !z.hungry ? z.S.appeal : 0); }, 0) : 0);
   const zooPenCount = (p) => zooIds().filter((id) => { const z = zooAnimal(id); return z && z.S.pen === p; }).length;
   const zooPenAt = (p) => { const r = FARM.zoo && FARM.zoo.pens[p]; return r ? { x: r.x + r.w / 2, y: r.y + r.h + 10 } : barnAt(); };
+  // (2026-11-23 user: "chăm sở thú … sao đứng im làm hoài"): somewhere along the pen's front fence, a different spot each time
+  const zooSpotAt = (p) => { const r = FARM.zoo && FARM.zoo.pens[p]; return r ? { x: r.x + 10 + Math.random() * Math.max(0, r.w - 20), y: r.y + r.h + 10 } : barnAt(); };
+  const zooWalkPen = (last) => { const ps = [0, 1, 2, 3].filter((p) => FARM.zoo && FARM.zoo.pens[p] && zooPenCount(p)), o = ps.filter((p) => p !== last); return (o.length ? o : ps.length ? ps : [0])[Math.floor(Math.random() * (o.length || ps.length || 1))]; };
   const zooGateAt = () => FARM.zoo ? { x: FARM.zoo.gate.c * 16 + 8, y: FARM.zoo.gate.r * 16 + 8 } : barnAt();
   const zoo = {
     open() { if (zooOpen() || level() < ZOO_LVL || coins() < ZOO_UNLOCK) return false; ledger(-ZOO_UNLOCK, 0, {}); save.set('zoo/open', farmNow()); save.set('zoo/dirt', {}); sfx.jingle(200, true); return true; },
@@ -3889,11 +3892,11 @@
     // the zoo keeper (and the head manager): bury what died, feed whoever is getting hungry
     zoo(t) {
       if (!zooOpen()) return null;
-      for (const id of zooIds()) { const z = zooAnimal(id); if (z && z.dead && zoo.remove(id)) { mLate(t); return { kind: 'clear', text: `chôn ${z.S.icon} ${z.S.name} chết đói ở sở thú`, at: zooPenAt(z.S.pen), icon: '🧹' }; } }
-      for (const id of zooIds()) { const z = zooAnimal(id); if (z && !z.dead && z.fedLeft <= 6 * HOUR && coins() >= z.S.food && zoo.feed(id)) return { kind: 'zooFeed', text: `cho ${z.S.icon} ${z.S.name} ở sở thú ăn (${z.S.food} xu)`, at: zooPenAt(z.S.pen), icon: '🥩' }; }
+      for (const id of zooIds()) { const z = zooAnimal(id); if (z && z.dead && zoo.remove(id)) { mLate(t); return { kind: 'clear', text: `chôn ${z.S.icon} ${z.S.name} chết đói ở sở thú`, at: zooSpotAt(z.S.pen), icon: '🧹' }; } }
+      for (const id of zooIds()) { const z = zooAnimal(id); if (z && !z.dead && z.fedLeft <= 6 * HOUR && coins() >= z.S.food && zoo.feed(id)) return { kind: 'zooFeed', text: `cho ${z.S.icon} ${z.S.name} ở sở thú ăn (${z.S.food} xu)`, at: zooSpotAt(z.S.pen), icon: '🥩' }; }
       // sweep the dirtiest pen once it passes 35% (a dirty zoo gets bad reviews and a cheaper ticket)
       const p = [0, 1, 2, 3].filter((q) => zooPenCount(q)).sort((a, b) => zooDirt(b) - zooDirt(a))[0];
-      if (p != null && zooDirt(p) >= 35 && zoo.clean(p)) return { kind: 'sweep', text: `dọn chuồng ${ZOO_PENS[p]} ở sở thú`, at: zooPenAt(p), icon: '🧹' };
+      if (p != null && zooDirt(p) >= 35 && zoo.clean(p)) return { kind: 'sweep', text: `dọn chuồng ${ZOO_PENS[p]} ở sở thú`, at: zooSpotAt(p), icon: '🧹' };
       return null;
     },
     // the guide walks with the tour groups (see staffTick); no farm work of their own
@@ -6549,7 +6552,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:29 23-11';
+    const build = '11:32 23-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -7791,7 +7794,7 @@
     if (role === 'cook') return { kind: 'cook', at: barnAt(), cos: 1 };
     if (role === 'seller') return { kind: 'count', at: shopAt(), cos: 1 };
     if (role === 'woodcutter') return { kind: 'chop', at: treeAt() || barnAt(), cos: 1 };
-    if (role === 'zookeeper' && FARM.zoo) return { kind: 'zooFeed', at: zooGateAt(), cos: 1 };
+    if (role === 'zookeeper' && FARM.zoo) { const p = zooWalkPen(v.zooPen); v.zooPen = p; return { kind: zooDirt(p) >= 15 ? 'sweep' : mPick(['zooFeed', 'inspect', 'sweep']), at: zooSpotAt(p), cos: 1 }; }
     if (role === 'beekeeper' && XISLE.bees) { const it = mPick(XISLE.bees.items); return { kind: 'inspect', at: { x: it.x, y: it.y }, stand: it.stand, cos: 1 }; }
     if (role === 'gardener' && XISLE.orchard) { const it = mPick(XISLE.orchard.items); return { kind: mPick(['water', 'inspect']), at: { x: it.x, y: it.y - 4 }, stand: it.stand, cos: 1 }; }
     if (role === 'camphost' && XISLE.camp) { const tn = mPick(XISLE.camp.tents); return { kind: 'sweep', at: { x: tn.x, y: tn.y + 6 }, cos: 1 }; }
@@ -7856,6 +7859,7 @@
         r = { kind: 'fishMiss', at: F.at, stand: F.stand, cos: 1, wait: Math.hypot(v.x - sp.x, v.y - sp.y) < 24 };
       }
       if (!r && hustle) r = mIdleTask(v); // called by the owner: no rest, the chores of their trade until real work comes
+      if (!r && w && v.role === 'zookeeper' && FARM.zoo && zooOpen() && zooIds().length) { const p = zooWalkPen(v.zooPen); v.zooPen = p; r = { kind: 'inspect', at: zooSpotAt(p), cos: 1, look: true }; }
       if (!r) { const hm = ROLE_HOME(v.role, v.staff); r = { kind: 'rest', at: hm || { x: v.x, y: v.y }, cos: 1 }; v.lastRest = now; }
       let tile = null;
       if (r && r.at) { const sp = r.stand ? { x: r.stand.c * 16 + 8, y: r.stand.r * 16 + 8 } : r.at; tile = r.wait ? { c: v.tileCol, r: v.tileRow } : nearWalkFree(sp.x, sp.y, v); v.task = r; }
