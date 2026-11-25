@@ -2399,7 +2399,7 @@
     barn: { name: 'Kho', icon: '🏠', base: 3, step: 1, unit: 'đơn hàng/ngày', cost: [200, 500, 2500, 6000], lvl: [2, 4, 12, 18] },
     kitchen: { name: 'Bếp', icon: '🍳', base: 2, step: 1, unit: 'lò nấu', cost: [250, 600, 1200, 4000, 10000], lvl: [2, 4, 6, 12, 18] },
     dog: { name: 'Chó canh trại', icon: '🐕', base: 1, step: 1, unit: 'chó', cost: [400, 1200, 3000], lvl: [3, 6, 10] }, // 2026-11-23: night thieves
-    dorm: { name: 'Nhà ở nhân viên', icon: '🏘️', base: 12, step: 4, caps: [12, 18, 26, 36, 48, 62], unit: 'người', cost: [1500, 3500, 7000, 15000, 30000], lvl: [3, 5, 7, 14, 20] }, // caps (2026-11-25, user: always short of staff at 25/28 with 23 trades): was +4 a level (12..32)
+    dorm: { name: 'Nhà ở nhân viên', icon: '🏘️', base: 12, step: 4, caps: [12, 16, 20, 24, 30, 40, 52, 66], unit: 'người', cost: [1500, 3500, 7000, 15000, 30000, 60000, 120000], lvl: [3, 5, 7, 14, 20, 20, 20] }, // caps (2026-11-25, user at level 4: "chỉnh lại là 25/30, không phải 25/48" - what is already built stays about as it was (+4 a level, 12..28), only the NEXT upgrades add more (+10/+12/+14); two more levels so there is room to grow
   };
   const upg = (id) => Math.min(UPGRADES[id].cost.length, save.get(`upg/${id}`, 0));
   const upgValue = (id) => (UPGRADES[id].caps ? UPGRADES[id].caps[upg(id)] : UPGRADES[id].base + upg(id) * UPGRADES[id].step);
@@ -6842,7 +6842,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '14:03 25-11';
+    const build = '14:52 25-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
