@@ -3302,6 +3302,12 @@
         why: !nx ? '' : !facOk(id, t) ? 'chưa có (xây/mở trước đã)' : lv < nx.need ? `cần cấp ${nx.need}` : '', line: F.line,
         exec: (tt) => facUp(id, tt, 'boss') && res('upgrade', F.line, `🎯 nâng ${F.icon} ${F.names[L - 1]} lên cấp ${L + 1}: ${nx.name} (${money(nx.cost)} xu, chủ trại ưu tiên)`, barnAt(), '⬆️') });
     }
+    for (const id of Object.keys(GX)) { const G = GX[id], L = gxLv(id), nx = gxNext(id); // 2026-11-25: port, spa, stage, airport
+      C.push({ key: 'gx:' + id, icon: G.icon, name: nx ? `${L ? 'Nâng lên' : 'Xây'} ${nx.name}` : `${G.names[L - 1]} (tối đa)`, cur: L, max: G.names.length, cost: nx ? nx.cost : 0, why: !nx ? '' : gxNeed(id) || (lv < nx.need ? `cần cấp ${nx.need}` : ''), line: id,
+        exec: () => { ledger(-nx.cost, 0, {}); save.set('gx/lv/' + id, nx.to); return res('upgrade', id, `🎯 ${L ? 'nâng lên' : 'xây'} ${nx.name} (${money(nx.cost)} xu, chủ trại ưu tiên)`, barnAt(), G.icon); } }); }
+    for (const b of Object.keys(CITY.brands)) { const B0 = CITY.brands[b], n = cityN(b), cost = cityCost(b);
+      C.push({ key: 'city:' + b, icon: '🏙️', name: n < CITY.max ? `Mở ${B0.name} chi nhánh ${n + 1} ở thành phố` : `${B0.name} thành phố (tối đa)`, cur: n, max: CITY.max, cost: n < CITY.max ? cost : 0, why: n < CITY.max ? cityNeed(b) : '', line: 'city',
+        exec: () => { ledger(-cost, 0, {}); save.set('city/n/' + b, n + 1); return res('upgrade', 'city', `🎯 mở ${B0.name} chi nhánh ${n + 1} ở thành phố (${money(cost)} xu, chủ trại ưu tiên)`, barnAt(), '🏙️'); } }); }
     { const nx = millNext(), L = millLv();
       C.push({ key: 'mill', icon: '🏭', name: L ? (nx ? `Nâng xưởng lên ${nx.name}` : 'Xưởng (tối đa)') : 'Xây xưởng chế biến', cur: L, max: MILL_UP.length, cost: nx ? nx.cost : 0, why: nx && lv < nx.lvl ? `cần cấp ${nx.lvl}` : '', line: 'mill',
         exec: () => { ledger(-nx.cost, 0, {}); save.set('mill/lv', nx.to); return res('upgrade', 'mill', `🎯 ${L ? `nâng xưởng lên ${nx.name}` : 'xây xưởng chế biến'} (${money(nx.cost)} xu, chủ trại ưu tiên)`, barnAt(), '🏭'); } }); }
@@ -4023,7 +4029,7 @@
       { const dr = dogInvest(t); if (dr) return dr; }
       { const xr = xInvest(t, w); if (xr) return xr; }
       { const fr = facInvest(t, w); if (fr) return fr; }
-      { const mr = millInvest(t) || innInvest(t) || boatInvest(t); if (mr) return mr; } // workshop, homestay, boat (2026-11-12) // a facility level (2026-11-12) // the islets (bee yard, orchard, campsite): cheaper than the zoo, steady income
+      { const mr = millInvest(t) || innInvest(t) || boatInvest(t) || gxInvest(t); if (mr) return mr; } // workshop, homestay, boat (2026-11-12) // a facility level (2026-11-12) // the islets (bee yard, orchard, campsite): cheaper than the zoo, steady income
       // the zoo: opened once the purse holds 3x its price; then an animal at a time (best appeal for the money)
       if (!zooOpen() && level() >= ZOO_LVL && mCanInvest(ZOO_UNLOCK, { line: 'zoo', key: 'zooOpen', what: 'mở sở thú' }) && mFund(ZOO_UNLOCK, { line: 'zoo', key: 'zooOpen', what: 'mở sở thú' }) && zoo.open()) return { kind: 'zooOpen', line: 'zoo', text: `mở cửa sở thú (${money(ZOO_UNLOCK)} xu)`, at: zooGateAt(), icon: '🦁', big: true };
       if (zooOpen()) {
@@ -4979,12 +4985,12 @@
   // the day's tour groups fill rooms too (2026-11-16: "nhà nghỉ, khách sạn cho khách du lịch"): +1% per visitor, up to +25%
   const innTourists = (t) => Math.min(0.25, ((mDayRec(t).visit || {}).people || 0) / 100);
   const innLv = () => Math.max(0, Math.min(INN_MAX, save.get('inn/lv', 0)));
-  const innOcc = (t) => { const L = innLv(); if (!L) return 0; const host = mStaff().some((w) => w.role === 'host'); return Math.max(0.1, Math.min(0.95, (0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t)) * (host ? 1 : 0.5))); };
+  const innOcc = (t) => { const L = innLv(); if (!L) return 0; const host = mStaff().some((w) => w.role === 'host'); return Math.max(0.1, Math.min(0.95, (0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t) + gxInnBoost()) * (host ? 1 : 0.5))); };
   // day guests rent by the HOUR (user 2026-11-18: "giá ngày = 3/5 giá đêm", then "giá ngày phải tính theo giờ"): a whole day 8h–18h
   // costs 3/5 of a night, so one hour = that / 10; guests stay ~3 h, so a room turns over a few times
   const INN_DAY = { share: 3 / 5, fill: 0.6, from: 8, to: 18, stay: 3 };
   const innHourPrice = (L) => Math.round(INN.price[L - 1] * INN_DAY.share / (INN_DAY.to - INN_DAY.from));
-  const innExpect = (L, t = farmNow()) => { const occ = Math.max(0.1, Math.min(0.95, 0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t))); return INN.rooms[L - 1] * occ * (INN.price[L - 1] + INN.spend[L - 1] - INN.clean[L - 1]) + INN.rooms[L - 1] * occ * INN_DAY.fill * (INN_DAY.to - INN_DAY.from) * (innHourPrice(L) + (INN.spend[L - 1] / 2 - INN.clean[L - 1]) / INN_DAY.stay); };
+  const innExpect = (L, t = farmNow()) => { const occ = Math.max(0.1, Math.min(0.95, 0.25 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + innTourists(t) + gxInnBoost())); return INN.rooms[L - 1] * occ * (INN.price[L - 1] + INN.spend[L - 1] - INN.clean[L - 1]) + INN.rooms[L - 1] * occ * INN_DAY.fill * (INN_DAY.to - INN_DAY.from) * (innHourPrice(L) + (INN.spend[L - 1] / 2 - INN.clean[L - 1]) / INN_DAY.stay); };
   JOBS.shophelp = (t, w) => shopHelp(t, w);
   JOBS.inn = (t, w) => { // the receptionist: make the beds, greet guests (an action every 2 hours, for the books and the map)
     if (!innLv()) return null;
@@ -5403,7 +5409,7 @@
 
   // ── once a step ──
   function bizStep(t) {
-    seaStep(t); innDay(t); innNight(t); rivalStep(t); theftStep(t); rvStep(t); festStep(t); msStep(t);
+    seaStep(t); gxStep(t); innDay(t); innNight(t); rivalStep(t); theftStep(t); rvStep(t); festStep(t); msStep(t);
     const day = dayNo(t); if (save.get('biz/day', 0) < day && mLocalH(t) >= 7) { save.set('biz/day', day); colScan(); }
   }
   // ── her words in the report ──
@@ -5450,6 +5456,226 @@
     if (act === 'photo') return photoTake('Chủ trại chụp');
     return false;
   }
+  // ── Bigger business (user 2026-11-25: "thêm hết vào đi"): six things to grow into once the islands are maxed ──────
+  // 🚢 export port · ♨️ hot spring / spa · 🎭 stage / cinema · ✈️ seaplane dock / airport (GX, three levels each) ·
+  // 🏦 TJBank credit desk (the owner's own money lent out, by a policy) · 🏙️ TJ branches in the city (off the map).
+  // Settled in bizStep (lease holder), deterministic per day. Keys: gx/lv/<id>, gxd/<id>/<day>, lend/pol, lend/d/<day>,
+  // bal/lend/<device> (the fund: two devices may pay in → tally), city/n/<brand>, city/d/<day>.
+  const GX = {
+    port: { icon: '🚢', names: ['Bến tàu hàng', 'Cảng xuất khẩu', 'Cảng quốc tế TJ'], cost: [12000, 35000, 90000], lvl: [8, 12, 18], cap: [40, 80, 140], mul: [1.5, 1.75, 2],
+      what: ['tàu hàng ghé cách ngày (7h–17h), chở 40 món, trả giá x1,5', 'tàu ghé mỗi ngày, chở 80 món, trả giá x1,75', 'tàu lớn mỗi ngày, chở 140 món, trả giá x2'] },
+    spa: { icon: '♨️', names: ['Suối nước nóng', 'Spa thảo mộc', 'TJ Onsen & Spa'], cost: [15000, 45000, 120000], lvl: [8, 12, 18], cap: [20, 40, 70], fee: [60, 90, 130],
+      what: ['tối đa 20 khách/ngày, vé 60 xu, khách sạn đông thêm 4%', 'tối đa 40 khách/ngày, vé 90 xu, khách sạn đông thêm 8%', 'tối đa 70 khách/ngày, vé 130 xu, khách sạn đông thêm 12%'] },
+    stage: { icon: '🎭', names: ['Sân khấu ngoài trời', 'Rạp chiếu phim TJ', 'Nhà hát TJ'], cost: [18000, 60000, 150000], lvl: [8, 12, 18], seats: [60, 110, 180], ticket: [30, 40, 55], snack: [5, 8, 12], run: [250, 600, 1400],
+      what: ['60 chỗ, diễn tối thứ 5 đến chủ nhật, vé 30 xu', '110 chỗ, chiếu phim mỗi tối, vé 40 xu', '180 chỗ, ca nhạc + kịch mỗi tối, vé 55 xu'] },
+    air: { icon: '✈️', names: ['Bến thủy phi cơ', 'Sân bay nhỏ', 'Sân bay TJ'], cost: [30000, 70000, 160000], lvl: [10, 14, 20], flights: [[9], [9, 14], [8, 12, 16]], pax: [12, 20, 28], fee: [80, 100, 125], land: [100, 150, 200],
+      what: ['1 chuyến/ngày, ~12 khách, mỗi khách trả 80 xu, khách xuống đảo đi ăn chơi tiếp', '2 chuyến/ngày, ~20 khách/chuyến, 100 xu/khách', '3 chuyến/ngày, ~28 khách/chuyến, 125 xu/khách'] },
+  };
+  LINES.port = { name: '🚢 Bến cảng', roles: [] }; LINES.spa = { name: '♨️ Suối nóng, spa', roles: [] }; LINES.stage = { name: '🎭 Sân khấu, rạp', roles: [] }; LINES.air = { name: '✈️ Sân bay', roles: [] }; LINES.city = { name: '🏙️ Chuỗi TJ thành phố', roles: [] };
+  const gxLv = (id) => Math.max(0, Math.min(GX[id].names.length, save.get('gx/lv/' + id, 0)));
+  const gxNeed = (id) => (id === 'air' && innLv() < 4 ? `cần ${INN.names[3]} (khách sạn cấp 4)` : '');
+  const gxNext = (id) => { const L = gxLv(id), G = GX[id]; return L >= G.names.length ? null : { to: L + 1, cost: G.cost[L], need: G.lvl[L], name: G.names[L] }; };
+  function gxInnBoost() { try { return 0.04 * gxLv('spa'); } catch (e) { return 0; } }
+  // how keen visitors are today (0.2..0.9): reputation, the stars they gave, the day's tour groups, the marketers
+  function gxDraw(t = farmNow()) { return Math.max(0.2, Math.min(0.9, 0.3 + repNow(t) / 200 + (starsAvg(t) - 3) * 0.12 + Math.min(0.2, ((mDayRec(t).visit || {}).people || 0) / 150) + adsBoost(t) * 0.1)); }
+  const gxRec = (id, day) => save.get(`gxd/${id}/${day}`);
+  // ── 🚢 the port: a cargo ship docks 7h–17h and buys what the upgraded places make (workshop goods, honey, fruit,
+  // fish) above the shop's price; it loads through the day as the barn fills (orders and often-wanted goods stay)
+  const portGoods = () => Object.keys(GOODS).filter((k) => (k.startsWith('m:') || k === 'honey' || ORCH.some(([q]) => q === k) || SEA_FISH.some(([q]) => q === k)) && priceOf(k) >= 8);
+  const portDocked = (t, L = gxLv('port')) => L > 0 && (L >= 2 || dayNo(t) % 2 === 0);
+  function portStep(t) {
+    const L = gxLv('port'), day = dayNo(t), h = mLocalH(t); if (!L || !portDocked(t, L)) return;
+    const G = GX.port, rec = gxRec('port', day) || { n: 0, v: 0, got: {} };
+    if (rec.left) return;
+    if (h >= 7 && h < 17 && rec.n < G.cap[L - 1] && !mOff('sell')) {
+      const held = millHeld(t), keep = new Set(mOftenWanted()), load = {}; let left = G.cap[L - 1] - rec.n, total = 0;
+      for (const k of portGoods().sort((a, b) => priceOf(b) - priceOf(a))) {
+        if (left <= 0) break;
+        const n = Math.min(left, Math.floor(have(k) - (held[k] || 0) - (keep.has(k) ? 2 : 0) - (k.startsWith('m:') ? 0 : 3))); if (n <= 0) continue;
+        load[k] = n; left -= n; total += Math.round(n * priceOf(k) * G.mul[L - 1]);
+      }
+      if (total >= 60) {
+        ledger(0, 2, Object.fromEntries(Object.entries(load).map(([k, n]) => [k, -n]))); evBook(t, total, 'Xuất khẩu qua cảng'); lineAdd(t, 'port', total, 0);
+        for (const [k, n] of Object.entries(load)) { rec.got[k] = (rec.got[k] || 0) + n; rec.n += n; }
+        rec.v += total; save.set(`gxd/port/${day}`, rec);
+      }
+    }
+    if (h >= 17) {
+      save.set(`gxd/port/${day}`, { ...rec, left: 1 });
+      mLog(t, bossId(), rec.n ? `🚢 Tàu hàng rời ${G.names[L - 1]}: chở ${Object.entries(rec.got).map(([k, n]) => `${n} ${GOODS[k].icon}`).join(' ')} (${rec.n}/${G.cap[L - 1]} món, +${money(rec.v)} xu, giá x${String(G.mul[L - 1]).replace('.', ',')})` : `🚢 Tàu hàng rời ${G.names[L - 1]} tay không: kho không có hàng xưởng, mật, quả hay cá dư`, 0);
+    }
+  }
+  // ── ♨️ the spa: day visitors and hotel guests soak; settled at 20h
+  function spaStep(t) {
+    const L = gxLv('spa'), day = dayNo(t); if (!L || mLocalH(t) < 20 || gxRec('spa', day)) return;
+    const G = GX.spa, g = Math.max(0, Math.min(G.cap[L - 1], Math.round(G.cap[L - 1] * gxDraw(t) * (0.8 + evRnd(day, 1211) * 0.4) * (1 + 0.05 * innLv()))));
+    const take = g * G.fee[L - 1], cost = Math.round(take * 0.2);
+    save.set(`gxd/spa/${day}`, { g, take, cost, L });
+    if (g) { evBook(t, take, 'Suối nóng, spa'); evBook(t, -cost, 'Vật tư (cám, thuốc, củi)'); lineAdd(t, 'spa', take, cost); }
+    mLog(t, bossId(), `♨️ ${G.names[L - 1]} hôm nay ${g}/${G.cap[L - 1]} khách ngâm tắm: +${money(take - cost)} xu`, 0);
+  }
+  // ── 🎭 the stage: an evening show (level 1: Thu–Sun; a cinema and up: every night); settled at 22h
+  const stageOn = (t, L = gxLv('stage')) => L >= 2 || (L === 1 && [0, 4, 5, 6].includes(wkDay(t)));
+  const SHOWS = [['ca nhạc acoustic', 'múa rối nước', 'hài kịch', 'đêm nhạc đồng quê'], ['phim hoạt hình', 'phim hành động', 'phim tình cảm', 'phim kinh dị nhẹ'], ['hòa nhạc', 'nhạc kịch', 'kịch nói', 'đêm ca sĩ khách mời']];
+  function stageStep(t) {
+    const L = gxLv('stage'), day = dayNo(t); if (!L || !stageOn(t, L) || mLocalH(t) < 22 || gxRec('stage', day)) return;
+    const G = GX.stage, we = [0, 6].includes(wkDay(t)) ? 1.2 : 1, g = Math.max(0, Math.min(G.seats[L - 1], Math.round(G.seats[L - 1] * gxDraw(t) * (0.75 + evRnd(day, 1221) * 0.5) * we)));
+    const take = g * (G.ticket[L - 1] + G.snack[L - 1]), cost = G.run[L - 1], show = SHOWS[L - 1][Math.floor(evRnd(day, 1222) * SHOWS[L - 1].length)];
+    save.set(`gxd/stage/${day}`, { g, take, cost, show, L });
+    evBook(t, take, 'Vé sân khấu, rạp'); evBook(t, -cost, 'Tổ chức biểu diễn'); lineAdd(t, 'stage', take, cost);
+    mLog(t, bossId(), `🎭 ${G.names[L - 1]} tối nay ${show}: ${g}/${G.seats[L - 1]} khán giả, ${take - cost >= 0 ? '+' : ''}${money(take - cost)} xu`, 0);
+  }
+  // ── ✈️ the airport: each flight lands a group that pays for the trip and then walks the islands (they count as the
+  // day's visitors: stalls, game room, hotel all see them); storms ground the planes
+  function airStep(t) {
+    const L = gxLv('air'), day = dayNo(t), h = mLocalH(t); if (!L) return;
+    const G = GX.air, rec = gxRec('air', day) || { done: 0, pax: 0, take: 0 };
+    const due = G.flights[L - 1].filter((x) => x <= h).length; if (rec.done >= due) return;
+    for (let i = rec.done; i < due; i++) {
+      if (xRealWeather() === 'storm' || evRnd(day, 1231 + i) < 0.05) { mLog(t, bossId(), `✈️ Chuyến ${G.flights[L - 1][i]}h hủy vì thời tiết xấu`, 0); continue; }
+      const n = Math.max(2, Math.round(G.pax[L - 1] * (0.6 + gxDraw(t) * 0.4) * (0.85 + evRnd(day, 1241 + i) * 0.3))), take = n * G.fee[L - 1], cost = G.land[L - 1];
+      const d = mDayRec(t); d.visit = d.visit || { groups: 0, people: 0 }; d.visit.groups++; d.visit.people += n; save.set(`mgr/day/${day}`, d);
+      evBook(t, take, 'Khách bay đến đảo'); evBook(t, -cost, 'Phí bay, nhiên liệu'); lineAdd(t, 'air', take, cost);
+      rec.pax += n; rec.take += take - cost;
+      mLog(t, bossId(), `✈️ Chuyến ${G.flights[L - 1][i]}h đáp ${G.names[L - 1]}: ${n} khách (+${money(take - cost)} xu), khách tỏa đi ăn uống, tham quan`, 0);
+    }
+    rec.done = due; save.set(`gxd/air/${day}`, rec);
+  }
+  // what a level takes in a day, for paybacks (the port: only what it pays above the shop, half a hold)
+  function gxExpect(id, L, t = farmNow()) {
+    if (L < 1) return 0; const G = GX[id], d = gxDraw(t), i = L - 1;
+    if (id === 'port') { const ks = portGoods().filter((k) => have(k) > 0), avg = ks.length ? ks.reduce((a, k) => a + priceOf(k), 0) / ks.length : 0; return G.cap[i] * 0.5 * avg * (G.mul[i] - 1) * (L >= 2 ? 1 : 0.5); }
+    if (id === 'spa') return G.cap[i] * d * G.fee[i] * 0.8 * (1 + 0.05 * innLv());
+    if (id === 'stage') return (G.seats[i] * d * (G.ticket[i] + G.snack[i]) - G.run[i]) * (L >= 2 ? 1 : 4 / 7);
+    if (id === 'air') return G.flights[i].length * (G.pax[i] * (0.6 + d * 0.4) * G.fee[i] - G.land[i]) * 0.95;
+    return 0;
+  }
+  const gxGain = (id, t = farmNow()) => { const L = gxLv(id); return gxNext(id) ? Math.max(0, gxExpect(id, L + 1, t) - gxExpect(id, L, t)) : 0; };
+  function gxUp(id, t, by) {
+    const nx = gxNext(id), G = GX[id]; if (!nx || gxNeed(id) || level() < nx.need || coins() < nx.cost) return false;
+    ledger(-nx.cost, 0, {}); save.set('gx/lv/' + id, nx.to);
+    if (by === 'owner') { evBook(t, -nx.cost, 'Mở rộng, nâng cấp', true); mInvLog(t, id, nx.cost, `chủ trại ${nx.to > 1 ? 'nâng lên' : 'xây'} ${nx.name}`, 'owner'); mLog(t, bossId(), `${G.icon} Chủ trại ${nx.to > 1 ? 'nâng lên' : 'xây'} ${nx.name} (${money(nx.cost)} xu) · ${G.what[nx.to - 1]}`, 0); }
+    sfx.jingle && sfx.jingle(200, true);
+    return true;
+  }
+  // ── 🏙️ TJ in the city: branches of the island's brands (the island shop must be level 4), a profit report each morning
+  const CITY = { max: 5, grow: 1.4, brands: { banhmi: { name: 'Bánh mì TJ', icon: '🥖', cost: 30000, day: 1100 }, cafe: { name: 'TJ Coffee', icon: '🧋', cost: 40000, day: 1500 }, restaurant: { name: 'Nhà hàng TJ', icon: '🍽️', cost: 60000, day: 2300 } } };
+  const cityN = (b) => Math.max(0, Math.min(CITY.max, save.get('city/n/' + b, 0)));
+  const cityAll = () => Object.keys(CITY.brands).reduce((a, b) => a + cityN(b), 0);
+  const cityCost = (b, n = cityN(b)) => Math.round((CITY.brands[b].cost * Math.pow(CITY.grow, n)) / 1000) * 1000;
+  const cityNeed = (b) => (!xBuilt(b, farmNow()) ? `cần xây ${FAC[b].names[0]} trên đảo trước` : facLv(b) < 4 ? `cần ${FAC[b].names[3]} trên đảo (cấp 4) để có thương hiệu` : '');
+  const cityMul = (b, t) => Math.max(0.5, 0.8 + (starsAvg(t) - 3) * 0.15 + (facLv(b) - 4) * 0.15);
+  const cityExpect = (b, t = farmNow()) => CITY.brands[b].day * cityMul(b, t) * 0.92;
+  function cityStep(t) {
+    const day = dayNo(t); if (!cityAll() || mLocalH(t) < 6 || save.get('city/d/' + day)) return;
+    let tot = 0; const rows = [];
+    for (const [b, C] of Object.entries(CITY.brands)) for (let i = 0; i < cityN(b); i++) {
+      const s = i * 7 + b.length * 31, bad = evRnd(day, 1350 + s) < 0.06, v = Math.round(bad ? -C.day * 0.3 : C.day * (0.5 + evRnd(day, 1300 + s)) * cityMul(b, t));
+      tot += v; rows.push([b, i + 1, v]);
+    }
+    save.set('city/d/' + day, { tot, rows });
+    evBook(t, tot, 'Chuỗi TJ ở thành phố'); lineAdd(t, 'city', Math.max(0, tot), Math.max(0, -tot));
+    const worst = rows.filter((r) => r[2] < 0);
+    mLog(t, bossId(), `🏙️ Chuỗi TJ ở thành phố hôm qua (${rows.length} chi nhánh): ${tot >= 0 ? '+' : ''}${money(tot)} xu${worst.length ? ` · ${worst.map(([b, i]) => `${CITY.brands[b].name} số ${i}`).join(', ')} lỗ (mất điện, mưa bão)` : ''}`, 0);
+  }
+  function cityBuy(b, t, by) {
+    const C = CITY.brands[b], n = cityN(b), cost = cityCost(b); if (!C || n >= CITY.max || cityNeed(b) || coins() < cost) return false;
+    ledger(-cost, 0, {}); save.set('city/n/' + b, n + 1);
+    if (by === 'owner') { evBook(t, -cost, 'Mở rộng, nâng cấp', true); mInvLog(t, 'city', cost, `chủ trại mở ${C.name} chi nhánh ${n + 1} ở thành phố`, 'owner'); mLog(t, bossId(), `🏙️ Chủ trại mở ${C.icon} ${C.name} chi nhánh số ${n + 1} ở thành phố (${money(cost)} xu)`, 0); }
+    sfx.jingle && sfx.jingle(200, true);
+    return true;
+  }
+  // the manager: the next level / branch that pays back within twice her payback rule, with the usual money checks
+  function gxInvest(t) {
+    const rows = [];
+    for (const id of Object.keys(GX)) { const nx = gxNext(id), g = gxGain(id, t); if (nx && !gxNeed(id) && level() >= nx.need && g > 0) rows.push({ pb: nx.cost / g, cost: nx.cost, g, line: id, key: 'gx:' + id, icon: GX[id].icon, what: `${nx.to > 1 ? 'nâng lên' : 'xây'} ${nx.name}`, go: () => { ledger(-nx.cost, 0, {}); save.set('gx/lv/' + id, nx.to); } }); }
+    for (const b of Object.keys(CITY.brands)) { const n = cityN(b), cost = cityCost(b), g = cityExpect(b, t); if (n < CITY.max && !cityNeed(b)) rows.push({ pb: cost / g, cost, g, line: 'city', key: 'city:' + b, icon: '🏙️', what: `mở ${CITY.brands[b].name} chi nhánh ${n + 1} ở thành phố`, go: () => { ledger(-cost, 0, {}); save.set('city/n/' + b, n + 1); } }); }
+    for (const r of rows.filter((x) => x.pb <= mRisk().payback * 2).sort((a, b) => a.pb - b.pb)) {
+      const o = { line: r.line, key: r.key, what: r.what, payback: r.pb };
+      if (!mCanInvest(r.cost, o) || !mFund(r.cost, o)) continue;
+      r.go();
+      return { kind: 'upgrade', line: r.line, text: `${r.what} (${money(r.cost)} xu, thêm ~${money(r.g)} xu/ngày, hoàn vốn ~${Math.ceil(r.pb)} ngày)`, at: barnAt(), icon: r.icon, big: true };
+    }
+    return null;
+  }
+  // ── 🏦 TJBank credit desk (bank level 3+): the owner pays money into a lending fund and picks who it goes to; each
+  // morning the borrowers pay interest into the purse, and now and then one defaults (that part of the fund is gone)
+  const LEND = { cap: [0, 0, 30000, 80000, 200000], pol: {
+    safe: { name: '🛡️ Chắc ăn', rate: 0.008, pBad: 0.03, loss: 0.03, who: ['Bà Tư thế chấp sổ đỏ', 'Chú Ba vay mua máy cày', 'tiểu thương chợ phiên có bảo lãnh'] },
+    mid: { name: '⚖️ Cân bằng', rate: 0.015, pBad: 0.08, loss: 0.06, who: ['chủ thuyền cá vay sửa thuyền', 'Anh Tám mở tiệm tạp hóa', 'quán ăn bến tàu vay nhập hàng'] },
+    bold: { name: '🚀 Lãi cao', rate: 0.03, pBad: 0.14, loss: 0.12, who: ['thương lái buôn chuyến', `${RIVAL} vay nóng`, 'khách lạ vay tín chấp'] } } };
+  const lendFund = () => Math.max(0, tallyGet('lend'));
+  const lendCap = () => LEND.cap[facLv('bank') - 1] || 0;
+  const lendPol = () => (LEND.pol[save.get('lend/pol')] ? save.get('lend/pol') : 'mid');
+  function lendStep(t) {
+    const day = dayNo(t), f = lendFund(); if (!f || mLocalH(t) < 6 || save.get('lend/d/' + day)) return;
+    const k = lendPol(), P = LEND.pol[k], out = Math.round(f * (0.7 + evRnd(day, 1201) * 0.3)), I = Math.round(out * P.rate);
+    const bad = evRnd(day, 1202) < P.pBad ? Math.min(f, Math.round(f * P.loss * (0.6 + evRnd(day, 1203) * 0.8))) : 0, who = P.who[Math.floor(evRnd(day, 1204) * P.who.length)];
+    save.set('lend/d/' + day, { f, out, I, bad, who, pol: k });
+    if (I) { evBook(t, I, 'Lãi cho vay (quỹ TJBank)'); lineAdd(t, 'bank', I, 0); }
+    if (bad) { tallyAdd('lend', -bad); mCatAdd(t, 'out', 'Nợ xấu (quỹ cho vay)', bad); lineAdd(t, 'bank', 0, bad); }
+    mLog(t, bossId(), `🏦 Quỹ cho vay ${money(f)} xu (${P.name}): hôm qua cho vay ${money(out)} xu, thu lãi +${money(I)} xu${bad ? ` · ⚠️ ${who} vỡ nợ, mất ${money(bad)} xu vốn` : ` · khách lớn nhất: ${who}`}`, 0);
+  }
+  function lendMove(dir, a, t) {
+    if (facLv('bank') < 3) return false;
+    if (dir === 'in') { const room = lendCap() - lendFund(), n = Math.floor(Math.min(room, a === 'max' ? coins() : Number(a) || 0)); if (n <= 0 || coins() < n) return false; ledger(-n, 0, {}); tallyAdd('lend', n); mLog(t, bossId(), `🏦 Chủ trại góp ${money(n)} xu vào quỹ cho vay TJBank (quỹ giờ ${money(lendFund())} xu)`, 0); return true; }
+    const n = Math.floor(Math.min(lendFund(), a === 'all' ? lendFund() : Number(a) || 0)); if (n <= 0) return false;
+    tallyAdd('lend', -n); ledger(n, 0, {}); mLog(t, bossId(), `🏦 Chủ trại rút ${money(n)} xu từ quỹ cho vay về két (quỹ còn ${money(lendFund())} xu)`, 0); return true;
+  }
+  function lendHtml() {
+    const L = facLv('bank'); if (L < 3) return '<div style="margin:6px 0 2px;border-top:1px solid #33334a;padding-top:4px"><b>💼 Phòng tín dụng</b> <span style="font-size:12px;opacity:.75">mở khi ngân hàng lên cấp 3 (Cổ đông lớn): đem tiền của mình cho vay lấy lãi mỗi sáng.</span></div>';
+    const f = lendFund(), cap = lendCap(), c = coins(), k = lendPol(), room = cap - f, h = [];
+    for (let i = 1; i <= 7; i++) { const r = save.get('lend/d/' + (dayNo() - i + 1)); if (r) h.push(r); }
+    let x = `<div style="margin:6px 0 2px;border-top:1px solid #33334a;padding-top:4px"><b>💼 Phòng tín dụng TJBank</b></div>` + row('Quỹ cho vay của chủ nhân', `<b>${money(f)}</b> / ${money(cap)} xu`);
+    x += `<div>${[1000, 5000, 20000].map((n) => B('lendin:' + n, `Góp ${money(n)}`, room >= n && c >= n)).join('')}${B('lendin:max', `Góp tối đa (${money(Math.max(0, Math.min(room, c)))})`, room > 0 && c > 0)}</div>`;
+    x += `<div>${[1000, 5000].map((n) => B('lendout:' + n, `Rút ${money(n)}`, f >= n)).join('')}${B('lendout:all', 'Rút hết về két', f > 0)}</div>`;
+    x += '<div style="margin-top:4px;font-size:13px">Cho ai vay:</div>' + Object.entries(LEND.pol).map(([id, P]) => row(`${id === k ? '✅ ' : ''}<b>${P.name}</b> <span style="font-size:12px;opacity:.75">lãi ${String(Math.round(P.rate * 1000) / 10).replace('.', ',')}%/ngày · ${Math.round(P.pBad * 100)}% ngày có người vỡ nợ, mất ~${Math.round(P.loss * 100)}% quỹ<br>${P.who.join(', ')}</span>`, id === k ? '<span style="opacity:.7">đang chọn</span>' : B('lendpol:' + id, 'Chọn'))).join('');
+    if (h.length) x += `<div style="font-size:12px;opacity:.8;margin-top:3px">7 ngày qua: lãi +${money(h.reduce((a, r) => a + r.I, 0))} xu, nợ xấu −${money(h.reduce((a, r) => a + r.bad, 0))} xu.</div>`;
+    return x + `<div style="font-size:12px;opacity:.75;margin:3px 0">Lãi về két mỗi sáng 6h. Hạn mức quỹ theo cấp ngân hàng: cấp 3: ${money(LEND.cap[2])} · cấp 4: ${money(LEND.cap[3])} · cấp 5: ${money(LEND.cap[4])}. Quản lý không đụng vào quỹ này.</div>`;
+  }
+  function gxStep(t) { portStep(t); spaStep(t); stageStep(t); airStep(t); cityStep(t); lendStep(t); }
+  function gxAct(act, a1) {
+    const t = farmNow();
+    if (act === 'gxup') { const nx = gxNext(a1); return !!nx && confirm(`${nx.to > 1 ? 'Nâng lên' : 'Xây'} ${nx.name} với ${money(nx.cost)} xu?`) && gxUp(a1, t, 'owner'); }
+    if (act === 'gxcity') { const C = CITY.brands[a1]; return !!C && confirm(`Mở ${C.name} chi nhánh số ${cityN(a1) + 1} ở thành phố với ${money(cityCost(a1))} xu?`) && cityBuy(a1, t, 'owner'); }
+    if (act === 'lendin') return lendMove('in', a1, t);
+    if (act === 'lendout') return lendMove('out', a1, t);
+    if (act === 'lendpol') { if (!LEND.pol[a1]) return false; save.set('lend/pol', a1); return true; }
+    return false;
+  }
+  function gxLines(t) {
+    const out = [], day = dayNo(t), y = day - 1, bits = [];
+    const p = gxRec('port', y); if (p && p.n) bits.push(`🚢 cảng xuất ${p.n} món (+${money(p.v)} xu)`);
+    const s = gxRec('spa', y); if (s && s.g) bits.push(`♨️ spa ${s.g} khách (+${money(s.take - s.cost)} xu)`);
+    const st = gxRec('stage', y); if (st) bits.push(`🎭 ${st.show} ${st.g} khán giả (${st.take - st.cost >= 0 ? '+' : ''}${money(st.take - st.cost)} xu)`);
+    const a = gxRec('air', y); if (a && a.pax) bits.push(`✈️ ${a.pax} khách bay đến (+${money(a.take)} xu)`);
+    const c = save.get('city/d/' + day); if (c) bits.push(`🏙️ chuỗi TJ thành phố ${c.tot >= 0 ? '+' : ''}${money(c.tot)} xu`);
+    const l = save.get('lend/d/' + day); if (l) bits.push(`🏦 quỹ cho vay lãi +${money(l.I)} xu${l.bad ? `, nhưng ${l.who} vỡ nợ mất ${money(l.bad)} xu vốn` : ''}`);
+    if (bits.length) out.push(`Mảng mở rộng hôm qua: ${bits.join('; ')}. ${B('open:grow', '🚢 Xem')}`);
+    if (portDocked(t) && mLocalH(t) >= 7 && mLocalH(t) < 17) { const r = gxRec('port', day); out.push(`🚢 Tàu hàng đang đậu ở ${GX.port.names[gxLv('port') - 1]} đến 17h, đã xếp ${r ? r.n : 0}/${GX.port.cap[gxLv('port') - 1]} món ạ.`); }
+    if (!bits.length && level() >= 8 && !Object.keys(GX).some((id) => gxLv(id)) && !cityAll()) out.push(`🧭 Trại mình đã lớn, chủ nhân có thể mở rộng thêm: bến cảng xuất khẩu, suối nước nóng, sân khấu, sân bay, chuỗi TJ ở thành phố. ${B('open:grow', '🚢 Xem các hướng mở rộng')}`);
+    return out;
+  }
+  function gxPanelHtml(head) {
+    const t = farmNow(), c = coins(), lv = level(); let x = '<div style="font-size:12px;opacity:.8;margin-bottom:4px">Những mảng lớn để đầu tư khi các đảo đã lên cấp cao. Quản lý cũng tự xây / nâng khi tính ra hoàn vốn kịp; muốn ưu tiên cái nào thì thêm vào 🎯 ở 📈 Đầu tư.</div>';
+    for (const [id, G] of Object.entries(GX)) {
+      const L = gxLv(id), nx = gxNext(id), need = gxNeed(id), g = Math.round(gxGain(id, t)), y = gxRec(id, dayNo(t) - 1), td = gxRec(id, dayNo(t));
+      const last = id === 'port' ? (td && td.n ? `hôm nay đã xếp ${td.n} món, +${money(td.v)} xu` : y && y.n ? `hôm qua ${y.n} món, +${money(y.v)} xu` : '') : id === 'air' ? (td && td.pax ? `hôm nay ${td.pax} khách, +${money(td.take)} xu` : y && y.pax ? `hôm qua ${y.pax} khách, +${money(y.take)} xu` : '') : y && y.g ? `hôm qua ${y.g} khách, ${y.take - y.cost >= 0 ? '+' : ''}${money(y.take - y.cost)} xu` : '';
+      x += `<div style="margin:6px 0 2px;border-top:1px solid #33334a;padding-top:4px">${G.icon} <b>${L ? G.names[L - 1] : G.names[0]}</b> ${L ? `· cấp <b>${L}/${G.names.length}</b>` : '<span style="opacity:.7">· chưa xây</span>'}${L ? ` <span style="font-size:12px;opacity:.75">· ${G.what[L - 1]}</span>` : ''}${last ? `<br><span style="font-size:12px;color:#9fe070">${last}</span>` : ''}</div>`;
+      if (!nx) { x += '<div style="font-size:12px;color:#7fd65a">Đã lên cấp cao nhất</div>'; continue; }
+      const why = need || (lv < nx.need ? `cần cấp ${nx.need} (bạn cấp ${lv})` : c < nx.cost ? `thiếu ${money(nx.cost - c)} xu` : '');
+      x += `<div style="font-size:12px;opacity:.85">${L ? `Lên cấp ${nx.to} <b>${nx.name}</b>` : 'Xây'}: ${G.what[nx.to - 1]}${g > 0 ? ` · thêm ~${money(g)} xu/ngày, hoàn vốn ~${Math.ceil(nx.cost / g)} ngày` : id === 'port' ? ' · lời nhiều hay ít tùy kho có bao nhiêu hàng xưởng, mật, quả, cá' : ''}</div>`
+        + `<div>${B('gxup:' + id, `${L ? '⬆️ Nâng cấp' : '🏗️ Xây'} · ${money(nx.cost)} xu`, !why)}${why ? `<span style="font-size:12px;opacity:.75"> ${why}</span>` : ''}</div>`;
+    }
+    x += '<div style="margin:8px 0 2px;border-top:1px solid #33334a;padding-top:4px"><b>🏙️ Chuỗi TJ ở thành phố</b> <span style="font-size:12px;opacity:.75">chi nhánh ngoài đảo, mỗi sáng báo lãi; thỉnh thoảng có ngày lỗ</span></div>';
+    for (const [b, C] of Object.entries(CITY.brands)) {
+      const n = cityN(b), need = cityNeed(b), cost = cityCost(b), g = Math.round(need ? C.day * 0.9 : cityExpect(b, t));
+      x += row(`${C.icon} <b>${C.name}</b> · ${n}/${CITY.max} chi nhánh<br><span style="font-size:12px;opacity:.75">${n >= CITY.max ? 'đã đủ chi nhánh' : `chi nhánh tiếp theo ~${money(g)} xu/ngày, hoàn vốn ~${Math.ceil(cost / g)} ngày${need ? ` · ${need}` : ''}`}</span>`, n >= CITY.max ? '<span style="opacity:.7">Tối đa</span>' : B('gxcity:' + b, `Mở · ${money(cost)} xu`, !need && c >= cost));
+    }
+    const cd = save.get('city/d/' + dayNo(t)); if (cd) x += `<div style="font-size:12px;color:${cd.tot >= 0 ? '#9fe070' : '#ffb08a'}">Báo cáo sáng nay: ${cd.rows.map(([b, i, v]) => `${CITY.brands[b].icon}${i} ${v >= 0 ? '+' : ''}${money(v)}`).join(' · ')} = <b>${cd.tot >= 0 ? '+' : ''}${money(cd.tot)} xu</b></div>`;
+    return head('🚢 Mở rộng lớn') + x + lendHtml() + `<div style="margin-top:6px">${B('open:bank', '🏦 Vào ngân hàng')}${B('open:biz', '🏨 Khách sạn, thuyền')}</div>`;
+  }
+  window.__forestGrow = { GX, CITY, LEND, lv: gxLv, next: gxNext, need: gxNeed, gain: gxGain, expect: gxExpect, up: gxUp, step: gxStep, port: portStep, spa: spaStep, stage: stageStep, air: airStep, city: cityStep, cityBuy, cityN, cityCost, cityNeed, lend: lendStep, lendMove, lendFund, lendCap, lendPol, act: gxAct, lines: gxLines, invest: gxInvest, html: () => gxPanelHtml((x) => x), lendHtml, draw: gxDraw, goods: portGoods, rec: gxRec };
   // ── panels: 🏨 new business (homestay, boat, market, festivals, reviews), 🏅 collections, 📸 milestones + photos
   function bizPanelHtml(head) {
     const t = farmNow(), L = innLv(); let x = '';
@@ -6231,6 +6457,7 @@
     if (v.kind === 'find') return findHtml(head);
     if (v.kind === 'mperm') return mPermHtml(head);
     if (v.kind === 'biz') return bizPanelHtml(head);
+    if (v.kind === 'grow') return gxPanelHtml(head);
     if (v.kind === 'col') return colPanelHtml(head);
     if (v.kind === 'story') return storyPanelHtml(head);
     return '';
@@ -6296,7 +6523,7 @@
     }
     say((fired.length ? `Em xin báo: em đã cho ${fired.join('; ')}. ` : '') + (watch.length ? `Em đang để ý ${watch.slice(0, 3).join(', ')}. Nếu vài ngày tới không khá lên em xin phép cho nghỉ; chủ nhân muốn giữ ai thì cứ dặn em ạ.` : 'Cả đội đang làm ổn, em chưa thấy ai cần cho nghỉ.'));
     // 4b. today's event, the staff's lives (2026-11-12)
-    for (const x of evLines(t).concat(lifeLines(t), bizLines(t), venueLines(t), tjbLines(t))) say(x);
+    for (const x of evLines(t).concat(lifeLines(t), bizLines(t), venueLines(t), tjbLines(t), gxLines(t))) say(x);
     // 5. last night, the weather
     const nk = nightKey(t - 8 * HOUR), n = save.get(`night/${nk}`, null), bar = save.get(`bar/${dayNo(t - 864e5)}`, null), dd = xWx && xWx.daily;
     const night = [];
@@ -6314,7 +6541,7 @@
     if (asks.length) html += `<p style="margin:8px 0 4px">Có ${asks.length} việc em cần chủ nhân duyệt ạ:</p>` + asks.map((a) => `<div style="margin:4px 0">${a.what} (${money(a.cost)} xu) ${B('mok:' + a.k, '✅ Duyệt')}${B('mno:' + a.k, '❌ Không')}</div>`).join('');
     html += mCmdHtml(t, watchW);
     html += `<p style="margin:9px 0 0;line-height:1.55">Chủ nhân cứ nghỉ ngơi, có gì em báo ngay ạ 🌿</p></div></div>`
-      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${B('open:biz', '🏨 Homestay, khách sạn')}${B('open:mill', '🏭 Xưởng chế biến')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}${B('open:find', '🔎 Ai đang ở đâu')}${B('open:mill', '🏭 Xưởng')}${B('open:biz', '🏨 Homestay, thuyền, lễ hội')}${B('open:col', '🏅 Sưu tập')}${B('open:story', '📸 Cột mốc')}</div>`;
+      + `<div style="margin-top:8px">${B('open:week', '📅 Báo cáo tuần')}${B('openTab:mgr:plan', '📈 Sổ sách, đầu tư')}${B('openTab:mgr:staff', '👥 Nhân viên')}${B('open:biz', '🏨 Homestay, khách sạn')}${B('open:mill', '🏭 Xưởng chế biến')}${save.get('mgr/away') ? B('open:away', '🕒 Bảng số liệu lúc vắng') : ''}${B('open:night', '🌙 Đêm')}${B('open:find', '🔎 Ai đang ở đâu')}${B('open:mill', '🏭 Xưởng')}${B('open:biz', '🏨 Homestay, thuyền, lễ hội')}${B('open:grow', '🚢 Cảng, spa, rạp, sân bay, chuỗi TJ')}${B('open:col', '🏅 Sưu tập')}${B('open:story', '📸 Cột mốc')}</div>`;
     return head(`💬 ${boss.name} báo cáo`) + html;
   }
   // ── The weekly report (2026-11-12): on Mondays the morning report opens with it; any day from the button. Lan speaks:
@@ -6592,7 +6819,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:43 25-11';
+    const build = '10:58 25-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6726,7 +6953,7 @@
       + `<div style="margin-top:6px">${[200, 500, 1000].map((a) => B(`loan:${a}`, `Vay ${a}`, room >= a)).join('')}</div>`
       + `<div>${B('repay:200', 'Trả 200', (L.owed || 0) > 0 && c >= Math.min(200, L.owed || 0))}${B('repay:all', `Trả hết · ${money(L.owed || 0)}`, (L.owed || 0) > 0 && c >= (L.owed || 0))}</div>`
       + (mOwnerHoldLeft() > 0 && L.owed ? `<div style="font-size:13px;color:#ffd27a;margin-top:4px">🕐 Tiền chủ trại vừa vay (~${money(mOwnerHold())} xu còn trong két): Lan giữ nguyên cho chủ trại dùng, không tự trả, không đem đi đầu tư. Còn ${Math.ceil(mOwnerHoldLeft() / 60000)} phút, sau đó két dư thì Lan mới trả.</div>` : '')
-      + '<div style="font-size:12px;opacity:.7;margin-top:4px">Quản lý tự vay khi không đủ tiền trả lương, và tự trả khi két dư. Chủ trại tự vay thì Lan chờ 1 tiếng mới tự trả.</div>' + facHtml('bank') + tjbHtml();
+      + '<div style="font-size:12px;opacity:.7;margin-top:4px">Quản lý tự vay khi không đủ tiền trả lương, và tự trả khi két dư. Chủ trại tự vay thì Lan chờ 1 tiếng mới tự trả.</div>' + facHtml('bank') + tjbHtml() + lendHtml();
   }
   function mailPanelHtml() {
     const list = mailList();
@@ -6796,6 +7023,7 @@
     if (act === 'tjbbuy' || act === 'tjbsell') { const n = a1 === 'max' || a1 === 'all' ? a1 : Number(a1); if (act === 'tjbbuy' || confirm(`Bán ${n === 'all' ? 'hết' : n} cổ phần TJBank?`)) tjbTrade(act === 'tjbbuy' ? 'buy' : 'sell', n); }
     if (act === 'openv') return openPanel({ kind: 'venue', id: a1 });
     if (['rivalad', 'festno', 'innup', 'boatbuy', 'photo'].includes(act)) bizAct(act, a1, a2);
+    if (['gxup', 'gxcity', 'lendin', 'lendout', 'lendpol'].includes(act)) gxAct(act, a1);
     if (['lgift', 'lwed', 'lraiseok', 'lraiseno'].includes(act)) lifeAct(act, a1);
     if (act.startsWith('mp') && mPermAct(act, a1)) return renderPanel();
     if (act[0] === 'c' && act !== 'cook' && act !== 'close' && mCmdAct(act, a1)) return renderPanel();
