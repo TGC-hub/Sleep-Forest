@@ -4212,9 +4212,31 @@
     const k = `ot/${dayNo(t)}/${id}`, cur = save.get(k);
     // user 2026-11-09: the manager has the say on the worker cards too (may change the owner's overtime; logged)
     if (by === 'boss' && cur && cur.until === until) return false;
+    if (by === 'boss' && cur && cur.keep && until < cur.until) return false; // the owner's "everybody stays" stands
     const w = mStaff().find((x) => x.id === id), end = w ? shiftEndH(w) : MWORK[1];
     save.set(k, until > end ? { until, by, why: why || '', t } : { until: 0, by, t });
     return true;
+  }
+  // user 2026-11-26: "cho tôi cái nút bấm tất cả tăng ca đến 24h, trừ những nhân viên chỉ trực ca ngày vì đã có nhân
+  // viên trực ca đêm rồi": everybody stays until midnight tonight, except the night trades themselves, a day trade whose
+  // night twin is on the staff (game room: day keeper + night keeper), and whoever is off sick. `keep` = the manager
+  // does not send them home at 17:30.
+  const OT_ALL = 24;
+  function otAllWho(t = farmNow()) {
+    const st = mStaff(), nightJobs = new Set(st.filter((w) => (ROLES[w.role] || {}).night).flatMap((w) => ROLES[w.role].jobs));
+    return st.filter((w) => { const R = ROLES[w.role]; return R && !R.night && !lifeOff(w, t) && !R.jobs.some((j) => nightJobs.has(j)) && mLocalH(t) < OT_ALL - 0.5; });
+  }
+  const otAllOn = (t = farmNow()) => { const ws = otAllWho(t); return ws.length > 0 && ws.every((w) => { const o = mOT(w.id, t); return o && o.until >= OT_ALL; }); };
+  const otAllCost = (t = farmNow()) => otAllWho(t).reduce((s, w) => { const o = mOT(w.id, t); return s + (o && o.until >= OT_ALL ? 0 : otCost(w, OT_ALL, Math.max(mLocalH(t), o && o.until > shiftEndH(w) && mOnShift(w, t) ? o.until : 0))); }, 0);
+  function otAll(on, t = farmNow()) {
+    const ws = otAllWho(t), cost = otAllCost(t); let n = 0;
+    for (const w of ws) {
+      const o = mOT(w.id, t);
+      if (on) { if (o && o.until >= OT_ALL) continue; mSetOT(w.id, OT_ALL, 'owner', 'chủ trại cho cả trại tăng ca', t); save.set(`ot/${dayNo(t)}/${w.id}`, { ...mOT(w.id, t), keep: 1 }); n++; }
+      else if (o && o.keep) { mSetOT(w.id, 0, 'owner', '', t); n++; }
+    }
+    if (n) mLog(t, bossId(), on ? `⏱️ Chủ trại cho cả trại tăng ca đến ${OT_ALL}h (x2 lương): ${n} người, thêm khoảng ${money(cost)} xu lương` : `Chủ trại bỏ lệnh tăng ca cả trại: ${n} người về đúng giờ`, 0);
+    return n;
   }
   // the latest time today the staff who can deliver an order (manager, farmers, seller) are still on shift
   function shiftEnd(t) {
@@ -5895,7 +5917,7 @@
       openPanel({ kind: mBriefKind() });
     }
   }
-  window.__forestMgr = { boss: { score: (id, t) => mgrScore(mStaff().find((w) => w.id === id), t), swap: (id, by, why, t) => mSwapBoss(id, by || 'owner', why || '', t), review: (t) => mBossReview(t), eligible: (id, t) => mgrEligible(mStaff().find((w) => w.id === id), t), pay: (w) => wageOf(w), perm: (a, b) => mPermAct(a, b), invOff: (o) => mInvOff(o) }, forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z, b) => mTourArrive(n, z, b), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: () => { let n = 0; do mCatchUp(); while (mCatch && ++n < 1e5); }, catching: () => !!mCatch, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
+  window.__forestMgr = { otAll: { who: (t) => otAllWho(t).map((w) => w.role), on: (t) => otAllOn(t), cost: (t) => otAllCost(t), set: (on, t) => otAll(on, t), get: (id, t) => mOT(id, t), bossSet: (id, u, t) => mSetOT(id, u, 'boss', 'test', t), onShift: (id, t) => mOnShift(mStaff().find((w) => w.id === id), t) }, boss: { score: (id, t) => mgrScore(mStaff().find((w) => w.id === id), t), swap: (id, by, why, t) => mSwapBoss(id, by || 'owner', why || '', t), review: (t) => mBossReview(t), eligible: (id, t) => mgrEligible(mStaff().find((w) => w.id === id), t), pay: (w) => wageOf(w), perm: (a, b) => mPermAct(a, b), invOff: (o) => mInvOff(o) }, forecast: (t) => { mFcCache = null; return mForecast(t); }, urgent: (n = Date.now()) => { mUrgentAt = 0; mUrgentTick(n); }, cmd: (a, b) => mCmdAct(a, b), paused: () => mPaused(), kept: (id) => mKept(id), reserve: () => mReserve(), hustle: (id, on = 1) => mHustle(id, on), hustled: (id) => mHustled(id), approveResting: (t = farmNow()) => mApproveResting(t), staffTasks: () => villagers.filter((v) => v.staff).map((v) => ({ id: v.staff, role: v.role, step: v.step, kind: v.task && v.task.kind })), jobsOf: (id, t = farmNow()) => { const w = mStaff().find((x) => x.id === id); return w ? mJobs(w, t) : null; }, barJob: (id, t = farmNow()) => barJob(t, mStaff().find((x) => x.id === id)), risk: () => mRiskKey(), boldCheck: (c, o) => mBoldCheck(c, o || {}), plan: (t) => mPlanToday(t), lineStats: (k, n) => mLineStats(k, n), next: () => mNextInvest(), barDecide: (t = farmNow()) => barDecide(t), barExpect: () => barExpect(), barRec: () => barRec(), brakeCheck: (t = farmNow()) => mBrakeCheck(t), cropScore: (k) => mCropScore(k, mCropGlut(farmNow())), ot: (id, t) => mOT(id, t), setOT: (id, u, by) => mSetOT(id, u, by || 'owner'), onShift: (w, t) => mOnShift(w, t), broke: () => mBroke(), loanNeeds: (t = farmNow()) => mLoanNeeds(t), claims: mClaims, rep: () => repNow(), rush: (t = farmNow()) => mRushPlan(t), cancel: (slot) => orderCancel(dayNo(), slot, farmNow(), '', 'test'), fire: (id) => mFire(id), zooReview: () => zooReview(farmNow()), zooStars: () => zooStars(), zooFee: () => zooFee(), zooDirt: (p) => zooDirt(p), tour: (n, z, b) => mTourArrive(n, z, b), loan: () => mLoan(), clock: () => farmNow(), staff: mStaff, step: mStep, catchUp: () => { let n = 0; do mCatchUp(); while (mCatch && ++n < 1e5); }, catching: () => !!mCatch, roles: ROLES, vis: mVis, now: mNow, jobs: JOBS, hire: mHire,
     day: (t = farmNow()) => mDayRec(t), log: () => save.get('mgr/log', []) };
   window.__forestReset = { summary: () => runSummary(), runs: () => pastRuns(), html: (ask) => resetHtml({ ask }, (x) => x), go: () => gameReset() };
   window.__forestPondBox = null; window.__forestPond = { lv: () => facLv('pond'), gain: () => facGain('pond'), sim: (i) => simPond(i), fishes: () => FISHES };
@@ -6818,6 +6840,9 @@
       const pn = (n) => `<b style="color:${n >= 0 ? '#7fd65a' : '#e08a5a'}">${n >= 0 ? '+' : '−'}${money(Math.abs(n))}</b>`;
       body = `<div style="margin-top:6px">💵 Quỹ lương mỗi ngày: <b>${money(mWages(st))}</b> xu (trả từ két của bạn lúc đầu ngày)</div>`
         + (owed ? `<div style="color:#e08a5a;font-size:13px">Đang nợ lương: <b>${money(owed)}</b> xu · ${Object.values(debt).map((e) => `${e.name} ${money(e.amt)}`).join(', ')}. Nợ từ 3 ngày lương thì làm uể oải, từ 5 ngày thì bỏ việc.</div>` : '<div style="font-size:12px;opacity:.7">Không nợ lương ai.</div>')
+        + (() => { const ws = otAllWho(now); if (!ws.length) return ''; const on = otAllOn(now), skip = st.length - ws.length;
+          return `<div style="margin:8px 0">${on ? B('otall:0', '⏱️ Bỏ tăng ca cả trại (về đúng giờ)') : B('otall:1', `⏱️ Tất cả tăng ca đến ${OT_ALL}h · ~${money(otAllCost(now))} xu`)}`
+            + `<div style="font-size:11px;opacity:.65;margin-top:2px">${on ? `${ws.length} người đang ở lại đến ${OT_ALL}h tối nay (lương x2).` : `${ws.length} người, lương x2 cho giờ làm thêm, chỉ tối nay.`}${skip ? ` Không tính ${skip} người: ca đêm, ca ngày đã có người trực đêm thay, hoặc đang nghỉ ốm.` : ''}</div></div>`; })()
         + st.map((w) => {
           const R = ROLES[w.role], s = mStaffDay(w, now);
           let wk = 0, att = 0, attN = 0; for (let k = 0; k < 7; k++) { const x = mStaffDay(w, now - k * 864e5); wk += x.net; if (x.att != null) { att += x.att; attN++; } }
@@ -6842,7 +6867,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:35 26-11';
+    const build = '12:37 26-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -7054,6 +7079,7 @@
     if (act === 'hustle') mHustle(a1, Number(a2));
     if (act === 'lakego') mLakeGo(a1);
     if (act === 'ot') { const w = mStaff().find((x) => x.id === a1), back = w && !mOnShift(w, farmNow()) && mLocalH(farmNow()) >= shiftEndH(w); mSetOT(a1, Number(a2), 'owner', back ? 'chủ trại gọi lại' : 'chủ trại cho'); if (w) mLog(farmNow(), a1, Number(a2) ? back ? `📣 Chủ trại gọi ${w.name} đang nghỉ quay lại làm tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} tăng ca đến ${a2}h (x2 lương)` : `Chủ trại cho ${w.name} nghỉ đúng giờ (không tăng ca)`, 0); }
+    if (act === 'otall') otAll(Number(a1));
     if (act === 'rank') { rankUp(a1, 'owner'); }
     if (act === 'cover') { setCover(a1, a2, 'owner'); }
     if (act === 'wcard') { openPanel({ kind: 'worker', id: a1 }); return; }
