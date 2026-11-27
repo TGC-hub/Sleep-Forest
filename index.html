@@ -5505,14 +5505,14 @@
   // Settled in bizStep (lease holder), deterministic per day. Keys: gx/lv/<id>, gxd/<id>/<day>, lend/pol, lend/d/<day>,
   // bal/lend/<device> (the fund: two devices may pay in → tally), city/n/<brand>, city/d/<day>.
   const GX = {
-    port: { icon: '🚢', names: ['Bến tàu hàng', 'Cảng xuất khẩu', 'Cảng quốc tế TJ'], cost: [12000, 35000, 90000], lvl: [8, 12, 18], cap: [40, 80, 140], mul: [1.5, 1.75, 2],
-      what: ['tàu hàng ghé cách ngày (7h–17h), chở 40 món, trả giá x1,5', 'tàu ghé mỗi ngày, chở 80 món, trả giá x1,75', 'tàu lớn mỗi ngày, chở 140 món, trả giá x2'] },
-    spa: { icon: '♨️', names: ['Suối nước nóng', 'Spa thảo mộc', 'TJ Onsen & Spa'], cost: [15000, 45000, 120000], lvl: [8, 12, 18], cap: [20, 40, 70], fee: [60, 90, 130],
-      what: ['tối đa 20 khách/ngày, vé 60 xu, khách sạn đông thêm 4%', 'tối đa 40 khách/ngày, vé 90 xu, khách sạn đông thêm 8%', 'tối đa 70 khách/ngày, vé 130 xu, khách sạn đông thêm 12%'] },
-    stage: { icon: '🎭', names: ['Sân khấu ngoài trời', 'Rạp chiếu phim TJ', 'Nhà hát TJ'], cost: [18000, 60000, 150000], lvl: [8, 12, 18], seats: [60, 110, 180], ticket: [30, 40, 55], snack: [5, 8, 12], run: [250, 600, 1400],
-      what: ['60 chỗ, diễn tối thứ 5 đến chủ nhật, vé 30 xu', '110 chỗ, chiếu phim mỗi tối, vé 40 xu', '180 chỗ, ca nhạc + kịch mỗi tối, vé 55 xu'] },
-    air: { icon: '✈️', names: ['Bến thủy phi cơ', 'Sân bay nhỏ', 'Sân bay TJ'], cost: [30000, 70000, 160000], lvl: [10, 14, 20], flights: [[9], [9, 14], [8, 12, 16]], pax: [12, 20, 28], fee: [80, 100, 125], land: [100, 150, 200],
-      what: ['1 chuyến/ngày, ~12 khách, mỗi khách trả 80 xu, khách xuống đảo đi ăn chơi tiếp', '2 chuyến/ngày, ~20 khách/chuyến, 100 xu/khách', '3 chuyến/ngày, ~28 khách/chuyến, 125 xu/khách'] },
+    port: { icon: '🚢', names: ['Bến tàu hàng', 'Cảng xuất khẩu', 'Cảng quốc tế TJ'], cost: [12000, 35000, 90000], lvl: [8, 12, 18], cap: [80, 160, 300], mul: [1.5, 1.75, 2],
+      what: ['tàu hàng ghé mỗi ngày (7h–17h), chở tối đa 80 món, trả giá x1,5', 'tàu ghé mỗi ngày, chở 160 món, trả giá x1,75', 'tàu lớn mỗi ngày, chở 300 món, trả giá x2'] },
+    spa: { icon: '♨️', names: ['Suối nước nóng', 'Spa thảo mộc', 'TJ Onsen & Spa'], cost: [15000, 45000, 120000], lvl: [8, 12, 18], slots: [6, 10, 16], soak: 45, cap: [96, 160, 256], fee: [25, 35, 45],
+      what: ['6 chỗ ngâm, mở liên tục 8h–20h (~45 phút/lượt, tối đa ~96 khách/ngày), đông thì khách xếp hàng; vé 25 xu, khách sạn đông thêm 4%', '10 chỗ (thêm nhà tắm), tối đa ~160 khách/ngày, vé 35 xu, khách sạn đông thêm 8%', '16 chỗ, tối đa ~256 khách/ngày, vé 45 xu, khách sạn đông thêm 12%'] },
+    stage: { icon: '🎭', names: ['Sân khấu ngoài trời', 'Rạp chiếu phim TJ', 'Nhà hát TJ'], cost: [18000, 60000, 150000], lvl: [8, 12, 18], seats: [60, 110, 180], times: [[19], [16, 19], [14, 17, 20]], ticket: [30, 35, 50], snack: [5, 8, 12], run: [250, 250, 700],
+      what: ['60 chỗ, diễn 19h tối thứ 5 đến chủ nhật, vé 30 xu', '110 chỗ, chiếu 2 suất mỗi ngày (16h, 19h), vé 35 xu', '180 chỗ, 3 suất ca nhạc + kịch mỗi ngày (14h, 17h, 20h), vé 50 xu'] },
+    air: { icon: '✈️', names: ['Bến thủy phi cơ', 'Sân bay nhỏ', 'Sân bay TJ'], cost: [30000, 70000, 160000], lvl: [10, 14, 20], flights: [[9, 15], [8, 11, 14, 16], [8, 10, 12, 14, 16]], pax: [12, 20, 28], fee: [80, 100, 125], land: [100, 150, 200],
+      what: ['2 chuyến/ngày (9h, 15h), ~12 khách/chuyến, mỗi khách trả 80 xu, khách xuống đảo đi ăn chơi tiếp', '4 chuyến/ngày, ~20 khách/chuyến, 100 xu/khách', '5 chuyến/ngày, ~28 khách/chuyến, 125 xu/khách'] },
   };
   LINES.port = { name: '🚢 Bến cảng', roles: [] }; LINES.spa = { name: '♨️ Suối nóng, spa', roles: [] }; LINES.stage = { name: '🎭 Sân khấu, rạp', roles: [] }; LINES.air = { name: '✈️ Sân bay', roles: [] }; LINES.city = { name: '🏙️ Chuỗi TJ thành phố', roles: [] };
   const gxLv = (id) => Math.max(0, Math.min(GX[id].names.length, save.get('gx/lv/' + id, 0)));
@@ -5541,7 +5541,7 @@
   // ── 🚢 the port: a cargo ship docks 7h–17h and buys what the upgraded places make (workshop goods, honey, fruit,
   // fish) above the shop's price; it loads through the day as the barn fills (orders and often-wanted goods stay)
   const portGoods = () => Object.keys(GOODS).filter((k) => (k.startsWith('m:') || k === 'honey' || ORCH.some(([q]) => q === k) || SEA_FISH.some(([q]) => q === k)) && priceOf(k) >= 8);
-  const portDocked = (t, L = gxLv('port')) => L > 0 && (L >= 2 || dayNo(t) % 2 === 0);
+  const portDocked = (t, L = gxLv('port')) => L > 0; // every day (2026-11-27; was every other day at level 1)
   function portStep(t) {
     const L = gxLv('port'), day = dayNo(t), h = mLocalH(t); if (!L || !portDocked(t, L)) return;
     const G = GX.port, rec = gxRec('port', day) || { n: 0, v: 0, got: {} };
@@ -5564,27 +5564,58 @@
       mLog(t, bossId(), rec.n ? `🚢 Tàu hàng rời ${G.names[L - 1]}: chở ${Object.entries(rec.got).map(([k, n]) => `${n} ${GOODS[k].icon}`).join(' ')} (${rec.n}/${G.cap[L - 1]} món, +${money(rec.v)} xu, giá x${String(G.mul[L - 1]).replace('.', ',')})` : !gxStaffed('port', t) ? `🚢 Tàu hàng rời ${G.names[L - 1]} tay không: ${gxShutText('port')}, không ai xếp hàng` : `🚢 Tàu hàng rời ${G.names[L - 1]} tay không: kho không có hàng xưởng, mật, quả hay cá dư`, 0);
     }
   }
-  // ── ♨️ the spa: day visitors and hotel guests soak; settled at 20h
+  // ── ♨️ the spa (2026-11-27): open 8h–20h without a break. Guests arrive all day (busiest late afternoon / evening,
+  // weekends, good reputation, the hotel), soak ~45 min in one of the pool's places; when it is full they queue (up to
+  // 1.5x the places, more walk off). Tickets are booked as they are sold; a summary at closing time.
+  const SPA_OPEN = [8, 20], SPA_CURVE = [[8, 10, 0.6], [10, 12, 0.9], [12, 14, 0.7], [14, 17, 1], [17, 20, 1.3]];
+  const spaCapH = (L) => (GX.spa.slots[L - 1] * 60) / GX.spa.soak;
+  function spaRateH(t, L = gxLv('spa')) {
+    const h = mLocalH(t), c = (SPA_CURVE.find(([a, b]) => h >= a && h < b) || [0, 0, 0])[2], wd = wkDay(t), k = xRealWeather();
+    return spaCapH(L) * 1.05 * (0.4 + gxDraw(t)) * c * (1 + 0.05 * innLv()) * (wd === 0 || wd === 6 ? 1.2 : 1) * (k === 'storm' ? 0.6 : 1);
+  }
   function spaStep(t) {
-    const L = gxLv('spa'), day = dayNo(t); if (!L || mLocalH(t) < 20 || gxRec('spa', day)) return;
-    if (!gxStaffed('spa', t)) { save.set(`gxd/spa/${day}`, { g: 0, take: 0, cost: 0, L, shut: 1 }); mLog(t, bossId(), `♨️ ${GX.spa.names[L - 1]} hôm nay ${gxShutText('spa')}`, 0); return; }
-    const G = GX.spa, g = Math.max(0, Math.min(G.cap[L - 1], Math.round(G.cap[L - 1] * gxDraw(t) * (0.8 + evRnd(day, 1211) * 0.4) * (1 + 0.05 * innLv()))));
-    const take = g * G.fee[L - 1], cost = Math.round(take * 0.2);
-    save.set(`gxd/spa/${day}`, { g, take, cost, L });
-    if (g) { evBook(t, take, 'Suối nóng, spa'); evBook(t, -cost, 'Vật tư (cám, thuốc, củi)'); lineAdd(t, 'spa', take, cost); }
-    mLog(t, bossId(), `♨️ ${G.names[L - 1]} hôm nay ${g}/${G.cap[L - 1]} khách ngâm tắm: +${money(take - cost)} xu`, 0);
+    const L = gxLv('spa'), day = dayNo(t), h = mLocalH(t); if (!L) return;
+    const G = GX.spa, old = gxRec('spa', day);
+    if (old && (old.done || (old.gf == null && old.g != null))) return; // closed for the day (or settled the old way)
+    const rec = old || { g: 0, gf: 0, take: 0, cost: 0, q: 0, lost: 0, qMax: 0, util: 0, L };
+    if (h >= SPA_OPEN[1]) {
+      const lost = Math.round(rec.lost + rec.q);
+      save.set(`gxd/spa/${day}`, { ...rec, q: 0, lost, done: 1 });
+      mLog(t, bossId(), rec.g || !rec.shut ? `♨️ ${G.names[L - 1]} đóng cửa 20h: ${rec.g} khách ngâm tắm (+${money(rec.take - rec.cost)} xu)${rec.qMax >= 1 ? `, lúc đông nhất ${Math.round(rec.qMax)} người xếp hàng` : ''}${lost ? `, ${lost} người chờ lâu bỏ về` : ''}` : `♨️ ${G.names[L - 1]} hôm nay ${gxShutText('spa')}`, 0);
+      return;
+    }
+    if (h < SPA_OPEN[0]) return;
+    if (!gxStaffed('spa', t)) { if (!rec.shut) { rec.shut = 1; save.set(`gxd/spa/${day}`, rec); } return; }
+    const d0 = new Date(t); d0.setHours(SPA_OPEN[0], 0, 0, 0);
+    const last = Math.max(rec.last || 0, d0.getTime()), dt = Math.min(HOUR, t - last); if (dt < 4 * 60000) return;
+    const arr = (spaRateH(t, L) * dt) / HOUR, capS = (spaCapH(L) * dt) / HOUR, pool = rec.q + arr, served = Math.min(pool, capS);
+    let q = pool - served; const qMax = G.slots[L - 1] * 1.5; if (q > qMax) { rec.lost += q - qMax; q = qMax; }
+    rec.last = t; rec.q = q; rec.qMax = Math.max(rec.qMax || 0, q); rec.util = capS ? served / capS : 0; rec.gf = (rec.gf || 0) + served;
+    const n = Math.floor(rec.gf) - rec.g;
+    if (n > 0) { const take = n * G.fee[L - 1], cost = Math.round(take * 0.2); rec.g += n; rec.take += take; rec.cost += cost; evBook(t, take, 'Suối nóng, spa'); evBook(t, -cost, 'Vật tư (cám, thuốc, củi)'); lineAdd(t, 'spa', take, cost); }
+    save.set(`gxd/spa/${day}`, rec);
   }
   // ── 🎭 the stage: an evening show (level 1: Thu–Sun; a cinema and up: every night); settled at 22h
   const stageOn = (t, L = gxLv('stage')) => L >= 2 || (L === 1 && [0, 4, 5, 6].includes(wkDay(t)));
+  const stageLive = (t, L = gxLv('stage')) => { const h = mLocalH(t); return L > 0 && stageOn(t, L) && GX.stage.times[L - 1].some((x) => h >= x && h < x + 2); };
+  const stageNext = (t, L = gxLv('stage')) => { const h = mLocalH(t); return GX.stage.times[L - 1].find((x) => x > h); };
   const SHOWS = [['ca nhạc acoustic', 'múa rối nước', 'hài kịch', 'đêm nhạc đồng quê'], ['phim hoạt hình', 'phim hành động', 'phim tình cảm', 'phim kinh dị nhẹ'], ['hòa nhạc', 'nhạc kịch', 'kịch nói', 'đêm ca sĩ khách mời']];
   function stageStep(t) {
-    const L = gxLv('stage'), day = dayNo(t); if (!L || !stageOn(t, L) || mLocalH(t) < 22 || gxRec('stage', day)) return;
-    if (!gxStaffed('stage', t)) { save.set(`gxd/stage/${day}`, { g: 0, take: 0, cost: 0, show: '', L, shut: 1 }); mLog(t, bossId(), `🎭 ${GX.stage.names[L - 1]} tối nay ${gxShutText('stage')}`, 0); return; }
-    const G = GX.stage, we = [0, 6].includes(wkDay(t)) ? 1.2 : 1, g = Math.max(0, Math.min(G.seats[L - 1], Math.round(G.seats[L - 1] * gxDraw(t) * (0.75 + evRnd(day, 1221) * 0.5) * we)));
-    const take = g * (G.ticket[L - 1] + G.snack[L - 1]), cost = G.run[L - 1], show = SHOWS[L - 1][Math.floor(evRnd(day, 1222) * SHOWS[L - 1].length)];
-    save.set(`gxd/stage/${day}`, { g, take, cost, show, L });
-    evBook(t, take, 'Vé sân khấu, rạp'); evBook(t, -cost, 'Tổ chức biểu diễn'); lineAdd(t, 'stage', take, cost);
-    mLog(t, bossId(), `🎭 ${G.names[L - 1]} tối nay ${show}: ${g}/${G.seats[L - 1]} khán giả, ${take - cost >= 0 ? '+' : ''}${money(take - cost)} xu`, 0);
+    const L = gxLv('stage'), day = dayNo(t), h = mLocalH(t); if (!L || !stageOn(t, L)) return;
+    const G = GX.stage, times = G.times[L - 1], old = gxRec('stage', day);
+    if (old && old.shows == null && old.g != null) return; // settled the old way (once at 22h)
+    const rec = old || { shows: 0, g: 0, take: 0, cost: 0, show: '', L };
+    const due = times.filter((x) => x + 2 <= h).length; if (rec.shows >= due) return; // a show is settled when it ends
+    for (let i = rec.shows; i < due; i++) {
+      if (!gxStaffed('stage', t)) { if (!rec.shut) mLog(t, bossId(), `🎭 ${G.names[L - 1]} suất ${times[i]}h nghỉ: ${gxShutText('stage')}`, 0); rec.shut = 1; continue; }
+      const we = [0, 6].includes(wkDay(t)) ? 1.2 : 1, early = times[i] < 17 ? 0.6 : 1;
+      const g = Math.max(0, Math.min(G.seats[L - 1], Math.round(G.seats[L - 1] * gxDraw(t) * (0.75 + evRnd(day, 1221 + i) * 0.5) * we * early)));
+      const take = g * (G.ticket[L - 1] + G.snack[L - 1]), cost = G.run[L - 1], show = SHOWS[L - 1][Math.floor(evRnd(day, 1222 + i) * SHOWS[L - 1].length)];
+      evBook(t, take, 'Vé sân khấu, rạp'); evBook(t, -cost, 'Tổ chức biểu diễn'); lineAdd(t, 'stage', take, cost);
+      rec.g += g; rec.take += take; rec.cost += cost; rec.show = show; rec.last = g;
+      mLog(t, bossId(), `🎭 ${G.names[L - 1]} suất ${times[i]}h ${show}: ${g}/${G.seats[L - 1]} khán giả, ${take - cost >= 0 ? '+' : ''}${money(take - cost)} xu`, 0);
+    }
+    rec.shows = due; save.set(`gxd/stage/${day}`, rec);
   }
   // ── ✈️ the airport: each flight lands a group that pays for the trip and then walks the islands (they count as the
   // day's visitors: stalls, game room, hotel all see them); storms ground the planes
@@ -5607,8 +5638,8 @@
   function gxExpect(id, L, t = farmNow()) {
     if (L < 1) return 0; const G = GX[id], d = gxDraw(t), i = L - 1;
     if (id === 'port') { const ks = portGoods().filter((k) => have(k) > 0), avg = ks.length ? ks.reduce((a, k) => a + priceOf(k), 0) / ks.length : 0; return G.cap[i] * 0.5 * avg * (G.mul[i] - 1) * (L >= 2 ? 1 : 0.5); }
-    if (id === 'spa') return G.cap[i] * d * G.fee[i] * 0.8 * (1 + 0.05 * innLv());
-    if (id === 'stage') return (G.seats[i] * d * (G.ticket[i] + G.snack[i]) - G.run[i]) * (L >= 2 ? 1 : 4 / 7);
+    if (id === 'spa') { const d0 = new Date(t); let g = 0, q = 0; for (let h = SPA_OPEN[0]; h < SPA_OPEN[1]; h++) { d0.setHours(h, 30, 0, 0); const a = q + spaRateH(d0.getTime(), L), s = Math.min(a, spaCapH(L)); g += s; q = Math.min(a - s, G.slots[i] * 1.5); } return g * G.fee[i] * 0.8; }
+    if (id === 'stage') return G.times[i].reduce((a, x) => a + G.seats[i] * d * (G.ticket[i] + G.snack[i]) * (x < 17 ? 0.6 : 1) - G.run[i], 0) * (L >= 2 ? 1 : 4 / 7);
     if (id === 'air') return G.flights[i].length * (G.pax[i] * (0.6 + d * 0.4) * G.fee[i] - G.land[i]) * 0.95;
     return 0;
   }
@@ -6895,7 +6926,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:04 27-11';
+    const build = '10:42 27-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -8390,10 +8421,10 @@
       const open = spaOpenNow(), mine = villagers.filter((x) => x.diner && x.diner.id === 'spa' && x.step !== 'home');
       if (!open) { for (const v of mine) { v.soak = false; goHome(v); } }
       else if (now >= (dinerNext.spa || 0)) {
-        dinerNext.spa = now + (14000 + Math.random() * 22000);
+        const busy = spaQueue() > 0; dinerNext.spa = now + (busy ? 6000 + Math.random() * 8000 : 14000 + Math.random() * 22000); // a queue in the books: boats come thicker
         const coming = boats.filter((b) => b.group && b.group.id === 'spa' && b.mode === 'in').reduce((a, b) => a + b.group.n, 0);
-        const room = spaTarget() + 1 - mine.length - coming;
-        if (room > 0) { const r = Math.random(); boatArrive(now, { id: 'spa', n: Math.min(room, r < 0.45 ? 1 : r < 0.85 ? 2 : 3) }); }
+        const room = spaTarget() + spaQueue() + 1 - mine.length - coming; // the pool + who is queueing (2026-11-27)
+        if (room > 0) { const r = Math.random(); boatArrive(now, { id: 'spa', n: Math.min(room, busy ? 2 + Math.floor(r * 3) : r < 0.45 ? 1 : r < 0.85 ? 2 : 3) }); }
       }
     }
     boatTick(now);
@@ -8692,8 +8723,9 @@
   window.__forestDiners = () => villagers.filter((v) => v.diner || v.boatPax).map((v) => ({ id: v.diner ? v.diner.id : 'tour', k: v.diner ? v.diner.k : -1, then: v.diner ? v.diner.then : 'tour', step: v.step, waiting: !!v.waiting, x: Math.round(v.x), y: Math.round(v.y) }));
   const SPA_SPOTS = [[-9, -25], [9, -27], [0, -15], [-12, -9], [12, -10], [1, -32]];
   const spaOpenNow = (t = farmNow()) => { const h = mLocalH(t); return !!gxLv('spa') && h >= 8 && h < 20 && gxStaffed('spa', t); };
-  const spaTarget = (t = farmNow()) => { const L = gxLv('spa'); if (!L) return 0; const slots = [3, 4, 6][Math.min(2, L - 1)]; return Math.max(1, Math.min(slots, Math.round(slots * Math.min(1, gxDraw(t) * 1.3) * (0.6 + 0.4 * hash01(Math.floor(t / (15 * 60000)), 1717, 3))))); };
-  const spaSlots = () => [3, 4, 6][Math.min(2, Math.max(1, gxLv('spa')) - 1)];
+  const spaSlots = () => Math.min(SPA_SPOTS.length, GX.spa.slots[Math.max(1, gxLv('spa')) - 1]); // the pool shows up to 6 (bigger levels: the bath house)
+  const spaTarget = (t = farmNow()) => { if (!gxLv('spa')) return 0; const r = gxRec('spa', dayNo(t)), u = r && r.util != null ? r.util : 0.7; return Math.max(1, Math.min(spaSlots(), Math.round(spaSlots() * u + 0.3))); };
+  const spaQueue = (t = farmNow()) => { const r = gxRec('spa', dayNo(t)); return r && !r.done ? Math.min(6, Math.round(r.q || 0)) : 0; };
   function spaTick(v, now) {
     const P = XISLE.spa, f = P && P.foot; if (!f) { goHome(v); return; }
     if (v.step === 'out') { const tile = nearWalkFree(f.x + (Math.random() - 0.5) * 20, f.y + 6, v); v.step = tile && villagerGo(v, tile.c, tile.r) ? 'going' : 'doing'; v.start = now; v.until = now + 1500; return; }
@@ -8701,8 +8733,15 @@
     if (v.step !== 'doing' || now < v.until) return;
     if (!v.soak && !v.soaked) { // step into the pool if a place is free, else wait at the edge a little longer
       const used = new Set(villagers.filter((x) => x.soak).map((x) => x.soakAt)), k = [...Array(spaSlots()).keys()].find((j) => !used.has(j));
-      if (k == null) { v.until = now + 4000; if (now - v.start > 30000) goHome(v); return; }
-      v.soak = true; v.soakAt = k; v.until = now + 35000 + Math.random() * 45000; return;
+      if (k == null) { // full: line up along the pool's edge and wait (user 2026-11-27 "xếp hàng để chờ tắm")
+        if (!v.queued) {
+          v.queued = true; v.qStart = now;
+          const qi = villagers.filter((x) => x !== v && x.queued && x.diner && x.diner.id === 'spa').length, tile = nearWalkFree(f.x - 22 + (qi % 5) * 11, f.y + 12 + Math.floor(qi / 5) * 12, v);
+          if (tile && villagerGo(v, tile.c, tile.r)) { v.step = 'going'; return; }
+        }
+        v.until = now + 3000; if (now - v.qStart > 180000) { v.queued = false; goHome(v); } return;
+      }
+      v.queued = false; v.soak = true; v.soakAt = k; v.until = now + 35000 + Math.random() * 45000; return;
     }
     if (v.soak) { v.soak = false; v.soaked = true; v.until = now + 1200; v.dir = DIR.DOWN; return; } // out of the water, a towel moment
     if (v.diner.then === 'tour') { const stops = dinerStops('spa'); v.diner = null; v.tourist = { stops, si: 0 }; v.step = 'out'; tourTick(v, now); return; }
@@ -10350,14 +10389,14 @@
             }
           }
           depth(SKY, (g) => { for (let i = 0; i < (L >= 3 ? 5 : 3); i++) puff(g, f.x - 14 + i * 7, f.y - 20 - (i % 2) * 7, 2); });
-          depth(SKY, (g) => xLabel(g, f.x, f.y - q[3] - (L >= 2 && hs ? 34 : 4), lab('spa', `♨️ ${GX.spa.names[L - 1]}${soak ? ` · ${soak} người đang ngâm` : h >= 20 && r ? ` · hôm nay ${r.g} khách` : h < 8 ? ' · 8h mở cửa' : ''}`)));
+          depth(SKY, (g) => xLabel(g, f.x, f.y - q[3] - (L >= 2 && hs ? 34 : 4), lab('spa', `♨️ ${GX.spa.names[L - 1]}${soak ? ` · ${soak} người đang ngâm${villagers.some((v) => v.queued) ? `, ${villagers.filter((v) => v.queued).length} người xếp hàng` : ''}` : h >= 20 && r ? ` · hôm nay ${r.g} khách` : h < 8 ? ' · 8h mở cửa' : ''}`)));
         }
       }
       if (I.stage) {
         const L = gxLv('stage'), f = I.stage.foot, q = X.stage_deck;
         if (!L) lot(f, `🏗️ Đất dựng sân khấu · ${money(GX.stage.cost[0])} xu`);
         else if (q) {
-          const on = stageOn(t, L) && h >= 19 && h < 22 && gxStaffed('stage', t), x0 = Math.round(f.x - q[2] / 2), y0 = Math.round(f.y - q[3]), r = gxRec('stage', day) || gxRec('stage', day - 1);
+          const on = stageLive(t, L) && gxStaffed('stage', t), x0 = Math.round(f.x - q[2] / 2), y0 = Math.round(f.y - q[3]), r = gxRec('stage', day) || gxRec('stage', day - 1);
           depth(f.y, (g) => {
             xSprite(g, 'stage_deck', x0, y0, q[2], q[3]);
             if (L >= 2) { g.fillStyle = '#3a2a1c'; g.fillRect(x0 + 9, y0 - 20, q[2] - 18, 27); g.fillStyle = on ? `hsl(${(Math.floor(now / 1100) * 47) % 360},50%,${Math.round(74 + 6 * Math.sin(now / 140))}%)` : '#e9e4d6'; g.fillRect(x0 + 11, y0 - 18, q[2] - 22, 22); }
@@ -10368,7 +10407,7 @@
             const n = Math.min(I.stage.seats.length, Math.max(3, Math.round(I.stage.seats.length * gxDraw(t) * (L >= 3 ? 1.1 : L >= 2 ? 0.9 : 0.7))));
             I.stage.seats.slice(0, n).forEach((p, j) => depth(p.y, (g) => xPerson(g, (j * 5 + day) % VCREW.n, p.x, p.y, 3, now)));
           }
-          depth(SKY, (g) => xLabel(g, f.x, y0 - (L >= 2 ? 28 : 6), lab('stage', on ? `🎭 ${GX.stage.names[L - 1]} đang diễn` : `🎭 ${GX.stage.names[L - 1]}${r && !r.shut ? ` · ${r.show}, ${r.g} khán giả` : stageOn(t, L) ? ' · 19h mở màn' : ' · diễn thứ 5 đến chủ nhật'}`)));
+          depth(SKY, (g) => xLabel(g, f.x, y0 - (L >= 2 ? 28 : 6), lab('stage', on ? `🎭 ${GX.stage.names[L - 1]} đang diễn` : `🎭 ${GX.stage.names[L - 1]}${stageOn(t, L) && stageNext(t, L) ? ` · suất ${stageNext(t, L)}h${r && r.g ? `, hôm nay ${r.g} khán giả` : ''}` : r && !r.shut ? ` · ${r.show}, ${r.g} khán giả` : stageOn(t, L) ? ' · hết suất hôm nay' : ' · diễn thứ 5 đến chủ nhật'}`)));
         }
       }
       if (I.port) {
