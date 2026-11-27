@@ -2767,6 +2767,17 @@
     fisher: { name: 'Ngư dân', icon: '🎣', ap: 5, wage: 25, hire: 100, jobs: ['rescue', 'dead', 'pond', 'water', 'fish'] },
     rancher: { name: 'Chăn nuôi', icon: '🐄', ap: 6, wage: 40, hire: 200, jobs: ['rescue', 'dead', 'ranch'] },
   };
+  // user 2026-11-27: "trồng trọt cũng nên có nhân viên ca đêm đến sáng vì thời gian đó cây chín mà không ai thu hoạch":
+  // a night field hand 18h–6h (night wage, no x2): harvests what ripens overnight, sows again, saves pests/dead plots
+  ROLES.farmnight = { name: 'Trồng trọt ca đêm', icon: '🌾', ap: 6, wage: 40, hire: 160, jobs: ['rescue', 'dead', 'harvest', 'field', 'water'], night: true, nightH: [MWORK[1], MWORK[0]], dawn: true };
+  // user 2026-11-27: "nên có thêm 1 quản lý ca đêm đến sáng": watches the whole farm 18h–6h — pests, sick / hungry
+  // animals, sick fish, what died, the ripe field (no buying land, hiring or investing: that stays with the day manager)
+  ROLES.bossnight = { name: 'Quản lý ca đêm', icon: '🌃', ap: 6, wage: 55, hire: 250, jobs: ['rescue', 'dead', 'ranch', 'pond', 'harvest', 'field', 'water'], night: true, nightH: [MWORK[1], MWORK[0]], dawn: true };
+  // user 2026-11-27: "những ngành nghề chỉ yêu cầu 1 nhân viên cũng đủ thì không cần hiện xanh thuê thêm": trades whose
+  // output is set by the place, not by heads (a 2nd one only splits the same work): one is enough, no hire button after.
+  // Many allowed: farmer, night farmer, poultry, cattle, pond, angler (each catches their own), woodcutter, cook, seller.
+  const SOLO_ROLES = ['bossnight', 'beekeeper', 'gardener', 'camphost', 'hr', 'accountant', 'guide', 'zookeeper', 'marketer', 'baker', 'barista', 'waiter', 'bartender', 'gamemaster', 'gamenight', 'host', 'artisan', 'docker', 'therapist', 'usher', 'controller'];
+  const isSolo = (r) => SOLO_ROLES.includes(r);
   const MNAMES = ['Lan', 'Minh', 'Hà', 'Phúc', 'Thảo', 'Quân', 'Mai', 'Tùng', 'Vy', 'Khoa', 'Linh', 'Sơn', 'Nga', 'Dũng', 'Uyên', 'Bình', 'Chi', 'Giang', 'Hùng', 'An'];
   // The roster (user 2026-11-09: "nhân viên thuê rồi thoát ra vào lại thì mất"): the whole team used to live in one
   // key, mgr/staff, so the device that wrote last (e.g. the PC opening with an old copy) wiped hires made on the
@@ -3101,7 +3112,7 @@
   // Each action is filed under a line: value made (goods at the market price, the order premium, a catch, the bar's
   // margin; tickets as cash), running cost, investment; the wages of the trades that work it come from the day's books.
   const LINES = {
-    field: { name: '🌱 Ruộng', roles: ['farmer'] }, ranch: { name: '🐄 Chuồng trại', roles: ['poultry', 'cattle', 'rancher'] }, pond: { name: '🐟 Ao cá', roles: ['pondkeeper', 'fisher'] },
+    field: { name: '🌱 Ruộng', roles: ['farmer', 'farmnight'] }, ranch: { name: '🐄 Chuồng trại', roles: ['poultry', 'cattle', 'rancher'] }, pond: { name: '🐟 Ao cá', roles: ['pondkeeper', 'fisher'] },
     kitchen: { name: '🍳 Bếp', roles: ['cook'] }, shop: { name: '🛒 Bán hàng, đơn hàng', roles: ['seller'] }, fishing: { name: '🎣 Câu cá', roles: ['angler'] }, wood: { name: '🪓 Củi', roles: ['woodcutter'] },
     zoo: { name: '🦁 Sở thú', roles: ['zookeeper'] }, visit: { name: '🚶 Du khách', roles: ['guide'] }, isles: { name: '🏝️ Trại ong, vườn, cắm trại', roles: ['beekeeper', 'gardener', 'camphost'] }, bar: { name: '🍹 Quán bar, vũ trường', roles: ['bartender'] }, bank: { name: '🏦 TJBank, kế toán', roles: ['accountant'] }, shops: { name: '🏪 Bánh mì, quán nước, nhà hàng', roles: ['baker', 'barista', 'waiter'] }, staff: { name: '🏘️ Nhà ở nhân viên', roles: [] },
   };
@@ -3413,9 +3424,9 @@
   }
   // which part of the farm a worker looks after
   const mScope = (w) => ({
-    plots: ['boss', 'farmer'].includes(w.role),
-    pen: w.role === 'poultry' ? 'small' : w.role === 'cattle' ? 'big' : ['boss', 'rancher'].includes(w.role) ? 'any' : null,
-    pond: ['boss', 'pondkeeper', 'fisher'].includes(w.role),
+    plots: ['boss', 'farmer', 'farmnight', 'bossnight'].includes(w.role),
+    pen: w.role === 'poultry' ? 'small' : w.role === 'cattle' ? 'big' : ['boss', 'rancher', 'bossnight'].includes(w.role) ? 'any' : null,
+    pond: ['boss', 'pondkeeper', 'fisher', 'bossnight'].includes(w.role),
   });
   const penIds = (sc) => (sc.pen === 'any' ? animalIds() : sc.pen ? animalIds(sc.pen) : []);
   // the job list of a worker right now (the manager also covers every trade nobody was hired for)
@@ -3703,6 +3714,8 @@
       : !count('host') && innLv() >= 1 ? ['host', 'homestay có lễ tân thì khách đến đủ (không có chỉ một nửa)']
       : !count('artisan') && millLv() >= 2 ? ['artisan', 'xưởng chế biến đã có 4 thùng, cần thợ chuyên ủ và coi hầm']
       : !count('marketer') && level() >= 3 && (guideAllowed() || xBuilt('banhmi', t) || xBuilt('cafe', t) || xBuilt('restaurant', t)) ? ['marketer', 'quảng cáo kéo thêm đoàn du khách (vé, tip, ăn uống ở phố)']
+      : !count('bossnight') && st.length >= 10 && (animalIds().length >= 4 || land() >= 12) ? ['bossnight', 'trại lớn, ban đêm không ai trông: sâu, thú ốm/đói, cây chín đến sáng mới có người lo']
+      : !count('farmnight') && count('farmer') && land() >= 12 ? ['farmnight', 'ruộng rộng, cây chín ban đêm không ai thu (để sáng là quá chín)']
       : late >= 4 && count('farmer') < Math.ceil(land() / 6) ? ['farmer', 'ruộng làm không xuể (cây chín quá/chết)']
       : count('poultry') === 1 && small >= 12 ? ['poultry', 'chuồng gia cầm quá đông']
       : null;
@@ -3718,6 +3731,7 @@
   function mUserHire(role) {
     const R = ROLES[role];
     if (!R || role === 'boss' || coins() < R.hire || mStaff().length >= mMax()) return;
+    if (isSolo(role) && mStaff().some((x) => x.role === role)) return; // one is enough (2026-11-27)
     if (role === 'guide' && !guideAllowed()) return; // only once the zoo is open and has had visitors
     if (role === 'artisan' && !millLv()) return;
     if (role === 'host' && !innLv()) return;
@@ -4546,7 +4560,9 @@
   // one step of farm time for every worker
   function mStep(t) {
     mPayday(t);
-    if (mLocalH(t) < MWORK[0]) { barNight(t); return; } // the farm is open 6-24 (visitors, the campfire, the story); the bar until 4
+    const early = mLocalH(t) < MWORK[0]; // the farm is open 6-24 (visitors, the campfire, the story); the bar until 4
+    if (early) { barNight(t); if (!mStaff().some((w) => (ROLES[w.role] || {}).dawn && mOnShift(w, t))) return; } // 0h–6h: only the night field hand (2026-11-27)
+    else {
     mVisitors(t);
     mDaily(t);
     mEvening(t); // 17:30: overtime for orders that can still be made, or cancel; cancel what is left when the shift ends
@@ -4554,12 +4570,13 @@
     try { lifeStep(t); evStep(t); bizStep(t); } catch (e) { console.warn('[Claude Forest] stories: ' + e); } // 2026-11-12
     try { mCoverPlan(t); } catch (e) { console.warn('[Claude Forest] cover: ' + e); }
     xStep(t); // campfire, campers, the traveller's story, finished islet buildings
+    }
     if (!mStaff().some((w) => mOnShift(w, t))) return;
     const st = mStaff().map((w) => ({ ...w })), stepH = MSTEP / HOUR;
     let changed = false;
     for (const w0 of st) {
       const w = w0, R = ROLES[w.role]; if (!R) continue;
-      if (!mOnShift(w, t)) continue; // off shift (6-18, or after their overtime)
+      if (!mOnShift(w, t) || (early && !R.dawn)) continue; // off shift (6-18, or after their overtime); 0h–6h only the night field hand
       if (mLocalH(t) >= shiftEndH(w) && !R.night) { const d = mDayRec(t), b = d.by[w.id] || (d.by[w.id] = { acts: 0, value: 0 }); b.otH = (b.otH || 0) + stepH; save.set(`mgr/day/${dayNo(t)}`, d); }
       // attendance: a less diligent worker slacks off now and then (nothing done that step); unpaid wages make it worse
       {
@@ -6867,7 +6884,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '08:59 27-11';
+    const build = '09:09 27-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -6919,6 +6936,7 @@
           : !p.cash ? `Chờ két đủ ~${money(p.need)} xu (phí thuê + 1 ngày lương, sau khi tính đủ lương mai).`
           : !p.paid ? `Chờ lãi mỗi ngày vượt lương ${p.R.wage} xu (hiện ~${money(p.prof)}).` : 'Sẽ thuê ngay trong ca làm.');
     const roles = ['farmer', 'poultry', 'cattle', 'pondkeeper', 'angler', 'woodcutter', 'cook', 'seller', 'hr', 'accountant', 'guide', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'bartender', 'baker', 'barista', 'waiter', 'artisan', 'host', 'marketer', 'gamemaster', 'gamenight'];
+    roles.splice(1, 0, 'farmnight'); roles.unshift('bossnight');
     // user 2026-11-27: the trades added later (port, spa, stage, airport…) never showed here → append every other hireable role
     for (const r of Object.keys(ROLES)) if (!roles.includes(r) && !['boss', 'fisher', 'rancher'].includes(r)) roles.push(r);
     return `<div style="margin-top:10px;border-top:2px solid #44445a;padding-top:6px"><b>🤝 Tuyển thêm</b> <span style="opacity:.7">(${st.length}/${mMax()} người)</span></div>`
@@ -6928,7 +6946,8 @@
           : r === 'host' && !innLv() ? '<br><span style="font-size:11px;color:#ffb08a">Cần xây Homestay trước (💬 › 🏨)</span>'
           : r === 'artisan' && !millLv() ? '<br><span style="font-size:11px;color:#ffb08a">Cần xây Xưởng chế biến trước (👔 › 💬 › 🏭)</span>'
           : R.gx && !gxLv(R.gx) ? `<br><span style="font-size:11px;color:#ffb08a">Cần xây ${GX[R.gx].names[0]} trước (💬 › 🚢)</span>`
-          : R.need && !xBuilt(R.need) ? `<br><span style="font-size:11px;color:#ffb08a">Cần xây ${FAC[R.need].names[0]} trước</span>` : '';
+          : R.need && !xBuilt(R.need) ? `<br><span style="font-size:11px;color:#ffb08a">Cần xây ${FAC[R.need].names[0]} trước</span>`
+          : isSolo(r) && n ? '<br><span style="font-size:11px;opacity:.7">Nghề này 1 người là đủ (sản lượng theo cơ sở, thêm người không tăng)</span>' : '';
         return row(`${R.icon} ${R.name} <span style="opacity:.65">${n ? `đang có ${n} · ` : ''}lương ${R.wage}/ngày</span>${lock}`, B('hire:' + r, `Thuê · ${R.hire} xu`, c >= R.hire && st.length < mMax() && !lock)); }).join('')
       + '<div style="font-size:11px;opacity:.6;margin-top:4px">Bạn không cần bấm: Lan tự thuê khi có việc và đủ tiền. Nút này để bạn tự quyết nếu muốn.</div>';
   }
@@ -8047,7 +8066,7 @@
     for (let d = 0; d <= 3; d++) for (let dr = -d; dr <= d; dr++) for (let dc = -d; dc <= d; dc++) if (Math.max(Math.abs(dc), Math.abs(dr)) === d && walkable(c0 + dc, r0 + dr)) return { c: c0 + dc, r: r0 + dr };
     return null;
   }
-  const ROLE_HOME = (role, id) => role === 'farmer' ? (FARM.plots[0] && { x: FARM.plots[0].x + 40, y: FARM.plots[0].y + 30 })
+  const ROLE_HOME = (role, id) => role === 'farmer' || role === 'farmnight' ? (FARM.plots[0] && { x: FARM.plots[0].x + 40, y: FARM.plots[0].y + 30 })
     : role === 'angler' && lakeAt() && FARM.lake.spots && FARM.lake.spots.length ? (() => { const L = FARM.lake.spots, sp = L[Math.floor(hash01(parseInt(String(id || 'a').slice(1), 36) || 7, 4242, 9) * L.length) % L.length]; return { x: sp.c * 16 + 8, y: sp.r * 16 + 8 }; })()
     : role === 'guide' && FARM.pier ? { x: (FARM.pier.c - 6) * 16, y: FARM.pier.r * 16 + 8 }
     : role === 'zookeeper' && FARM.zoo ? zooGateAt()
@@ -8091,7 +8110,7 @@
     // the manager mostly works the field herself (walking across the map to the pens wastes the time you watch)
     // empty plots and no farmer yet: she hoes and sows first; otherwise a mix (pens only when there are animals)
     const st0 = mStaff(), emptyAny = [...Array(land()).keys()].some((j) => simPlot(j).status === 'empty');
-    const role = v.role !== 'boss' ? v.role
+    const role = v.role === 'farmnight' ? 'farmer' : v.role !== 'boss' && v.role !== 'bossnight' ? v.role
       : emptyAny && !st0.some((x) => x.role === 'farmer') ? 'farmer'
       : mPick(['farmer', 'farmer', 'farmer', 'farmer', 'boss', !st0.some((x) => x.role === 'rancher') && animalIds().length ? 'rancher' : 'farmer']);
     if (role === 'farmer') {
@@ -8132,7 +8151,7 @@
   // ~5 s): the chores of their own trade instead of sitting down (user 2026-11-26: "bộ phận nào cũng thấy nhân viên rảnh
   // là chính"; the save: most do 80-100% of the actions their rate allows, it only LOOKED idle). Only the motion: no
   // action, no money, no sowing (plot dropped), so the pace of the farm stays as it was.
-  const BUSY_OWN = ['boss', 'farmer', 'rancher', 'fisher', 'cook', 'seller', 'woodcutter', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'accountant', 'bartender', 'poultry', 'cattle', 'angler', 'pondkeeper'];
+  const BUSY_OWN = ['boss', 'bossnight', 'farmer', 'farmnight', 'rancher', 'fisher', 'cook', 'seller', 'woodcutter', 'zookeeper', 'beekeeper', 'gardener', 'camphost', 'accountant', 'bartender', 'poultry', 'cattle', 'angler', 'pondkeeper'];
   function mBusyTask(v) {
     let r = null;
     if (BUSY_OWN.includes(v.role) || SHOP_OF[v.role]) r = mIdleTask(v);
@@ -10125,7 +10144,7 @@
       const doing = v.step === 'going' ? `🚶 đang đi${vis && vis.text ? ' ' + vis.text : ''}` : task && MOTION_VI[task] ? `🔨 ${MOTION_VI[task]}` : now && Date.now() - now.at < 10 * 60000 ? `🔨 ${now.text}` : '🙂 đứng chờ việc';
       return { where: placeOf(v.x, v.y), doing, x: v.x, y: v.y, out: true };
     }
-    if (!mOnShift(w, t)) return { where: 'nhà nhân viên', doing: (ROLES[w.role] || {}).night ? '🌙 chờ ca đêm (19h)' : '🏠 hết ca, đang nghỉ', ...(home || {}), out: false };
+    if (!mOnShift(w, t)) return { where: 'nhà nhân viên', doing: (ROLES[w.role] || {}).night ? '🌙 chờ ca đêm (' + ((ROLES[w.role].nightH || [19])[0]) + 'h)' : '🏠 hết ca, đang nghỉ', ...(home || {}), out: false };
     if (mSlackNow[w.id]) return { where: 'nhà nhân viên', doing: '😴 đang lười trong nhà', ...(home || {}), out: false };
     return { where: 'nhà nhân viên', doing: '🏠 trong nhà, sắp ra làm', ...(home || {}), out: false };
   }
