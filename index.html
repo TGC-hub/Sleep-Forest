@@ -6884,7 +6884,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:15 27-11';
+    const build = '09:25 27-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -8373,6 +8373,18 @@
       if (FARM.pier) boatArrive(now, { id, n });
       else { const v = spawnVillager(now, 'diner'); if (v) { v.diner = { id, k: here.length, then: 'home' }; v.jobsLeft = 0; } }
     }
+    // user 2026-11-27 "làm khách đi ca nô tới suối nóng": bathers come by boat like the diners, walk over to the hot
+    // spring, soak a while (drawn in the pool), then go sightseeing or back to the pier; never more than its target
+    if (XISLE.spa && FARM.pier) {
+      const open = spaOpenNow(), mine = villagers.filter((x) => x.diner && x.diner.id === 'spa' && x.step !== 'home');
+      if (!open) { for (const v of mine) { v.soak = false; goHome(v); } }
+      else if (now >= (dinerNext.spa || 0)) {
+        dinerNext.spa = now + (14000 + Math.random() * 22000);
+        const coming = boats.filter((b) => b.group && b.group.id === 'spa' && b.mode === 'in').reduce((a, b) => a + b.group.n, 0);
+        const room = spaTarget() + 1 - mine.length - coming;
+        if (room > 0) { const r = Math.random(); boatArrive(now, { id: 'spa', n: Math.min(room, r < 0.45 ? 1 : r < 0.85 ? 2 : 3) }); }
+      }
+    }
     boatTick(now);
     if (day && now > nextVillager && villagers.filter((x) => !x.staff).length < vmax) {
       nextVillager = now + 3000 + Math.random() * 6000;
@@ -8473,6 +8485,7 @@
   function drawVillagers(now) {
     if (!VCREW || !crewAtlas.complete || !crewAtlas.naturalWidth) return;
     for (const v of villagers) {
+      if (v.soak) continue; // in the hot spring: drawn in the pool
       depth(v.y + 8.5, (g) => {
         const row = v.dir === DIR.UP ? 1 : v.dir === DIR.DOWN ? 0 : 2, C = VCREW;
         const sx = (v.sheet % C.cols) * C.w * 7 + C.w, sy = (Math.floor(v.sheet / C.cols) * 3 + row) * C.h;
@@ -8484,7 +8497,7 @@
         g.restore();
         if (v.diner) {
           if (v.step !== 'doing') return;
-          const food = { banhmi: ['🥖', '🥪', '😋'], cafe: ['☕', '🧋', '🍹'], restaurant: ['🍜', '🍛', '😋'] }[v.diner.id] || ['😋'];
+          const food = { banhmi: ['🥖', '🥪', '😋'], cafe: ['☕', '🧋', '🍹'], restaurant: ['🍜', '🍛', '😋'], spa: ['♨️', '🧖', '😌'] }[v.diner.id] || ['😋'];
           const em = (now - v.start) % 4000 < 3000 ? food[Math.floor(v.seed) % 2] : food[2];
           g.font = '8px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
           g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(v.x - 6, v.y - 30, 12, 11); g.fillText(em, v.x, v.y - 24);
@@ -8666,7 +8679,26 @@
   const dinerNext = {};
   window.__forestBoats = () => boats.map((b) => ({ mode: b.mode, x: Math.round(b.x), pax: b.pax, shop: b.group && b.group.id, n: b.group && b.group.n }));
   window.__forestDiners = () => villagers.filter((v) => v.diner || v.boatPax).map((v) => ({ id: v.diner ? v.diner.id : 'tour', k: v.diner ? v.diner.k : -1, then: v.diner ? v.diner.then : 'tour', step: v.step, waiting: !!v.waiting, x: Math.round(v.x), y: Math.round(v.y) }));
+  const SPA_SPOTS = [[-9, -25], [9, -27], [0, -15], [-12, -9], [12, -10], [1, -32]];
+  const spaOpenNow = (t = farmNow()) => { const h = mLocalH(t); return !!gxLv('spa') && h >= 8 && h < 20 && gxStaffed('spa', t); };
+  const spaTarget = (t = farmNow()) => { const L = gxLv('spa'); if (!L) return 0; const slots = [3, 4, 6][Math.min(2, L - 1)]; return Math.max(1, Math.min(slots, Math.round(slots * Math.min(1, gxDraw(t) * 1.3) * (0.6 + 0.4 * hash01(Math.floor(t / (15 * 60000)), 1717, 3))))); };
+  const spaSlots = () => [3, 4, 6][Math.min(2, Math.max(1, gxLv('spa')) - 1)];
+  function spaTick(v, now) {
+    const P = XISLE.spa, f = P && P.foot; if (!f) { goHome(v); return; }
+    if (v.step === 'out') { const tile = nearWalkFree(f.x + (Math.random() - 0.5) * 20, f.y + 6, v); v.step = tile && villagerGo(v, tile.c, tile.r) ? 'going' : 'doing'; v.start = now; v.until = now + 1500; return; }
+    if (v.step === 'going' && !v.path.length) { v.step = 'doing'; v.start = now; v.until = now + 2500; v.dir = DIR.UP; return; }
+    if (v.step !== 'doing' || now < v.until) return;
+    if (!v.soak && !v.soaked) { // step into the pool if a place is free, else wait at the edge a little longer
+      const used = new Set(villagers.filter((x) => x.soak).map((x) => x.soakAt)), k = [...Array(spaSlots()).keys()].find((j) => !used.has(j));
+      if (k == null) { v.until = now + 4000; if (now - v.start > 30000) goHome(v); return; }
+      v.soak = true; v.soakAt = k; v.until = now + 35000 + Math.random() * 45000; return;
+    }
+    if (v.soak) { v.soak = false; v.soaked = true; v.until = now + 1200; v.dir = DIR.DOWN; return; } // out of the water, a towel moment
+    if (v.diner.then === 'tour') { const stops = dinerStops('spa'); v.diner = null; v.tourist = { stops, si: 0 }; v.step = 'out'; tourTick(v, now); return; }
+    goHome(v);
+  }
   function dinerTick(v, now) {
+    if (v.diner.id === 'spa') { spaTick(v, now); return; }
     const D = v.diner, I = XISLE[D.id], st = I && I.seats[D.k];
     if (!st) { goHome(v); return; }
     if (v.step === 'out') {
@@ -10246,13 +10278,15 @@
           // user 2026-11-27 "suối nước nóng mới mở xong không thấy ai vào tắm": the guests were only a number settled at
           // 20h. Now, while it is open (8h–20h, a therapist hired), guests soak in the pool (head and shoulders above
           // the water, a ripple round them); how many follows the same draw as the books, the faces change every 15 min
-          const h = mLocalH(t), open = h >= 8 && h < 20 && gxStaffed('spa', t), SP = [[-9, -25], [9, -27], [0, -15], [-12, -9], [12, -10], [1, -32]];
+          const h = mLocalH(t), open = spaOpenNow(t), SP = SPA_SPOTS;
           let soak = 0;
           if (open && crew) {
-            const slots = [3, 4, 6][Math.min(2, L - 1)], win = Math.floor(t / (15 * 60000));
-            soak = Math.max(1, Math.min(slots, Math.round(slots * Math.min(1, gxDraw(t) * 1.3) * (0.6 + 0.4 * hash01(win, 1717, 3)))));
-            for (let j = 0; j < soak; j++) {
-              const [dx, dy] = SP[j], wx = f.x + dx, wy = f.y + dy, who = (j * 7 + Math.floor((win + j * 2) / 3) * 5 + day) % VCREW.n, bob = Math.sin(now / 700 + j * 1.7) * 0.6;
+            const win = Math.floor(t / (15 * 60000));
+            const list = FARM.pier ? villagers.filter((v) => v.soak).map((v) => ({ j: v.soakAt, who: v.sheet })) // 2026-11-27: the boat guests
+              : [...Array(spaTarget(t)).keys()].map((j) => ({ j, who: (j * 7 + Math.floor((win + j * 2) / 3) * 5 + day) % VCREW.n }));
+            soak = list.length;
+            for (const { j, who } of list) {
+              const [dx, dy] = SP[j], wx = f.x + dx, wy = f.y + dy, bob = Math.sin(now / 700 + j * 1.7) * 0.6;
               depth(f.y - 1 + j * 0.01, (g) => {
                 g.save(); g.beginPath(); g.rect(wx - 12, wy - 20, 24, 20 + bob); g.clip();
                 xPerson(g, who, wx, wy - 2 + bob, j % 3 === 1 ? 1 : 0, now); g.restore();
@@ -10461,7 +10495,8 @@
     const pick = (a) => a[Math.floor(Math.random() * a.length)];
     if (v.diner) return pick({ banhmi: [['Dude, this sandwich is amazing.', 'Ông ơi, ổ bánh mì này đỉnh thật.'], ["I'll grab another one.", 'Lấy thêm ổ nữa.'], ['Is it spicy? Like, really spicy?', 'Cay không? Kiểu cay thật á?'], ['To go, please.', 'Cho mang đi nhé. · to go = mang đi'], ['Can I get one with extra pâté?', 'Cho tôi một ổ thêm pa-tê nhé.']],
       cafe: [['Can I get an iced coffee?', 'Cho một ly cà phê đá nhé. · Can I get… = cách gọi món tự nhiên'], ['Oh wow, this juice hits the spot.', 'Ly nước này đã thật. · hits the spot = đúng thứ đang thèm'], ['Go easy on the sugar.', 'Ít đường thôi nhé.'], ['Can we get the check?', 'Tính tiền giúp nhé. · check = hoá đơn (Mỹ)'], ["I'm just gonna sit here for a bit.", 'Tôi ngồi đây chút đã.']],
-      restaurant: [['This is so good.', 'Ngon dã man.'], ['Could I get a little more rice?', 'Cho xin thêm ít cơm được không?'], ['Table for two?', 'Bàn hai người nhé?'], ["I'm stuffed. That was awesome!", 'No căng rồi. Ngon xỉu! · stuffed = no căng'], ['What do you recommend?', 'Có món gì ngon giới thiệu không?']] }[v.diner.id] || [['Yum!', 'Ngon!']]);
+      restaurant: [['This is so good.', 'Ngon dã man.'], ['Could I get a little more rice?', 'Cho xin thêm ít cơm được không?'], ['Table for two?', 'Bàn hai người nhé?'], ["I'm stuffed. That was awesome!", 'No căng rồi. Ngon xỉu! · stuffed = no căng'], ['What do you recommend?', 'Có món gì ngon giới thiệu không?']],
+      spa: [['Oh man, this water is perfect.', 'Trời ơi, nước này đã thật. · oh man = trời ơi'], ["I could stay in here all day.", 'Ngâm cả ngày cũng được.'], ['My back feels so much better.', 'Lưng đỡ mỏi hẳn.'], ["It's a little hot, but in a good way.", 'Hơi nóng mà dễ chịu.'], ['Totally worth the boat ride.', 'Đi ca nô ra đây đáng đồng tiền. · worth = đáng']] }[v.diner.id] || [['Yum!', 'Ngon!']]);
     if (v.tourist) { const at = v.tourist.stops[v.tourist.si]; if (at && at.shop) return pick([['How much is this one?', 'Cái này nhiêu vậy?'], ["I'm starving.", 'Đói muốn xỉu.'], ['Two drinks, please.', 'Cho hai ly nhé.'], ['Got anything cheaper?', 'Có gì rẻ hơn không?'], ["I'll take this one.", 'Lấy cái này.'], ['Do you take cards?', 'Có quẹt thẻ không?']]);
       return pick([['Wow, this place is gorgeous!', 'Trời, chỗ này đẹp quá!'], ['Mind if I take a pic?', 'Chụp tấm hình được không? · pic = picture'], ['Whoa, check that out!', 'Ui, nhìn kìa! · check out = xem thử'], ['I could live here.', 'Ở đây luôn cũng được á.'],
         ["Where's the restroom?", 'Nhà vệ sinh ở đâu vậy?'], ['The water is crazy blue!', 'Nước xanh dữ thần!'], ["We're so coming back.", 'Chắc chắn quay lại luôn.'], ["Which way's the zoo?", 'Sở thú đi đường nào?'], ['Smell that fresh air.', 'Hít thử không khí trong lành nè.'], ['This is so worth it.', 'Đáng đồng tiền thật.']]); }
