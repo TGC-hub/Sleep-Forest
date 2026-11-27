@@ -6926,7 +6926,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '10:42 27-11';
+    const build = '11:22 27-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -10651,18 +10651,21 @@
       });
     }
   }
-  // the word strip (DOM, bottom left: user 2026-11-27 moved it off the centre)
+  // the word strip (DOM, at the TOP: user 2026-11-27 — bottom-left covered their UI). PC: top centre (HUD buttons sit top-left); phone: under the HUD row. Drops below the pomodoro pill when that shows.
   let enStrip = null, enWordAt = 0, enCur = null;
   function enStripTick() {
     if (!enOn() || !document.body) { if (enStrip) enStrip.style.display = 'none'; return; }
     if (!enStrip || !enStrip.isConnected) {
       enStrip = document.createElement('button'); enStrip.type = 'button'; enStrip.className = 'fz-en';
-      enStrip.style.cssText = 'position:fixed;left:8px;bottom:' + (HUD.phone ? 'calc(10px + env(safe-area-inset-bottom, 0px))' : '64px') + ';text-align:left;z-index:38;max-width:min(72vw, 340px);padding:6px 12px;border-radius:999px;border:2px solid #f0c25a;background:rgba(40,26,14,.86);color:#fff4dd;font:14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 #3a2210;';
+      enStrip.style.cssText = 'position:fixed;' + (HUD.phone ? 'left:8px;' : 'left:50%;transform:translateX(-50%);') + 'top:calc(6px + env(safe-area-inset-top, 0px));text-align:left;z-index:38;max-width:min(72vw, 340px);padding:6px 12px;border-radius:999px;border:2px solid #f0c25a;background:rgba(40,26,14,.86);color:#fff4dd;font:14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 #3a2210;';
       enStrip.addEventListener('click', (e) => { e.stopPropagation(); if (enCur && window.speechSynthesis) { try { const u = new SpeechSynthesisUtterance(enCur.en); u.lang = 'en-US'; u.rate = 0.85; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (er) {} } });
       enStrip.addEventListener('pointerdown', (e) => e.stopPropagation());
       document.body.append(enStrip);
     }
     enStrip.style.display = 'block';
+    { let top = HUD.phone ? 54 : 6; // sit under anything showing at the top centre (pomodoro pill, phone hint pill)
+      for (const o of [document.querySelector('.fz-pomo'), document.getElementById('hint')]) { if (!o || o.style.display === 'none' || o.classList.contains('hide')) continue; const b = o.getBoundingClientRect().bottom; if (b > 0 && b < 200) top = Math.max(top, Math.round(b) + 6); }
+      if (enStrip.__top !== top) { enStrip.__top = top; enStrip.style.top = top + 'px'; } }
     const now = Date.now();
     if (!enCur || now - enWordAt > 30000) { enCur = enPick(); enWordAt = now; enMark(enCur.en); }
     const vi = now - enWordAt > 2000;
@@ -10897,7 +10900,7 @@
       return;
     }
     if (!xPomoEl) {
-      xPomoEl = document.createElement('div');
+      xPomoEl = document.createElement('div'); xPomoEl.className = 'fz-pomo';
       xPomoEl.style.cssText = 'position:fixed;top:calc(8px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:41;padding:3px 10px;border-radius:12px;background:rgba(16,16,30,0.82);color:#fff;font:600 14px system-ui,sans-serif;cursor:pointer;';
       xPomoEl.addEventListener('click', (e) => { e.stopPropagation(); openPanel({ kind: 'night', tab: 'pomo' }); });
       document.body.append(xPomoEl);
