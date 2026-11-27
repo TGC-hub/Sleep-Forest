@@ -6884,7 +6884,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '09:09 27-11';
+    const build = '09:15 27-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -10243,8 +10243,25 @@
           if (L >= 2 && hs) { const p = I.spa.house; depth(p.y, (g) => xSprite(g, 'spa_house', p.x - hs[2] / 2, p.y - hs[3], hs[2], hs[3])); }
           depth(GROUND, (g) => xSprite(g, 'spa_pool', f.x - q[2] / 2, f.y - q[3], q[2], q[3]));
           const r = gxRec('spa', day) || gxRec('spa', day - 1);
+          // user 2026-11-27 "suối nước nóng mới mở xong không thấy ai vào tắm": the guests were only a number settled at
+          // 20h. Now, while it is open (8h–20h, a therapist hired), guests soak in the pool (head and shoulders above
+          // the water, a ripple round them); how many follows the same draw as the books, the faces change every 15 min
+          const h = mLocalH(t), open = h >= 8 && h < 20 && gxStaffed('spa', t), SP = [[-9, -25], [9, -27], [0, -15], [-12, -9], [12, -10], [1, -32]];
+          let soak = 0;
+          if (open && crew) {
+            const slots = [3, 4, 6][Math.min(2, L - 1)], win = Math.floor(t / (15 * 60000));
+            soak = Math.max(1, Math.min(slots, Math.round(slots * Math.min(1, gxDraw(t) * 1.3) * (0.6 + 0.4 * hash01(win, 1717, 3)))));
+            for (let j = 0; j < soak; j++) {
+              const [dx, dy] = SP[j], wx = f.x + dx, wy = f.y + dy, who = (j * 7 + Math.floor((win + j * 2) / 3) * 5 + day) % VCREW.n, bob = Math.sin(now / 700 + j * 1.7) * 0.6;
+              depth(f.y - 1 + j * 0.01, (g) => {
+                g.save(); g.beginPath(); g.rect(wx - 12, wy - 20, 24, 20 + bob); g.clip();
+                xPerson(g, who, wx, wy - 2 + bob, j % 3 === 1 ? 1 : 0, now); g.restore();
+                g.strokeStyle = 'rgba(230,248,255,0.75)'; g.lineWidth = 1; g.beginPath(); g.ellipse(wx, wy + bob + 0.5, 6 + Math.sin(now / 500 + j) * 0.6, 1.8, 0, 0, Math.PI * 2); g.stroke();
+              });
+            }
+          }
           depth(SKY, (g) => { for (let i = 0; i < (L >= 3 ? 5 : 3); i++) puff(g, f.x - 14 + i * 7, f.y - 20 - (i % 2) * 7, 2); });
-          depth(SKY, (g) => xLabel(g, f.x, f.y - q[3] - (L >= 2 && hs ? 34 : 4), lab('spa', `♨️ ${GX.spa.names[L - 1]}${r ? ` · ${r.g} khách` : ''}`)));
+          depth(SKY, (g) => xLabel(g, f.x, f.y - q[3] - (L >= 2 && hs ? 34 : 4), lab('spa', `♨️ ${GX.spa.names[L - 1]}${soak ? ` · ${soak} người đang ngâm` : h >= 20 && r ? ` · hôm nay ${r.g} khách` : h < 8 ? ' · 8h mở cửa' : ''}`)));
         }
       }
       if (I.stage) {
