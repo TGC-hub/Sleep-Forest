@@ -5511,8 +5511,8 @@
       what: ['6 chỗ ngâm, mở liên tục 8h–20h (~45 phút/lượt, tối đa ~96 khách/ngày), đông thì khách xếp hàng; vé 25 xu, khách sạn đông thêm 4%', '10 chỗ (thêm nhà tắm), tối đa ~160 khách/ngày, vé 35 xu, khách sạn đông thêm 8%', '16 chỗ, tối đa ~256 khách/ngày, vé 45 xu, khách sạn đông thêm 12%'] },
     stage: { icon: '🎭', names: ['Sân khấu ngoài trời', 'Rạp chiếu phim TJ', 'Nhà hát TJ'], cost: [18000, 60000, 150000], lvl: [8, 12, 18], seats: [60, 110, 180], times: [[19], [16, 19], [14, 17, 20]], ticket: [30, 35, 50], snack: [5, 8, 12], run: [250, 250, 700],
       what: ['60 chỗ, diễn 19h tối thứ 5 đến chủ nhật, vé 30 xu', '110 chỗ, chiếu 2 suất mỗi ngày (16h, 19h), vé 35 xu', '180 chỗ, 3 suất ca nhạc + kịch mỗi ngày (14h, 17h, 20h), vé 50 xu'] },
-    air: { icon: '✈️', names: ['Bến thủy phi cơ', 'Sân bay nhỏ', 'Sân bay TJ'], cost: [30000, 70000, 160000], lvl: [10, 14, 20], flights: [[9, 15], [8, 11, 14, 16], [8, 10, 12, 14, 16]], pax: [12, 20, 28], fee: [80, 100, 125], land: [100, 150, 200],
-      what: ['2 chuyến/ngày (9h, 15h), ~12 khách/chuyến, mỗi khách trả 80 xu, khách xuống đảo đi ăn chơi tiếp', '4 chuyến/ngày, ~20 khách/chuyến, 100 xu/khách', '5 chuyến/ngày, ~28 khách/chuyến, 125 xu/khách'] },
+    air: { icon: '✈️', names: ['Bến thủy phi cơ', 'Sân bay nhỏ', 'Sân bay TJ'], cost: [30000, 70000, 160000], lvl: [10, 14, 20], flights: [[9, 15], [8, 11, 14, 16], [8, 10, 12, 14, 16]], pax: [12, 20, 28], fee: [80, 100, 125], land: [100, 150, 200], svc: [8, 10, 12], back: 0.55,
+      what: ['2 chuyến/ngày (9h, 15h), ~12 khách bay tới đảo + ~7 khách đi ca nô tới bay đi mỗi chuyến, vé 80 xu, ở nhà ga mỗi khách tiêu thêm ~8 xu', '4 chuyến/ngày, ~20 khách tới + ~11 khách bay đi mỗi chuyến, vé 100 xu, tiêu thêm ~10 xu', '5 chuyến/ngày, ~28 khách tới + ~15 khách bay đi mỗi chuyến, vé 125 xu, tiêu thêm ~12 xu'] },
   };
   LINES.port = { name: '🚢 Bến cảng', roles: [] }; LINES.spa = { name: '♨️ Suối nóng, spa', roles: [] }; LINES.stage = { name: '🎭 Sân khấu, rạp', roles: [] }; LINES.air = { name: '✈️ Sân bay', roles: [] }; LINES.city = { name: '🏙️ Chuỗi TJ thành phố', roles: [] };
   const gxLv = (id) => Math.max(0, Math.min(GX[id].names.length, save.get('gx/lv/' + id, 0)));
@@ -5625,14 +5625,43 @@
     const due = G.flights[L - 1].filter((x) => x <= h).length; if (rec.done >= due) return;
     if (!gxStaffed('air', t)) { if (!rec.shut) mLog(t, bossId(), `✈️ ${G.names[L - 1]} hôm nay ${gxShutText('air')}, các chuyến bay bị hủy`, 0); save.set(`gxd/air/${day}`, { ...rec, shut: 1, done: due }); return; }
     for (let i = rec.done; i < due; i++) {
-      if (xRealWeather() === 'storm' || evRnd(day, 1231 + i) < 0.05) { mLog(t, bossId(), `✈️ Chuyến ${G.flights[L - 1][i]}h hủy vì thời tiết xấu`, 0); continue; }
-      const n = Math.max(2, Math.round(G.pax[L - 1] * (0.6 + gxDraw(t) * 0.4) * (0.85 + evRnd(day, 1241 + i) * 0.3))), take = n * G.fee[L - 1], cost = G.land[L - 1];
+      if (xRealWeather() === 'storm' || evRnd(day, 1231 + i) < 0.05) { rec.cx = (rec.cx || []).concat(i); mLog(t, bossId(), `✈️ Chuyến ${G.flights[L - 1][i]}h hủy vì thời tiết xấu`, 0); continue; }
+      const n = Math.max(2, Math.round(G.pax[L - 1] * (0.6 + gxDraw(t) * 0.4) * (0.85 + evRnd(day, 1241 + i) * 0.3))), out = Math.max(1, Math.round(n * G.back * (0.8 + evRnd(day, 1251 + i) * 0.4)));
+      const tIn = n * G.fee[L - 1], tOut = out * G.fee[L - 1], svc = (n + out) * G.svc[L - 1], take = tIn + tOut + svc, cost = G.land[L - 1];
       const d = mDayRec(t); d.visit = d.visit || { groups: 0, people: 0 }; d.visit.groups++; d.visit.people += n; save.set(`mgr/day/${day}`, d);
-      evBook(t, take, 'Khách bay đến đảo'); evBook(t, -cost, 'Phí bay, nhiên liệu'); lineAdd(t, 'air', take, cost);
-      rec.pax += n; rec.take += take - cost;
-      mLog(t, bossId(), `✈️ Chuyến ${G.flights[L - 1][i]}h đáp ${G.names[L - 1]}: ${n} khách (+${money(take - cost)} xu), khách tỏa đi ăn uống, tham quan`, 0);
+      evBook(t, tIn, 'Khách bay đến đảo'); evBook(t, tOut + svc, 'Vé bay đi, dịch vụ nhà ga'); evBook(t, -cost, 'Phí bay, nhiên liệu'); lineAdd(t, 'air', take, cost);
+      rec.pax += n; rec.out = (rec.out || 0) + out; rec.take += take - cost;
+      mLog(t, bossId(), `✈️ Chuyến ${G.flights[L - 1][i]}h ở ${G.names[L - 1]}: ${n} khách đáp xuống đi ăn uống, tham quan; ${out} khách lên máy bay đi (+${money(take - cost)} xu)`, 0);
     }
     rec.done = due; save.set(`gxd/air/${day}`, rec);
+  }
+  // ── ✈️ on the map (user 2026-11-27: "khách đi ca nô đến sân bay, mua vé bay đi; máy bay chở khách tới tham quan rồi
+  // về"): for each flight hour x the plane glides in over the last 3 minutes, stands at the strip until x+36' (people
+  // get off; the ones waiting at the gate board in the last ~5'), then takes off to the west. Cancelled / shut: no plane.
+  const AIR_PARK = 0.6, AIR_GLIDE = 0.05;
+  const airHH = (t) => { const d = new Date(t); return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600; };
+  const airClock = (x) => `${Math.floor(x)}h${String(Math.round((x % 1) * 60)).padStart(2, '0')}`;
+  let airMemo = { t: 0, v: null };
+  function airPlane(t = farmNow()) {
+    if (Math.abs(t - airMemo.t) < 400) return airMemo.v;
+    const L = gxLv('air'); let v = null;
+    if (L && gxStaffed('air', t)) {
+      const hh = airHH(t), rec = gxRec('air', dayNo(t)) || {}, fl = GX.air.flights[L - 1];
+      for (let i = 0; i < fl.length && !v; i++) {
+        const x = fl[i]; if (rec.shut || (rec.cx || []).includes(i)) continue;
+        if (hh >= x - AIR_GLIDE && hh < x) { if (xRealWeather() !== 'storm') v = { i, x, mode: 'in', k: 1 - (x - hh) / AIR_GLIDE }; }
+        else if (hh >= x && hh < x + AIR_PARK) v = { i, x, mode: 'park', k: (hh - x) / AIR_PARK, board: hh >= x + AIR_PARK - 0.08 };
+        else if (hh >= x + AIR_PARK && hh < x + AIR_PARK + AIR_GLIDE) v = { i, x, mode: 'out', k: (hh - x - AIR_PARK) / AIR_GLIDE };
+      }
+    }
+    airMemo.t = t; airMemo.v = v; return v;
+  }
+  // the next flight that has not closed its doors yet today (its hour), or null
+  function airNextDep(t = farmNow()) {
+    const L = gxLv('air'); if (!L || !gxStaffed('air', t)) return null;
+    const hh = airHH(t), rec = gxRec('air', dayNo(t)) || {}; if (rec.shut) return null;
+    const fl = GX.air.flights[L - 1], i = fl.findIndex((x, j) => !(rec.cx || []).includes(j) && x + AIR_PARK - 0.03 > hh);
+    return i < 0 ? null : fl[i];
   }
   // what a level takes in a day, for paybacks (the port: only what it pays above the shop, half a hold)
   function gxExpect(id, L, t = farmNow()) {
@@ -5640,7 +5669,7 @@
     if (id === 'port') { const ks = portGoods().filter((k) => have(k) > 0), avg = ks.length ? ks.reduce((a, k) => a + priceOf(k), 0) / ks.length : 0; return G.cap[i] * 0.5 * avg * (G.mul[i] - 1) * (L >= 2 ? 1 : 0.5); }
     if (id === 'spa') { const d0 = new Date(t); let g = 0, q = 0; for (let h = SPA_OPEN[0]; h < SPA_OPEN[1]; h++) { d0.setHours(h, 30, 0, 0); const a = q + spaRateH(d0.getTime(), L), s = Math.min(a, spaCapH(L)); g += s; q = Math.min(a - s, G.slots[i] * 1.5); } return g * G.fee[i] * 0.8; }
     if (id === 'stage') return G.times[i].reduce((a, x) => a + G.seats[i] * d * (G.ticket[i] + G.snack[i]) * (x < 17 ? 0.6 : 1) - G.run[i], 0) * (L >= 2 ? 1 : 4 / 7);
-    if (id === 'air') return G.flights[i].length * (G.pax[i] * (0.6 + d * 0.4) * G.fee[i] - G.land[i]) * 0.95;
+    if (id === 'air') { const n = G.pax[i] * (0.6 + d * 0.4), out = n * G.back; return G.flights[i].length * ((n + out) * (G.fee[i] + G.svc[i]) - G.land[i]) * 0.95; }
     return 0;
   }
   const gxGain = (id, t = farmNow()) => { const L = gxLv(id); return gxNext(id) ? Math.max(0, gxExpect(id, L + 1, t) - gxExpect(id, L, t) - (L ? 0 : ROLES[GX[id].role].wage)) : 0; };
@@ -6926,7 +6955,7 @@
       }).join('') : '<div style="opacity:.7;margin-top:6px">Chưa có gì.</div>';
     }
     if (!HUD.phone) body += `<div style="margin-top:8px;font-size:12px;opacity:.8">${B('agents', SHOW_AGENTS ? 'Ẩn các phiên Claude' : 'Hiện các phiên Claude đang làm việc')} <span style="opacity:.7">(trên bản đồ chỉ có nhân viên trại)</span></div>`;
-    const build = '11:30 27-11';
+    const build = '14:56 27-11';
     return head('👔 Nông trại của bạn') + tabs + body + (build.indexOf('FOREST') < 0 ? `<div style="font-size:10px;opacity:.45;margin-top:8px;text-align:right">bản ${build}</div>` : '');
   }
   const MOTION_VI = { guide: 'dẫn đoàn du khách', zooFeed: 'cho thú sở thú ăn', rest: 'nghỉ tay (đang hết việc)', hoe: 'cuốc đất', sow: 'gieo hạt', plant: 'gieo hạt', clear: 'dọn ô', water: 'tưới cây', weed: 'làm cỏ', spray: 'phun thuốc', harvest: 'thăm ruộng chín', collect: 'nhặt sản phẩm',
@@ -8427,6 +8456,7 @@
         if (room > 0) { const r = Math.random(); boatArrive(now, { id: 'spa', n: Math.min(room, busy ? 2 + Math.floor(r * 3) : r < 0.45 ? 1 : r < 0.85 ? 2 : 3) }); }
       }
     }
+    if (XISLE.air && FARM.pier && gxLv('air')) airVillagers(now);
     boatTick(now);
     if (day && now > nextVillager && villagers.filter((x) => !x.staff).length < vmax) {
       nextVillager = now + 3000 + Math.random() * 6000;
@@ -8539,8 +8569,8 @@
         g.restore();
         if (v.diner) {
           if (v.step !== 'doing') return;
-          const food = { banhmi: ['🥖', '🥪', '😋'], cafe: ['☕', '🧋', '🍹'], restaurant: ['🍜', '🍛', '😋'], spa: ['♨️', '🧖', '😌'] }[v.diner.id] || ['😋'];
-          const em = (now - v.start) % 4000 < 3000 ? food[Math.floor(v.seed) % 2] : food[2];
+          const food = { banhmi: ['🥖', '🥪', '😋'], cafe: ['☕', '🧋', '🍹'], restaurant: ['🍜', '🍛', '😋'], spa: ['♨️', '🧖', '😌'], air: ['🎫', '☕', '🛍️'] }[v.diner.id] || ['😋'];
+          const em = v.diner.land ? '👋' : v.diner.gate ? '🧳' : (now - v.start) % 4000 < 3000 ? food[Math.floor(v.seed) % 2] : food[2];
           g.font = '8px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
           g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(v.x - 6, v.y - 30, 12, 11); g.fillText(em, v.x, v.y - 24);
           return;
@@ -8721,6 +8751,10 @@
   const dinerNext = {};
   window.__forestBoats = () => boats.map((b) => ({ mode: b.mode, x: Math.round(b.x), pax: b.pax, shop: b.group && b.group.id, n: b.group && b.group.n }));
   window.__forestDiners = () => villagers.filter((v) => v.diner || v.boatPax).map((v) => ({ id: v.diner ? v.diner.id : 'tour', k: v.diner ? v.diner.k : -1, then: v.diner ? v.diner.then : 'tour', step: v.step, waiting: !!v.waiting, x: Math.round(v.x), y: Math.round(v.y) }));
+  // test hooks for the airport travellers (tests/airfly.js)
+  window.__forestAirDbg = () => villagers.filter((v) => (v.diner && v.diner.id === 'air') || (v.tourist && v.flyBack !== undefined)).map((v) => ({ land: !!(v.diner && v.diner.land), tour: !!v.tourist, boat: !!(v.diner && !v.diner.land && !v.flyBack && v.boatPax && v.step !== 'wait'), ticket: !!(v.diner && !v.diner.land && !v.diner.gate && v.step === 'doing'), gate: !!(v.diner && v.diner.gate), board: !!(v.diner && v.diner.board), step: v.step }));
+  window.__forestAirBoarded = () => airMemo.boarded || 0;
+  window.__forestAirPlane = () => { airMemo.t = 0; return airPlane(farmNow()); };
   const SPA_SPOTS = [[-9, -25], [9, -27], [0, -15], [-12, -9], [12, -10], [1, -32]];
   const spaOpenNow = (t = farmNow()) => { const h = mLocalH(t); return !!gxLv('spa') && h >= 8 && h < 20 && gxStaffed('spa', t); };
   const spaSlots = () => Math.min(SPA_SPOTS.length, GX.spa.slots[Math.max(1, gxLv('spa')) - 1]); // the pool shows up to 6 (bigger levels: the bath house)
@@ -8747,8 +8781,54 @@
     if (v.diner.then === 'tour') { const stops = dinerStops('spa'); v.diner = null; v.tourist = { stops, si: 0 }; v.step = 'out'; tourTick(v, now); return; }
     goHome(v);
   }
+  // ── ✈️ travellers. Flying out: off the speedboat → the terminal (ticket, a coffee or a souvenir) → wait at the gate by
+  // the strip → walk to the plane's door when it boards and get on. Flying in: off the plane → through the terminal →
+  // sightseeing like the boat visitors → back to the speedboats, or (some) back to the airport for a later flight.
+  const airSeen = {};
+  const airTerm = () => { const A = XISLE.air; return gxLv('air') >= 2 && A.hut ? { x: A.hut.x + 10, y: A.hut.y + 4 } : { x: A.foot.x + 8, y: A.foot.y + 2 }; };
+  const airDoor = () => { const A = XISLE.air; return nearWalk(A.plane.x - 12, A.plane.y + 4) || nearWalk(A.foot.x, A.foot.y); };
+  function airVillagers(now) {
+    const t = farmNow(), P = airPlane(t), L = gxLv('air'), day = dayNo(t), p = FARM.pier;
+    const mine = villagers.filter((x) => x.diner && x.diner.id === 'air' && x.step !== 'home');
+    if (P && P.mode === 'park' && P.k < 0.6 && !airSeen[day + ':' + P.i]) { // landed: a few of the flight's visitors step down
+      airSeen[day + ':' + P.i] = 1; const d = airDoor(), n = Math.min(6, 1 + L + Math.floor(Math.random() * 3));
+      if (d) for (let i = 0; i < n; i++) {
+        const v = spawnVillager(now, 'diner'); if (!v) break;
+        Object.assign(v, { home: { c: p.c, r: p.r }, tileCol: d.c, tileRow: d.r, x: d.c * 16 + 8, y: d.r * 16 + 8, jobsLeft: 0, boatPax: true, born: now + i * 700, until: now + i * 700 });
+        v.diner = { id: 'air', then: 'tour', land: true }; v.flyBack = Math.random() < 0.35; v.step = 'wait';
+      }
+    }
+    const dep = airNextDep(t); if (dep == null || now < (dinerNext.air || 0)) return;
+    dinerNext.air = now + 9000 + Math.random() * 14000;
+    const lead = dep + AIR_PARK - airHH(t); if (lead > 0.75 || lead < 0.12) return; // boats come from ~45' before take-off
+    const coming = boats.filter((b) => b.group && b.group.id === 'air' && b.mode === 'in').reduce((a, b) => a + b.group.n, 0);
+    const room = Math.min(8, 2 + L * 2) - mine.filter((x) => !x.diner.land).length - coming;
+    if (room > 0) { const r = Math.random(); boatArrive(now, { id: 'air', n: Math.min(room, r < 0.4 ? 1 : r < 0.8 ? 2 : 3) }); }
+  }
+  function airTick(v, now) {
+    const A = XISLE.air, D = v.diner; if (!A || !A.foot) { goHome(v); return; }
+    const t = farmNow(), P = airPlane(t);
+    if (v.step === 'wait') { if (now >= v.until) v.step = 'out'; return; } // still on the plane's steps
+    if (D.board) { if (!v.path.length) { villagers.splice(villagers.indexOf(v), 1); airMemo.boarded = (airMemo.boarded || 0) + 1; } return; } // on board
+    if (v.step === 'out') {
+      const m = airTerm(), tile = nearWalkFree(m.x + (Math.random() - 0.5) * 18, m.y, v);
+      v.step = tile && villagerGo(v, tile.c, tile.r) ? 'going' : 'doing'; v.start = now; v.until = now + 1500; return;
+    }
+    if (v.step === 'going') { if (v.path.length) return; v.step = 'doing'; v.start = now; v.until = now + (D.land ? 2500 : D.gate ? 2000 : 6000 + Math.random() * 6000); if (D.gate) faceToward(v, A.plane); else v.dir = DIR.UP; return; }
+    if (now < v.until) return;
+    if (D.land) { const stops = dinerStops('air'); v.diner = null; v.tourist = { stops, si: 0 }; v.step = 'out'; tourTick(v, now); return; }
+    if (!D.gate) { // ticket bought, a coffee / souvenir: out to the gate beside the strip
+      D.gate = true; const qi = villagers.filter((x) => x !== v && x.diner && x.diner.id === 'air' && x.diner.gate).length;
+      const tile = nearWalkFree(A.foot.x + 18 + (qi % 4) * 12, A.foot.y + 2 + Math.floor(qi / 4) * 10, v);
+      if (tile && villagerGo(v, tile.c, tile.r)) { v.step = 'going'; return; }
+    }
+    if (P && P.mode === 'park' && P.board) { const d = airDoor(); D.board = true; if (!d || !villagerGo(v, d.c, d.r)) v.path = []; return; } // boarding
+    if (airNextDep(t) == null && !(P && P.mode === 'park')) { D.gate = false; goHome(v); return; } // no flight left: back to the boats
+    v.until = now + 2500; faceToward(v, A.plane);
+  }
   function dinerTick(v, now) {
     if (v.diner.id === 'spa') { spaTick(v, now); return; }
+    if (v.diner.id === 'air') { airTick(v, now); return; }
     const D = v.diner, I = XISLE[D.id], st = I && I.seats[D.k];
     if (!st) { goHome(v); return; }
     if (v.step === 'out') {
@@ -8792,7 +8872,7 @@
             const v = spawnVillager(now, 'diner'); if (!v) break;
             const here = villagers.filter((x) => x.diner && x.diner.id === b.group.id && x !== v).map((x) => x.diner.k), free = [...Array(12).keys()].find((j) => !here.includes(j));
             Object.assign(v, { home: { c: p.c, r: p.r }, tileCol: p.c, tileRow: p.r, x: p.c * 16 + 8, y: p.r * 16 + 8, jobsLeft: 0, boatPax: true, born: now + i * 350 });
-            v.diner = { id: b.group.id, k: free, then: Math.random() < 0.5 ? 'tour' : 'home' };
+            v.diner = { id: b.group.id, k: free, then: b.group.id === 'air' ? 'fly' : Math.random() < 0.5 ? 'tour' : 'home' };
           }
           b.pax = 0;
         }
@@ -8832,7 +8912,10 @@
     }
     if (v.step === 'doing' && now < v.until) return;
     if (v.step === 'doing') T.si++;
-    if (T.si >= T.stops.length) { goHome(v); return; }
+    if (T.si >= T.stops.length) {
+      if (v.flyBack && airNextDep(farmNow()) != null) { v.flyBack = false; v.tourist = null; v.diner = { id: 'air', then: 'fly' }; v.step = 'out'; return; } // back to the airport for a later flight
+      goHome(v); return;
+    }
     const s = T.stops[T.si], tile = nearWalkFree(s.c * 16 + 8, s.r * 16 + 8, v);
     v.step = tile && villagerGo(v, tile.c, tile.r) ? 'going' : 'doing';
     if (v.step === 'doing') { v.start = now; v.until = now + 1500; }
@@ -10436,13 +10519,25 @@
           });
           if (L >= 2 && hut) depth(A.hut.y, (g) => xSprite(g, 'air_hut', A.hut.x - hut[2] / 2, A.hut.y - hut[3], hut[2], hut[3]));
           if (pn) {
-            // a flight coming in: the last 3 minutes before each flight hour the plane glides in from the east
-            const next = fl.find((x) => x > hh && x - hh < 0.05), k = next ? 1 - (next - hh) / 0.05 : 1, e = 1 - (1 - k) * (1 - k);
-            const px = A.plane.x + (1 - e) * 420, py = A.plane.y - (1 - e) * 150;
-            depth(next ? SKY : A.plane.y, (g) => { if (next) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(Math.round(px - 14), A.plane.y - 2, 28, 2); } xSprite(g, 'biplane', px - pn[2] / 2, py - pn[3], pn[2], pn[3], 1, true); });
+            // glides in from the east, stands at the strip (steps down at its door), takes off to the west
+            const P = airPlane(t);
+            if (P) {
+              let px = A.plane.x, py = A.plane.y, up = false;
+              if (P.mode === 'in') { const e = 1 - (1 - P.k) * (1 - P.k); px += (1 - e) * 420; py -= (1 - e) * 150; up = true; }
+              if (P.mode === 'out') { const e = P.k * P.k; px -= e * 480; py -= Math.max(0, e - 0.2) * 240; up = e > 0.2; }
+              const bx = Math.round(px), by = Math.round(py);
+              depth(up ? SKY : A.plane.y, (g) => {
+                if (P.mode !== 'park') { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(bx - 14, A.plane.y - 2, 28, 2); }
+                xSprite(g, 'biplane', px - pn[2] / 2, py - pn[3], pn[2], pn[3], 1, true);
+                if (P.mode === 'park') { g.fillStyle = '#d8d8de'; for (let j = 0; j < 3; j++) g.fillRect(bx - 12 + j, by - 4 + j * 2, 4, 1); } // the steps
+                if (P.mode === 'out' && P.k < 0.5) { g.fillStyle = 'rgba(235,235,240,0.5)'; for (let j = 0; j < 3; j++) g.fillRect(bx + 14 + j * 6, A.plane.y - 3 - j, 4, 2); } // dust off the strip
+              });
+            }
             if (L >= 3) depth(A.plane2.y, (g) => xSprite(g, 'biplane', A.plane2.x - pn[2] / 2, A.plane2.y - pn[3], pn[2], pn[3], 1, true));
           }
-          depth(SKY, (g) => xLabel(g, A.plane.x, f.y - 34, lab('air', `✈️ ${GX.air.names[L - 1]}${rec && rec.pax ? ` · hôm nay ${rec.pax} khách` : ` · bay lúc ${fl.join('h, ')}h`}`)));
+          { const P = airPlane(t), nx = airNextDep(t), wait = villagers.filter((v) => v.diner && v.diner.id === 'air' && v.diner.gate && v.step !== 'home').length;
+            const what = P && P.mode === 'park' ? ` · chuyến ${P.x}h đang đậu, cất cánh ${airClock(P.x + AIR_PARK)}${wait ? `, ${wait} khách chờ lên` : ''}` : P && P.mode === 'in' ? ` · chuyến ${P.x}h đang hạ cánh` : P ? ' · vừa cất cánh' : nx != null ? ` · chuyến tới ${nx}h${wait ? `, ${wait} khách chờ` : ''}` : ` · hết chuyến hôm nay`;
+            depth(SKY, (g) => xLabel(g, A.plane.x, f.y - 34, lab('air', `✈️ ${GX.air.names[L - 1]}${what}${rec && rec.pax ? ` · hôm nay ${rec.pax} đến, ${rec.out || 0} đi` : ''}`))); }
         }
       }
     }
@@ -10590,6 +10685,9 @@
     if (v.diner) return pick({ banhmi: [['Dude, this sandwich is amazing.', 'Ông ơi, ổ bánh mì này đỉnh thật.'], ["I'll grab another one.", 'Lấy thêm ổ nữa.'], ['Is it spicy? Like, really spicy?', 'Cay không? Kiểu cay thật á?'], ['To go, please.', 'Cho mang đi nhé. · to go = mang đi'], ['Can I get one with extra pâté?', 'Cho tôi một ổ thêm pa-tê nhé.']],
       cafe: [['Can I get an iced coffee?', 'Cho một ly cà phê đá nhé. · Can I get… = cách gọi món tự nhiên'], ['Oh wow, this juice hits the spot.', 'Ly nước này đã thật. · hits the spot = đúng thứ đang thèm'], ['Go easy on the sugar.', 'Ít đường thôi nhé.'], ['Can we get the check?', 'Tính tiền giúp nhé. · check = hoá đơn (Mỹ)'], ["I'm just gonna sit here for a bit.", 'Tôi ngồi đây chút đã.']],
       restaurant: [['This is so good.', 'Ngon dã man.'], ['Could I get a little more rice?', 'Cho xin thêm ít cơm được không?'], ['Table for two?', 'Bàn hai người nhé?'], ["I'm stuffed. That was awesome!", 'No căng rồi. Ngon xỉu! · stuffed = no căng'], ['What do you recommend?', 'Có món gì ngon giới thiệu không?']],
+      air: v.diner.land ? [['Finally, we landed!', 'Cuối cùng cũng hạ cánh rồi! · land = hạ cánh'], ['What a view from up there!', 'Nhìn từ trên kia đẹp ghê!'], ['Which way to the beach?', 'Ra biển đi lối nào? · which way to… = đi lối nào tới…'], ['Welcome to the island!', 'Chào mừng tới đảo!']]
+        : v.diner.gate ? [["We're boarding soon!", 'Sắp lên máy bay rồi! · boarding = lên máy bay'], ['Is my flight on time?', 'Chuyến của tôi có đúng giờ không? · on time = đúng giờ'], ['Window seat, please.', 'Cho ghế cạnh cửa sổ nhé.'], ['Bye, island! See you again.', 'Tạm biệt đảo nhé! Hẹn gặp lại.']]
+        : [['One ticket to the city, please.', 'Cho một vé vào thành phố. · one ticket to… = một vé đi…'], ['I need a coffee before the flight.', 'Phải làm ly cà phê trước khi bay đã.'], ['How much is this keychain?', 'Cái móc khóa này bao nhiêu? · keychain = móc khóa'], ["Where's the check-in desk?", 'Quầy làm thủ tục ở đâu? · check-in = làm thủ tục']],
       spa: [['Oh man, this water is perfect.', 'Trời ơi, nước này đã thật. · oh man = trời ơi'], ["I could stay in here all day.", 'Ngâm cả ngày cũng được.'], ['My back feels so much better.', 'Lưng đỡ mỏi hẳn.'], ["It's a little hot, but in a good way.", 'Hơi nóng mà dễ chịu.'], ['Totally worth the boat ride.', 'Đi ca nô ra đây đáng đồng tiền. · worth = đáng']] }[v.diner.id] || [['Yum!', 'Ngon!']]);
     if (v.tourist) { const at = v.tourist.stops[v.tourist.si]; if (at && at.shop) return pick([['How much is this one?', 'Cái này nhiêu vậy?'], ["I'm starving.", 'Đói muốn xỉu.'], ['Two drinks, please.', 'Cho hai ly nhé.'], ['Got anything cheaper?', 'Có gì rẻ hơn không?'], ["I'll take this one.", 'Lấy cái này.'], ['Do you take cards?', 'Có quẹt thẻ không?']]);
       return pick([['Wow, this place is gorgeous!', 'Trời, chỗ này đẹp quá!'], ['Mind if I take a pic?', 'Chụp tấm hình được không? · pic = picture'], ['Whoa, check that out!', 'Ui, nhìn kìa! · check out = xem thử'], ['I could live here.', 'Ở đây luôn cũng được á.'],
